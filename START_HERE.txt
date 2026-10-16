@@ -1,0 +1,12 @@
+RESET — START HERE
+
+1. Upload this folder to any free HTTPS static host (Netlify / Cloudflare Pages / GitHub Pages / Vercel).
+2. Open the resulting link in Safari on your iPhone.
+3. Safari Share button -> Add to Home Screen -> Add.
+4. Open Reset from the new Home Screen icon.
+5. Go to Uni and edit each course to your real current week.
+6. Go to Life -> Money -> Edit and adjust the suggested budget buckets.
+7. Use Settings -> Export backup from time to time.
+
+The app costs nothing to run on a normal free static host.
+Your data stays locally on your device.
