@@ -1,10 +1,11 @@
 {
   "name": "Reset — Life Dashboard",
   "short_name": "Reset",
-  "description": "Personal dashboard for sleep, university, fitness, money and weekly planning.",
+  "description": "Daily planner, weekly schedule, university catch-up, money allocation and life reset dashboard.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#07090d",
   "theme_color": "#07090d",
   "icons": [

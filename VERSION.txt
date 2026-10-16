@@ -1,0 +1,14 @@
+RESET LIFE DASHBOARD
+Version 2.0.0
+
+Major update:
+- Time-based Today timeline
+- Current/next task guidance
+- Monday-Sunday week planner
+- Editable recurring weekly routine
+- One-off scheduled tasks
+- Improved university catch-up queue
+- Separate Money tab with monthly allocations and spending log
+- Payday countdown
+- Existing local data migration
+- New offline cache version

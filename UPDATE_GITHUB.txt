@@ -1,0 +1,28 @@
+HOW TO APPLY THIS UPDATE TO YOUR CURRENT GITHUB PAGES APP
+
+A. BACKUP FIRST (recommended)
+1. Open your current Reset app.
+2. Tap the three dots -> Export backup.
+
+B. UPLOAD THE UPDATE
+1. Unzip Reset_Life_Dashboard_v2.zip on your PC.
+2. Open the life-reset-app folder.
+3. Go to github.com and open your reset-life-app repository.
+4. Click Add file -> Upload files.
+5. Drag all files inside life-reset-app into GitHub, including the icons folder.
+6. GitHub will show the changed/replaced files.
+7. At the bottom, choose Commit directly to the main branch and click Commit changes.
+
+C. WAIT FOR GITHUB PAGES
+1. Wait roughly 1–3 minutes.
+2. Open your existing app URL.
+3. Refresh once.
+
+D. IPHONE
+1. If Reset is already on your Home Screen, you do NOT need to add it again.
+2. Fully close Reset from the iPhone app switcher.
+3. Reopen it.
+4. If it somehow still shows the old version, open the normal URL in Safari, refresh it once, then reopen the Home Screen app.
+
+YOUR SAVED DATA
+The update keeps the same local storage key and includes a migration step. It is designed to keep existing data. Exporting a backup first is still smart.

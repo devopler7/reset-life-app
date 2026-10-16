@@ -7,11 +7,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Reset" />
-  <meta name="description" content="A personal life reset dashboard for sleep, university, fitness, money and weekly planning." />
+  <meta name="description" content="A personal life dashboard for daily planning, university, fitness, money and weekly reset." />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2.0.0" />
   <title>Reset</title>
 </head>
 <body>
@@ -20,7 +20,7 @@
 
   <div id="app" class="app-shell">
     <header class="topbar">
-      <div>
+      <div class="header-copy">
         <p class="eyebrow" id="dateLabel">TODAY</p>
         <h1 id="pageTitle">Today</h1>
       </div>
@@ -31,10 +31,10 @@
 
     <nav class="tabbar" aria-label="Main navigation">
       <button class="tab active" data-tab="today"><span>◉</span><small>Today</small></button>
-      <button class="tab" data-tab="plan"><span>▤</span><small>Plan</small></button>
+      <button class="tab" data-tab="week"><span>▦</span><small>Week</small></button>
       <button class="tab" data-tab="university"><span>⌁</span><small>Uni</small></button>
-      <button class="tab" data-tab="progress"><span>↗</span><small>Progress</small></button>
-      <button class="tab" data-tab="life"><span>◇</span><small>Life</small></button>
+      <button class="tab" data-tab="money"><span>◫</span><small>Money</small></button>
+      <button class="tab" data-tab="more"><span>◇</span><small>More</small></button>
     </nav>
   </div>
 
@@ -51,7 +51,7 @@
         <button type="button" class="settings-item" id="installHelpBtn"><span>Add to iPhone Home Screen</span><b>How</b></button>
         <button type="button" class="settings-item danger" id="eraseBtn"><span>Erase all app data</span><b>Reset</b></button>
       </div>
-      <p class="tiny muted">All data is stored locally in your browser. Export a backup occasionally.</p>
+      <p class="tiny muted">Your personal data stays in this browser. Export a backup occasionally, especially before clearing Safari data.</p>
     </form>
   </dialog>
 
@@ -59,6 +59,6 @@
     <div id="modalContent" class="sheet-card"></div>
   </dialog>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2.0.0"></script>
 </body>
 </html>

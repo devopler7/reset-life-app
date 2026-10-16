@@ -1,12 +1,32 @@
-RESET — START HERE
+RESET v2 — START HERE
 
-1. Upload this folder to any free HTTPS static host (Netlify / Cloudflare Pages / GitHub Pages / Vercel).
-2. Open the resulting link in Safari on your iPhone.
-3. Safari Share button -> Add to Home Screen -> Add.
-4. Open Reset from the new Home Screen icon.
-5. Go to Uni and edit each course to your real current week.
-6. Go to Life -> Money -> Edit and adjust the suggested budget buckets.
-7. Use Settings -> Export backup from time to time.
+YOU ALREADY HAVE GITHUB PAGES LIVE
 
-The app costs nothing to run on a normal free static host.
-Your data stays locally on your device.
+1. Unzip the update ZIP.
+2. Open the folder called life-reset-app.
+3. Open your GitHub repository: reset-life-app.
+4. Click Add file -> Upload files.
+5. Drag EVERYTHING INSIDE life-reset-app into the repository root.
+   Important: index.html, app.js and styles.css must be at the top level of the repo.
+6. Commit changes to the main branch.
+7. Wait 1–3 minutes.
+8. Open your normal GitHub Pages app link and refresh once.
+9. On iPhone, fully close Reset from the app switcher and reopen it.
+
+WHAT TO SET UP FIRST
+
+1. Week -> Manage routine
+   Replace the general university blocks with your real class timetable.
+2. Uni
+   Set each course to the week you are actually caught up to.
+3. Money -> Edit
+   Check income, current cash, payday and monthly allocations.
+4. Today
+   Use the timeline. Add one-off tasks when something unique comes up.
+
+IMPORTANT
+
+- Your data stays locally on your device.
+- The update keeps the same storage key so existing data should migrate forward.
+- Export a backup from Settings occasionally.
+- If the old design still appears after deployment, refresh the Safari webpage once. The new service worker uses a new cache version.
