@@ -1,5 +1,5 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 2;
+const APP_VERSION = 3;
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -57,29 +57,58 @@ function formatDateShort(date) {
 function escapeHTML(s='') { return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function escapeAttr(s='') { return escapeHTML(s); }
 function shorten(s='',n=16) { return s.length>n ? `${s.slice(0,n-1)}…` : s; }
+function minutesToTime(total) {
+  const n=((Math.round(total)%1440)+1440)%1440;
+  return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
+}
+function roundUpMinutes(value, step=5) { return Math.ceil(value/step)*step; }
+function durationMinutes(item) {
+  const start=minutesFromTime(item.start), end=minutesFromTime(item.end||item.start);
+  return Math.max(5, end>start ? end-start : Number(item.minMinutes||30));
+}
+function dateInRange(key,item) {
+  if(item.startDate && key<item.startDate) return false;
+  if(item.endDate && key>item.endDate) return false;
+  return true;
+}
 
 function defaultSchedule() {
   return [
-    {id:'wake', title:'Wake up + curtains open', days:[0,1,2,3,4,5,6], start:'08:00', end:'08:10', category:'Routine', detail:'Get out of bed immediately. No scrolling or gooning in bed.', active:true},
-    {id:'groom', title:'Shower + grooming', days:[0,1,2,3,4,5,6], start:'08:10', end:'08:30', category:'Routine', detail:'Teeth, deodorant, hair/beard and clean clothes.', active:true},
-    {id:'breakfast', title:'Breakfast', days:[0,1,2,3,4,5,6], start:'08:30', end:'09:00', category:'Food', detail:'Eat early and include protein.', active:true},
-    {id:'uni_am', title:'Classes / university focus', days:[1,2,3,4,5], start:'09:00', end:'12:00', category:'University', detail:'Attend anything scheduled. If free, work on current-week material or the highest-priority backlog.', active:true},
-    {id:'lunch', title:'Lunch', days:[0,1,2,3,4,5,6], start:'12:30', end:'13:00', category:'Food', detail:'Proper meal, not random snacking.', active:true},
-    {id:'uni_pm', title:'Classes / study / errands', days:[1,2,3,4,5], start:'13:30', end:'16:30', category:'University', detail:'Current classes first. Use library/CBD time for useful work when there is no class.', active:true},
-    {id:'outside', title:'Outside + walk', days:[0,1,2,3,4,5,6], start:'16:45', end:'17:15', category:'Life', detail:'Leave the room and get at least 30 minutes outside.', active:true},
-    {id:'gym', title:'Full-body gym', days:[1,3,5], start:'17:30', end:'18:30', category:'Fitness', detail:'Start light. Consistency beats destroying yourself.', active:true},
-    {id:'mobility', title:'Mobility / easy movement', days:[0,2,4,6], start:'17:30', end:'17:45', category:'Fitness', detail:'10–15 minutes for hips, hamstrings, back and shoulders.', active:true},
-    {id:'dinner', title:'Dinner', days:[0,1,2,3,4,5,6], start:'19:00', end:'19:30', category:'Food', detail:'A real meal with protein.', active:true},
-    {id:'catchup', title:'Focused uni catch-up', days:[1,3,5,0], start:'20:00', end:'21:00', category:'University', detail:'One focused block. Current week and urgent assessment content before old backlog.', active:true},
-    {id:'project', title:'Personal project', days:[2,4,6], start:'20:00', end:'21:00', category:'Project', detail:'Build something outside university. The app itself can count.', active:true},
-    {id:'sat_reset', title:'Room + personal reset', days:[6], start:'10:30', end:'11:30', category:'Life', detail:'Bathroom, bedsheets, grooming and anything small that has been building up.', active:true},
-    {id:'sun_money', title:'Money check', days:[0], start:'10:30', end:'10:50', category:'Life', detail:'Check spending, allocations and upcoming car/travel costs.', active:true},
-    {id:'sun_week', title:'Plan the coming week', days:[0], start:'11:00', end:'11:30', category:'Life', detail:'Classes, urgent uni work, gym and one focus for the week.', active:true},
-    {id:'phone', title:'Phone away', days:[0,1,2,3,4,5,6], start:'23:00', end:'23:05', category:'Sleep', detail:'Charge it away from the bed. No late scroll spiral.', active:true},
-    {id:'sleep', title:'Lights out', days:[0,1,2,3,4,5,6], start:'23:30', end:'23:40', category:'Sleep', detail:'Protect tomorrow before it starts.', active:true}
+    {id:'wake', title:'Wake up + curtains open', days:[0,1,2,3,4,5,6], start:'08:00', end:'08:10', category:'Routine', detail:'Get out of bed immediately. No scrolling or gooning in bed.', active:true, essential:true, minMinutes:5},
+    {id:'groom', title:'Shower + grooming', days:[0,1,2,3,4,5,6], start:'08:10', end:'08:30', category:'Routine', detail:'Teeth, deodorant, hair/beard and clean clothes.', active:true, essential:true, minMinutes:15},
+    {id:'breakfast', title:'Breakfast', days:[0,1,2,3,4,5,6], start:'08:30', end:'09:00', category:'Food', detail:'Eat early and include protein.', active:true, essential:true, minMinutes:20},
+
+    {id:'catch_mon', title:'Focused university catch-up', days:[1], start:'10:00', end:'11:30', category:'University', detail:'Work on the highest-priority backlog before today’s class.', active:true, minMinutes:60},
+    {id:'catch_tue', title:'Focused university catch-up', days:[2], start:'13:00', end:'14:00', category:'University', detail:'Use the gap before the Reservoir Engineering workshop.', active:true, minMinutes:45},
+    {id:'catch_wed', title:'Focused university catch-up', days:[3], start:'10:00', end:'11:30', category:'University', detail:'Current week and urgent assessment content first.', active:true, minMinutes:60},
+    {id:'catch_thu', title:'Focused university catch-up', days:[4], start:'09:30', end:'10:30', category:'University', detail:'One focused block before the Reservoir Engineering classes.', active:true, minMinutes:45},
+    {id:'catch_fri', title:'Focused university catch-up', days:[5], start:'10:00', end:'11:30', category:'University', detail:'Current week and urgent assessment content first.', active:true, minMinutes:60},
+    {id:'catch_sun', title:'Focused university catch-up', days:[0], start:'14:00', end:'15:00', category:'University', detail:'One clean catch-up block before the new week.', active:true, minMinutes:45},
+
+    {id:'class_prod_forum', title:'Production Engineering Forum', days:[2], start:'10:15', end:'12:00', category:'University', detail:'University timetable class. Attend in person.', active:true, fixed:true, isClass:true, startDate:'2026-10-12', endDate:'2026-11-15'},
+    {id:'class_prod_workshop', title:'Production Engineering Workshop', days:[1], start:'15:15', end:'17:00', category:'University', detail:'Tutorial 228. University timetable class.', active:true, fixed:true, isClass:true, startDate:'2026-10-12', endDate:'2026-11-15'},
+    {id:'class_res_workshop', title:'Reservoir Engineering Workshop', days:[2], start:'14:15', end:'16:00', category:'University', detail:'University timetable class. Attend in person.', active:true, fixed:true, isClass:true, startDate:'2026-10-12', endDate:'2026-11-15'},
+    {id:'class_prod_tutorial', title:'Production Engineering Tutorial', days:[3], start:'14:15', end:'16:00', category:'University', detail:'University timetable class. Attend in person.', active:true, fixed:true, isClass:true, startDate:'2026-10-12', endDate:'2026-11-15'},
+    {id:'class_res_tutorial', title:'Reservoir Engineering Tutorial', days:[4], start:'11:15', end:'13:00', category:'University', detail:'University timetable class. Attend in person.', active:true, fixed:true, isClass:true, startDate:'2026-10-12', endDate:'2026-11-15'},
+    {id:'class_res_lecture', title:'Reservoir Engineering Lecture', days:[4], start:'13:15', end:'14:00', category:'University', detail:'University timetable class. Attend in person.', active:true, fixed:true, isClass:true, startDate:'2026-10-12', endDate:'2026-11-15'},
+    {id:'class_fluid_workshop', title:'Fluid Mechanics Workshop', days:[4], start:'14:15', end:'16:00', category:'University', detail:'University timetable class. Shown through 29 Oct in your timetable.', active:true, fixed:true, isClass:true, startDate:'2026-10-12', endDate:'2026-10-29'},
+    {id:'class_systems_workshop', title:'Systems Engineering Workshop', days:[5], start:'14:15', end:'16:00', category:'University', detail:'University timetable class. Attend in person.', active:true, fixed:true, isClass:true, startDate:'2026-10-12', endDate:'2026-11-15'},
+
+    {id:'lunch', title:'Lunch', days:[0,1,2,3,5,6], start:'12:30', end:'13:00', category:'Food', detail:'Proper meal, not random snacking.', active:true, minMinutes:25},
+    {id:'lunch_thu', title:'Lunch', days:[4], start:'16:00', end:'16:30', category:'Food', detail:'Thursday classes run through lunch. Eat a proper meal as soon as the class block finishes.', active:true, minMinutes:25},
+    {id:'outside', title:'Outside + walk', days:[0,2,3,4,5,6], start:'16:45', end:'17:15', category:'Life', detail:'Leave the room and get at least 30 minutes outside.', active:true, minMinutes:25},
+    {id:'outside_mon', title:'Outside + walk', days:[1], start:'17:00', end:'17:25', category:'Life', detail:'Use the walk after class to get outside before the gym.', active:true, minMinutes:20},
+    {id:'gym', title:'Full-body gym', days:[1,3,5], start:'17:30', end:'18:30', category:'Fitness', detail:'Start light. Consistency beats destroying yourself.', active:true, minMinutes:45},
+    {id:'mobility', title:'Mobility / easy movement', days:[0,2,4,6], start:'17:30', end:'17:45', category:'Fitness', detail:'10–15 minutes for hips, hamstrings, back and shoulders.', active:true, minMinutes:10},
+    {id:'dinner', title:'Dinner', days:[0,1,2,3,4,5,6], start:'19:00', end:'19:30', category:'Food', detail:'A real meal with protein.', active:true, minMinutes:25},
+    {id:'project', title:'Personal project', days:[2,4,6], start:'20:00', end:'21:00', category:'Project', detail:'Build something outside university. The app itself can count.', active:true, minMinutes:45},
+    {id:'sat_reset', title:'Room + personal reset', days:[6], start:'10:30', end:'11:30', category:'Life', detail:'Bathroom, bedsheets, grooming and anything small that has been building up.', active:true, minMinutes:30},
+    {id:'sun_money', title:'Money check', days:[0], start:'10:30', end:'10:50', category:'Life', detail:'Check spending, allocations and upcoming car/travel costs.', active:true, minMinutes:15},
+    {id:'sun_week', title:'Plan the coming week', days:[0], start:'11:00', end:'11:30', category:'Life', detail:'Classes, urgent uni work, gym and one focus for the week.', active:true, minMinutes:20},
+    {id:'phone', title:'Phone away', days:[0,1,2,3,4,5,6], start:'23:00', end:'23:05', category:'Sleep', detail:'Charge it away from the bed. No late scroll spiral.', active:true, fixed:true},
+    {id:'sleep', title:'Lights out', days:[0,1,2,3,4,5,6], start:'23:30', end:'23:40', category:'Sleep', detail:'Protect tomorrow before it starts.', active:true, fixed:true}
   ];
 }
-
 function defaultState() {
   return {
     version: APP_VERSION,
@@ -120,7 +149,13 @@ function migrateState(parsed) {
   const state = {...base, ...parsed};
   state.version = APP_VERSION;
   state.profile = {...base.profile, ...(parsed.profile || {})};
-  state.schedule = Array.isArray(parsed.schedule) && parsed.schedule.length ? parsed.schedule : base.schedule;
+  const savedSchedule = Array.isArray(parsed.schedule) && parsed.schedule.length ? parsed.schedule : [];
+  const obsoleteIds = new Set(['uni_am','uni_pm','catchup']);
+  const baseById = new Map(base.schedule.map(x=>[x.id,x]));
+  const cleanedSchedule = savedSchedule.filter(x=>!obsoleteIds.has(x.id)).map(x=>baseById.has(x.id)?{...baseById.get(x.id),...x}:x);
+  const builtInIds = new Set(cleanedSchedule.map(x=>x.id));
+  const mustAdd = base.schedule.filter(x=>x.id.startsWith('class_') || x.id.startsWith('catch_') || x.id==='lunch_thu' || x.id==='outside_mon').filter(x=>!builtInIds.has(x.id));
+  state.schedule = cleanedSchedule.length ? [...cleanedSchedule, ...mustAdd] : base.schedule;
   state.oneOffTasks = Array.isArray(parsed.oneOffTasks) ? parsed.oneOffTasks : [];
   state.records = parsed.records || {};
   state.courses = Array.isArray(parsed.courses) ? parsed.courses : base.courses;
@@ -146,6 +181,9 @@ function migrateState(parsed) {
   }
   Object.values(state.records).forEach(r=>{
     if(!r.itemStatus) r.itemStatus={};
+    // v2 used "skipped" to delete overdue tasks on restart. v3 restores them so adaptive restart can reschedule them.
+    Object.keys(r.itemStatus).forEach(k=>{ if(r.itemStatus[k]==='skipped') delete r.itemStatus[k]; });
+    if(!r.timeOverrides) r.timeOverrides={};
     if(!Number.isFinite(r.resetCount)) r.resetCount=0;
   });
   return state;
@@ -164,26 +202,32 @@ let state = loadState();
 function save() { try { localStorage.setItem(APP_KEY, JSON.stringify(state)); } catch(e) {} }
 
 function ensureRecord(key=todayKey()) {
-  if(!state.records[key]) state.records[key] = {itemStatus:{}, resetCount:0, restartAt:null};
+  if(!state.records[key]) state.records[key] = {itemStatus:{}, timeOverrides:{}, resetCount:0, restartAt:null};
   if(!state.records[key].itemStatus) state.records[key].itemStatus={};
+  if(!state.records[key].timeOverrides) state.records[key].timeOverrides={};
   return state.records[key];
 }
 function occurrenceKey(item) { return `${item.source==='oneoff'?'o':'s'}:${item.id}`; }
-function getStatus(item,key) { return ensureRecord(key).itemStatus[occurrenceKey(item)] || 'pending'; }
+function getStatus(item,key) { return state.records[key]?.itemStatus?.[occurrenceKey(item)] || 'pending'; }
 function setStatus(item,key,status) {
   const rec=ensureRecord(key);
   if(status==='pending') delete rec.itemStatus[occurrenceKey(item)];
   else rec.itemStatus[occurrenceKey(item)]=status;
   save();
 }
-function itemsForDate(date) {
+function applyDailyOverride(item,key,ignoreOverrides=false) {
+  if(ignoreOverrides) return item;
+  const override=state.records[key]?.timeOverrides?.[occurrenceKey(item)];
+  return override ? {...item,...override,adjusted:true} : item;
+}
+function itemsForDate(date, options={}) {
   const key=todayKey(date); const dow=date.getDay();
   const recurring=state.schedule
-    .filter(x=>x.active!==false && Array.isArray(x.days) && x.days.includes(dow))
-    .map(x=>({...x,source:'schedule',date:key}));
+    .filter(x=>x.active!==false && Array.isArray(x.days) && x.days.includes(dow) && dateInRange(key,x))
+    .map(x=>applyDailyOverride({...x,source:'schedule',date:key},key,options.ignoreOverrides));
   const oneOff=state.oneOffTasks
     .filter(x=>x.date===key)
-    .map(x=>({...x,source:'oneoff'}));
+    .map(x=>applyDailyOverride({...x,source:'oneoff'},key,options.ignoreOverrides));
   return [...recurring,...oneOff].sort((a,b)=>minutesFromTime(a.start)-minutesFromTime(b.start) || String(a.title).localeCompare(String(b.title)));
 }
 function dayCompletion(date) {
@@ -248,14 +292,19 @@ function statusForTime(item, date, nowMin=currentMinutes()) {
 }
 function nextUsefulItem(items,key) {
   const now=currentMinutes();
-  const active=items.filter(i=>!['done','skipped'].includes(getStatus(i,key)));
+  const active=items.filter(i=>!['done','skipped','missed'].includes(getStatus(i,key)));
   const current=active.find(i=>statusForTime(i,new Date())==='now');
   if(current) return {item:current,mode:'now'};
+  const overdueEssential=active.find(i=>i.essential && minutesFromTime(i.end||i.start)<now);
+  if(overdueEssential) return {item:overdueEssential,mode:'overdue'};
   const next=active.find(i=>minutesFromTime(i.start)>now);
   if(next) return {item:next,mode:'next'};
+  const overdue=active.find(i=>minutesFromTime(i.end||i.start)<now && !i.fixed);
+  if(overdue) return {item:overdue,mode:'overdue'};
   return null;
 }
 function countdownText(item,mode) {
+  if(mode==='overdue') return 'NOW';
   if(mode==='now') {
     const e=minutesFromTime(item.end||item.start);
     const diff=Math.max(0,e-currentMinutes());
@@ -272,16 +321,17 @@ function renderToday(preserveScroll=false) {
   const done=items.filter(i=>getStatus(i,key)==='done').length; const total=items.length; const pct=total?Math.round(done/total*100):0;
   const hour=new Date().getHours(); const greeting=hour<12?'Good morning':hour<18?'Good afternoon':'Good evening';
   const next=nextUsefulItem(items,key);
-  const skipped=items.filter(i=>getStatus(i,key)==='skipped').length;
+  const missed=items.filter(i=>getStatus(i,key)==='missed').length;
+  const adjusted=items.filter(i=>i.adjusted).length;
   setHeader('Today',date);
   main.innerHTML=`
     <section class="card hero">
       <div class="next-card">
         <div>
           <span class="badge">${greeting.toUpperCase()}</span>
-          ${next ? `<div class="time-big" style="margin-top:12px">${next.mode==='now'?'DO THIS NOW':'NEXT · '+formatClock(next.item.start)}</div><h2>${escapeHTML(next.item.title)}</h2><p class="muted" style="margin-bottom:0">${escapeHTML(next.item.detail||'Do the next useful thing.')}</p>` : `<h2 style="margin-top:14px">You’re clear for now.</h2><p class="muted" style="margin-bottom:0">Use the free time well, or add something useful to today.</p>`}
+          ${next ? `<div class="time-big" style="margin-top:12px">${next.mode==='now'||next.mode==='overdue'?'DO THIS NOW':'NEXT · '+formatClock(next.item.start)}</div><h2>${escapeHTML(next.item.title)}</h2><p class="muted" style="margin-bottom:0">${escapeHTML(next.item.detail||'Do the next useful thing.')}</p>` : `<h2 style="margin-top:14px">You’re clear for now.</h2><p class="muted" style="margin-bottom:0">Use the free time well, or add something useful to today.</p>`}
         </div>
-        ${next?`<div class="countdown"><b>${countdownText(next.item,next.mode)}</b><small>${next.mode==='now'?'remaining / now':'until next'}</small></div>`:`<div class="progress-ring" style="--value:${pct*3.6}deg"><b>${pct}%</b></div>`}
+        ${next?`<div class="countdown"><b>${countdownText(next.item,next.mode)}</b><small>${next.mode==='now'?'remaining / now':next.mode==='overdue'?'overdue':'until next'}</small></div>`:`<div class="progress-ring" style="--value:${pct*3.6}deg"><b>${pct}%</b></div>`}
       </div>
     </section>
 
@@ -296,13 +346,14 @@ function renderToday(preserveScroll=false) {
       ${items.length ? items.map(i=>timelineItemHTML(i,date,true)).join('') : '<div class="empty-state">Nothing scheduled today. Add a task or edit your weekly routine.</div>'}
     </section>
 
-    ${skipped?`<p class="muted tiny" style="text-align:center">${skipped} earlier item${skipped===1?'':'s'} skipped after a restart. That is intentional. Keep moving.</p>`:''}
+    ${adjusted?`<p class="muted tiny" style="text-align:center">Adaptive restart moved ${adjusted} item${adjusted===1?'':'s'} to realistic times for today. Fixed classes stay fixed.</p>`:''}
+    ${missed?`<p class="muted tiny" style="text-align:center">${missed} fixed event${missed===1?' was':'s were'} already past when you restarted. They remain visible as missed instead of disappearing.</p>`:''}
 
     <section class="card restart">
-      <span class="badge warn">ANTI-COLLAPSE</span>
+      <span class="badge warn">ADAPTIVE RESTART</span>
       <h3 style="margin-top:12px">The day went off track?</h3>
-      <p class="muted">Restart from this moment. Past unfinished tasks get skipped instead of blocking the rest of the day.</p>
-      <button class="primary full" id="restartBtn">Restart today from now</button>
+      <p class="muted">Rebuild the rest of today from the current time. Important morning tasks move forward, classes stay fixed, and flexible tasks shift around them.</p>
+      <button class="primary full" id="restartBtn">Rebuild today from now</button>
     </section>
 
     <section class="card flat">
@@ -317,7 +368,7 @@ function renderToday(preserveScroll=false) {
 
 function timelineItemHTML(item,date,showActions=false) {
   const key=todayKey(date); const status=getStatus(item,key); const timeState=statusForTime(item,date);
-  const isNext=timeState==='future' && !['done','skipped'].includes(status);
+  const isNext=timeState==='future' && !['done','skipped','missed'].includes(status);
   const nowClass=timeState==='now' && status==='pending'?'now':'';
   const nextClass=isNext?'next':'';
   return `<div class="timeline-item ${nowClass} ${nextClass} ${status}">
@@ -326,10 +377,10 @@ function timelineItemHTML(item,date,showActions=false) {
       <div class="timeline-main">
         <input class="check" type="checkbox" data-occ="${escapeAttr(occurrenceKey(item))}" data-date="${key}" ${status==='done'?'checked':''} aria-label="Mark ${escapeAttr(item.title)} done">
         <div class="timeline-copy"><b>${escapeHTML(item.title)}</b><small>${escapeHTML(item.detail||'')}</small>
-          <div class="timeline-meta">${categoryBadge(item.category)}<span class="badge blue">${escapeHTML(timeWindow(item))}</span>${status==='skipped'?'<span class="badge warn">SKIPPED</span>':nowClass?'<span class="badge">NOW</span>':''}</div>
+          <div class="timeline-meta">${categoryBadge(item.category)}<span class="badge blue">${escapeHTML(timeWindow(item))}</span>${status==='missed'?'<span class="badge danger-badge">MISSED</span>':item.adjusted?'<span class="badge adjusted-badge">ADJUSTED</span>':nowClass?'<span class="badge">NOW</span>':''}</div>
         </div>
       </div>
-      ${showActions?`<div class="quick-actions"><button data-edit-item="${item.source}:${item.id}" type="button">Edit</button>${status==='skipped'?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}</div>`:''}
+      ${showActions?`<div class="quick-actions"><button data-edit-item="${item.source}:${item.id}" type="button">Edit</button>${status==='missed'?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}</div>`:''}
     </div>
   </div>`;
 }
@@ -546,19 +597,89 @@ function renderMore() {
 }
 function morePlanRow(title,text){return `<div class="more-link"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(text)}</small></span></div>`;}
 
+function itemIsFixed(item) { return item.fixed===true || item.isClass===true; }
+function findOpenSlot(desired,duration,blocked,limit) {
+  let start=Math.max(0,desired);
+  const sorted=[...blocked].sort((a,b)=>a.start-b.start);
+  for(let guard=0;guard<100;guard++) {
+    let collision=sorted.find(x=>start < x.end && start+duration > x.start);
+    if(!collision) return start+duration<=limit ? start : null;
+    start=collision.end;
+  }
+  return null;
+}
+function buildAdaptiveRestartPlan(date=new Date()) {
+  const key=todayKey(date); const baseItems=itemsForDate(date,{ignoreOverrides:true});
+  const rec=ensureRecord(key); const now=roundUpMinutes(currentMinutes(),5);
+  const sleepLimit=Math.max(now+30, minutesFromTime(state.profile.sleepTarget||'23:30'));
+  const pending=baseItems.filter(i=>getStatus(i,key)!=='done');
+  const fixed=pending.filter(itemIsFixed);
+  const movable=pending.filter(i=>!itemIsFixed(i));
+  const missedFixed=fixed.filter(i=>minutesFromTime(i.end||i.start)<now);
+  const futureFixed=fixed.filter(i=>minutesFromTime(i.end||i.start)>=now).map(i=>({start:minutesFromTime(i.start),end:minutesFromTime(i.end||i.start)+(!i.end?30:0),item:i}));
+  const blocked=[...futureFixed];
+  const overrides={};
+  const moved=[];
+  let lastMealEnd=null;
+
+  const ordered=[...movable].sort((a,b)=>{
+    const aOver=minutesFromTime(a.end||a.start)<now, bOver=minutesFromTime(b.end||b.start)<now;
+    const aRank=aOver&&a.essential?0:aOver?1:2;
+    const bRank=bOver&&b.essential?0:bOver?1:2;
+    return aRank-bRank || minutesFromTime(a.start)-minutesFromTime(b.start);
+  });
+
+  for(const item of ordered) {
+    const status=getStatus(item,key);
+    if(status==='done') continue;
+    const originalStart=minutesFromTime(item.start);
+    const overdue=minutesFromTime(item.end||item.start)<now;
+    const normalDuration=durationMinutes(item);
+    const duration=overdue ? Math.max(5,Math.min(normalDuration,Number(item.minMinutes||normalDuration))) : normalDuration;
+    let desired=overdue ? now : Math.max(now,originalStart);
+    if(item.category==='Food' && lastMealEnd!==null) desired=Math.max(desired,lastMealEnd+150);
+    const slot=findOpenSlot(desired,duration,blocked,sleepLimit);
+    if(slot===null) continue;
+    const newStart=slot, newEnd=slot+duration;
+    blocked.push({start:newStart,end:newEnd,item});
+    if(item.category==='Food') lastMealEnd=newEnd;
+    if(newStart!==originalStart || duration!==normalDuration || overdue) {
+      const ov={start:minutesToTime(newStart),end:minutesToTime(newEnd)};
+      if(item.id==='breakfast' && overdue) { ov.title='First meal + protein'; ov.detail='Eat now. Do not let waking late turn into not eating.'; }
+      if(item.id==='wake' && overdue) ov.title='Get up + curtains open';
+      overrides[occurrenceKey(item)]=ov;
+      moved.push({...item,...ov});
+    }
+  }
+  return {key,now,overrides,moved,missedFixed};
+}
+function applyAdaptiveRestart(plan) {
+  const rec=ensureRecord(plan.key);
+  rec.timeOverrides=plan.overrides;
+  for(const item of plan.missedFixed) {
+    if(getStatus(item,plan.key)!=='done') rec.itemStatus[occurrenceKey(item)]='missed';
+  }
+  // A new restart should not leave old "missed" marks on flexible items or future fixed items.
+  Object.keys(rec.itemStatus).forEach(k=>{
+    if(rec.itemStatus[k]!=='missed') return;
+    const item=itemsForDate(parseDateKey(plan.key),{ignoreOverrides:true}).find(x=>occurrenceKey(x)===k);
+    if(item && (!itemIsFixed(item) || minutesFromTime(item.end||item.start)>=plan.now)) delete rec.itemStatus[k];
+  });
+  rec.resetCount=(rec.resetCount||0)+1;
+  rec.restartAt=new Date().toISOString();
+  save();
+}
 function openRestartModal() {
-  const items=itemsForDate(new Date());
-  const now=currentMinutes();
-  const skippable=items.filter(i=>getStatus(i,todayKey())==='pending' && minutesFromTime(i.end||i.start)<now);
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">RESTART TODAY</p><h2>Start again from now.</h2><p class="muted">${skippable.length?`${skippable.length} unfinished earlier item${skippable.length===1?'':'s'} will be marked skipped.`:'Nothing earlier needs to be skipped.'} Completed tasks stay completed.</p><button class="primary full" id="confirmRestart">Restart from this moment</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  const plan=buildAdaptiveRestartPlan(new Date());
+  const moveCount=plan.moved.length, missCount=plan.missedFixed.length;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ADAPTIVE RESTART</p><h2>Rebuild the rest of today.</h2><p class="muted">Nothing important gets deleted. ${moveCount?`${moveCount} flexible item${moveCount===1?'':'s'} will move to realistic times.`:'Your flexible tasks already fit from here.'} Fixed university classes and sleep times stay fixed.${missCount?` ${missCount} fixed event${missCount===1?' is':'s are'} already past and will stay visible as missed.`:''}</p><div class="card flat restart-preview"><b>Priority order</b><small>Get up / curtains → shower / grooming → first meal → fixed classes → remaining useful tasks.</small></div><button class="primary full" id="confirmRestart" style="margin-top:12px">Rebuild today</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#confirmRestart').onclick=()=>{const rec=ensureRecord();skippable.forEach(i=>rec.itemStatus[occurrenceKey(i)]='skipped');rec.resetCount=(rec.resetCount||0)+1;rec.restartAt=new Date().toISOString();save();modal.close();toast('Day restarted');renderToday();};
+  $('#confirmRestart').onclick=()=>{applyAdaptiveRestart(plan);modal.close();toast('Today rebuilt around the current time');renderToday();};
   $('#cancelModal').onclick=()=>modal.close();
 }
-
 function openScheduleManager() {
   const sorted=[...state.schedule].sort((a,b)=>minutesFromTime(a.start)-minutesFromTime(b.start));
-  modalContent.innerHTML=`<div class="sheet-handle"></div><div class="row between center"><div><p class="eyebrow">WEEKLY ROUTINE</p><h2>Recurring schedule</h2></div><button class="icon-button" id="closeModal">×</button></div><p class="muted tiny">Edit the defaults to match your real class timetable. Repeating items automatically appear on Today and Week.</p><div class="stack" style="margin-top:14px">${sorted.map(s=>`<button class="more-link" data-routine-edit="${s.id}"><span><b>${escapeHTML(s.title)}</b><small>${escapeHTML(s.days.map(d=>DAY_SHORT[d]).join(', '))} · ${escapeHTML(timeWindow(s))}</small></span><b>›</b></button>`).join('')}</div><button class="primary full" id="addRoutineInside" style="margin-top:14px">+ Add recurring item</button>`;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><div class="row between center"><div><p class="eyebrow">WEEKLY ROUTINE</p><h2>Recurring schedule</h2></div><button class="icon-button" id="closeModal">×</button></div><p class="muted tiny">Your university timetable is preloaded. Fixed items stay in place during an adaptive restart. You can still edit or add recurring items.</p><div class="stack" style="margin-top:14px">${sorted.map(s=>`<button class="more-link" data-routine-edit="${s.id}"><span><b>${escapeHTML(s.title)}</b><small>${escapeHTML(s.days.map(d=>DAY_SHORT[d]).join(', '))} · ${escapeHTML(timeWindow(s))}</small></span><b>›</b></button>`).join('')}</div><button class="primary full" id="addRoutineInside" style="margin-top:14px">+ Add recurring item</button>`;
   modal.showModal();
   $('#closeModal').onclick=()=>modal.close();
   $('#addRoutineInside').onclick=()=>openScheduleItemModal();
@@ -567,11 +688,13 @@ function openScheduleManager() {
 
 function openScheduleItemModal(id=null,preset={}) {
   const existing=id?state.schedule.find(x=>x.id===id):null;
-  const item=existing || {title:'',days:preset.days||[1,2,3,4,5],start:preset.start||'09:00',end:preset.end||'10:00',category:preset.category||'Life',detail:'',active:true};
+  const item=existing || {title:'',days:preset.days||[1,2,3,4,5],start:preset.start||'09:00',end:preset.end||'10:00',category:preset.category||'Life',detail:'',active:true,fixed:false,startDate:'',endDate:''};
   modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">RECURRING ITEM</p><h2>${existing?'Edit weekly item':'Add weekly item'}</h2><div class="stack">
     <label><span class="label">Title</span><input class="input" id="schedTitle" value="${escapeAttr(item.title)}" placeholder="e.g. Reservoir Engineering lecture"></label>
     <div class="form-grid"><label><span class="label">Start</span><input class="input" id="schedStart" type="time" value="${item.start}"></label><label><span class="label">End</span><input class="input" id="schedEnd" type="time" value="${item.end||item.start}"></label></div>
     <label><span class="label">Category</span><select id="schedCategory">${CATEGORIES.map(c=>`<option ${c===item.category?'selected':''}>${c}</option>`).join('')}</select></label>
+    <label class="switch-row"><input type="checkbox" id="schedFixed" ${item.fixed?'checked':''}><span><b>Fixed time</b><small>Use for classes or appointments. Adaptive restart will never move it.</small></span></label>
+    <div class="form-grid"><label><span class="label">Starts on (optional)</span><input class="input" id="schedStartDate" type="date" value="${item.startDate||''}"></label><label><span class="label">Ends on (optional)</span><input class="input" id="schedEndDate" type="date" value="${item.endDate||''}"></label></div>
     <div><span class="label">Repeat on</span><div class="day-picker">${DAY_PICK.map((d,i)=>`<label class="day-toggle"><input type="checkbox" data-repeat-day="${i}" ${item.days.includes(i)?'checked':''}><span>${d}</span></label>`).join('')}</div></div>
     <label><span class="label">Note</span><textarea id="schedDetail" placeholder="What exactly should you do?">${escapeHTML(item.detail||'')}</textarea></label>
   </div><button class="primary full" id="saveSchedule" style="margin-top:14px">Save recurring item</button>${existing?'<button class="danger-btn full" id="deleteSchedule" style="margin-top:8px">Delete recurring item</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
@@ -579,7 +702,10 @@ function openScheduleItemModal(id=null,preset={}) {
   $('#saveSchedule').onclick=()=>{
     const title=$('#schedTitle').value.trim(); const days=$$('[data-repeat-day]').filter(x=>x.checked).map(x=>Number(x.dataset.repeatDay));
     if(!title)return toast('Add a title'); if(!days.length)return toast('Choose at least one day');
-    const data={title,days,start:$('#schedStart').value||'09:00',end:$('#schedEnd').value||$('#schedStart').value||'10:00',category:$('#schedCategory').value,detail:$('#schedDetail').value.trim(),active:true};
+    const startTime=$('#schedStart').value||'09:00', endTime=$('#schedEnd').value||'10:00', startDate=$('#schedStartDate').value||'', endDate=$('#schedEndDate').value||'';
+    if(minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');
+    if(startDate&&endDate&&endDate<startDate)return toast('End date must be after start date');
+    const data={title,days,start:startTime,end:endTime,category:$('#schedCategory').value,detail:$('#schedDetail').value.trim(),active:true,fixed:$('#schedFixed').checked,startDate,endDate};
     if(existing){Object.assign(existing,data);if(existing.id==='wake')state.profile.wakeTarget=data.start;if(existing.id==='sleep')state.profile.sleepTarget=data.start;}else state.schedule.push({id:uid('sched'),...data});save();modal.close();toast('Weekly schedule updated');render();
   };
   if(existing)$('#deleteSchedule').onclick=()=>{state.schedule=state.schedule.filter(x=>x.id!==existing.id);save();modal.close();toast('Recurring item deleted');render();};
@@ -597,7 +723,7 @@ function openOneOffTaskModal(id=null,preset={}) {
     <label><span class="label">Note</span><textarea id="oneDetail" placeholder="Keep it specific.">${escapeHTML(item.detail||'')}</textarea></label>
   </div><button class="primary full" id="saveOneTask" style="margin-top:14px">Save task</button>${existing?'<button class="danger-btn full" id="deleteOneTask" style="margin-top:8px">Delete task</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#saveOneTask').onclick=()=>{const title=$('#oneTitle').value.trim();if(!title)return toast('Add a task name');const data={title,date:$('#oneDate').value||todayKey(),start:$('#oneStart').value||'12:00',end:$('#oneEnd').value||'',category:$('#oneCategory').value,detail:$('#oneDetail').value.trim()};if(existing)Object.assign(existing,data);else state.oneOffTasks.push({id:uid('one'),...data});save();modal.close();toast('Task scheduled');render();};
+  $('#saveOneTask').onclick=()=>{const title=$('#oneTitle').value.trim();if(!title)return toast('Add a task name');const startTime=$('#oneStart').value||'12:00', endTime=$('#oneEnd').value||'';if(endTime&&minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');const data={title,date:$('#oneDate').value||todayKey(),start:startTime,end:endTime,category:$('#oneCategory').value,detail:$('#oneDetail').value.trim()};if(existing)Object.assign(existing,data);else state.oneOffTasks.push({id:uid('one'),...data});save();modal.close();toast('Task scheduled');render();};
   if(existing)$('#deleteOneTask').onclick=()=>{state.oneOffTasks=state.oneOffTasks.filter(x=>x.id!==existing.id);save();modal.close();toast('Task deleted');render();};
   $('#cancelModal').onclick=()=>modal.close();
 }
