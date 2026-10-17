@@ -1,6 +1,6 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 5;
-const APP_DISPLAY_VERSION = '2.3.0';
+const APP_VERSION = 6;
+const APP_DISPLAY_VERSION = '2.4.0';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -83,9 +83,9 @@ function dateInRange(key,item) {
 
 function defaultSchedule() {
   return [
-    {id:'wake', title:'Wake up + curtains open', days:[0,1,2,3,4,5,6], start:'08:00', end:'08:10', category:'Routine', detail:'Get out of bed immediately. No scrolling or gooning in bed.', active:true, essential:true, minMinutes:5},
-    {id:'groom', title:'Shower + grooming', days:[0,1,2,3,4,5,6], start:'08:10', end:'08:30', category:'Routine', detail:'Teeth, deodorant, hair/beard and clean clothes.', active:true, essential:true, minMinutes:15},
-    {id:'breakfast', title:'Breakfast', days:[0,1,2,3,4,5,6], start:'08:30', end:'09:00', category:'Food', detail:'Eat early and include protein.', active:true, essential:true, minMinutes:20},
+    {id:'wake', title:'Wake up + curtains open', days:[0,1,2,3,4,5,6], start:'08:00', end:'08:10', category:'Routine', detail:'Get out of bed immediately. No scrolling or gooning in bed.', active:true, essential:true, manualLocked:true, minMinutes:5},
+    {id:'groom', title:'Shower + grooming', days:[0,1,2,3,4,5,6], start:'08:10', end:'08:30', category:'Routine', detail:'Teeth, deodorant, hair/beard and clean clothes.', active:true, essential:true, manualLocked:true, minMinutes:15},
+    {id:'breakfast', title:'Breakfast', days:[0,1,2,3,4,5,6], start:'08:30', end:'09:00', category:'Food', detail:'Eat early and include protein.', active:true, essential:true, manualLocked:true, minMinutes:20},
 
     {id:'catch_mon', title:'Focused university catch-up', days:[1], start:'10:00', end:'11:30', category:'University', detail:'Work on the highest-priority backlog before today’s class.', active:true, minMinutes:60},
     {id:'catch_tue', title:'Focused university catch-up', days:[2], start:'13:00', end:'14:00', category:'University', detail:'Use the gap before the Reservoir Engineering workshop.', active:true, minMinutes:45},
@@ -166,8 +166,9 @@ function defaultState() {
       nextTask:'Use the app consistently and improve only what is genuinely useful.',
       plan:'Keep it simple, reliable and useful on iPhone.', sessions:0, logs:[]
     }],
-    gym:{exercises:defaultGymExercises(),logs:[],sessions:[]},
-    car:{model:'2007 Honda Accord V6 Luxury',odometer:180000,regoDue:'',serviceDueDate:'',serviceDueKm:0,fuelLogs:[]},
+    gym:{exercises:defaultGymExercises(),logs:[],sessions:[],sessionExcluded:[]},
+    health:{weightLogs:[]},
+    car:{model:'2007 Honda Accord V6 Luxury',odometer:180000,regoDue:'',serviceDueDate:'',serviceDueKm:0,fuelLogs:[],maintenanceLogs:[]},
     weeklyReviews:[],
     settings:{activeTab:'today', selectedWeekDate:todayKey(), statsRange:'30', moreView:'home', mode:'normal', modeSetDate:todayKey(), selectedExerciseId:'chest_press'}
   };
@@ -223,10 +224,14 @@ function migrateState(parsed) {
   next.gym={
     exercises:Array.isArray(oldGym.exercises)&&oldGym.exercises.length?oldGym.exercises:base.gym.exercises,
     logs:Array.isArray(oldGym.logs)?oldGym.logs:[],
-    sessions:Array.isArray(oldGym.sessions)?[...new Set(oldGym.sessions)]:[]
+    sessions:Array.isArray(oldGym.sessions)?[...new Set(oldGym.sessions)]:[],
+    sessionExcluded:Array.isArray(oldGym.sessionExcluded)?[...new Set(oldGym.sessionExcluded)]:[]
   };
+  next.health={...base.health,...(parsed.health||{})};
+  next.health.weightLogs=Array.isArray(parsed.health?.weightLogs)?parsed.health.weightLogs:[];
   next.car={...base.car,...(parsed.car||{})};
   next.car.fuelLogs=Array.isArray(parsed.car?.fuelLogs)?parsed.car.fuelLogs:[];
+  next.car.maintenanceLogs=Array.isArray(parsed.car?.maintenanceLogs)?parsed.car.maintenanceLogs:[];
 
   Object.entries(next.records).forEach(([key,r])=>{
     if(!r.itemStatus) r.itemStatus={};
@@ -329,8 +334,9 @@ function occurrenceKey(item) { return `${item.source==='oneoff'?'o':'s'}:${item.
 function getStatus(item,key) { return state.records[key]?.itemStatus?.[occurrenceKey(item)] || 'pending'; }
 function setStatus(item,key,status) {
   const rec=ensureRecord(key);
-  if(status==='pending') delete rec.itemStatus[occurrenceKey(item)];
+  if(status==='pending') { delete rec.itemStatus[occurrenceKey(item)]; rec.finishCelebrated=''; }
   else rec.itemStatus[occurrenceKey(item)]=status;
+  if(status==='done' && item.category==='Fitness' && /gym/i.test(item.title||'')) state.gym.sessionExcluded=(state.gym.sessionExcluded||[]).filter(k=>k!==key);
   save();
 }
 function applyDailyOverride(item,key,ignoreOverrides=false) {
@@ -372,11 +378,14 @@ function dayFinishState(date=new Date()) {
   const key=todayKey(date); const items=itemsForMode(itemsForDate(date),modeForDate(key));
   if(!items.length) return null;
   const statuses=items.map(i=>getStatus(i,key));
-  const pending=statuses.filter(s=>s!=='done' && s!=='missed').length;
+  const closed=new Set(['done','missed','deferred','dropped']);
+  const pending=statuses.filter(s=>!closed.has(s)).length;
   const done=statuses.filter(s=>s==='done').length;
   const missed=statuses.filter(s=>s==='missed').length;
+  const deferred=statuses.filter(s=>s==='deferred').length;
+  const dropped=statuses.filter(s=>s==='dropped').length;
   if(pending>0 || done===0) return null;
-  return {type:missed?'recovery':'full', done, missed, total:items.length};
+  return {type:(missed||deferred||dropped)?'recovery':'full', done, missed, deferred, dropped, total:items.length};
 }
 function showDayFinishPop(result) {
   const old=$('.day-finish-pop'); if(old) old.remove();
@@ -411,11 +420,17 @@ function streak() {
   }
   return count;
 }
-function toast(msg) {
+function toast(msg,actionLabel='',actionFn=null) {
   let el=$('.toast');
   if(!el){el=document.createElement('div');el.className='toast';document.body.appendChild(el);}
-  el.textContent=msg; el.classList.add('show'); clearTimeout(window.__toast);
-  window.__toast=setTimeout(()=>el.classList.remove('show'),1800);
+  clearTimeout(window.__toast); el.classList.remove('actionable');
+  if(actionLabel && typeof actionFn==='function'){
+    el.innerHTML=`<span>${escapeHTML(msg)}</span><button type="button">${escapeHTML(actionLabel)}</button>`;
+    el.classList.add('actionable');
+    const btn=el.querySelector('button'); if(btn)btn.onclick=()=>{clearTimeout(window.__toast);el.classList.remove('show','actionable');actionFn();};
+  } else el.textContent=msg;
+  el.classList.add('show');
+  window.__toast=setTimeout(()=>el.classList.remove('show','actionable'),actionLabel?3200:1800);
 }
 
 const main=$('#mainContent');
@@ -456,14 +471,14 @@ function statusForTime(item, date, nowMin=currentMinutes()) {
 }
 function nextUsefulItem(items,key) {
   const now=currentMinutes();
-  const active=items.filter(i=>!['done','skipped','missed'].includes(getStatus(i,key)));
+  const active=items.filter(i=>!['done','skipped','missed','deferred','dropped'].includes(getStatus(i,key)));
   const current=active.find(i=>statusForTime(i,new Date())==='now');
   if(current) return {item:current,mode:'now'};
   const overdueEssential=active.find(i=>i.essential && minutesFromTime(i.end||i.start)<now);
   if(overdueEssential) return {item:overdueEssential,mode:'overdue'};
   const next=active.find(i=>minutesFromTime(i.start)>now);
   if(next) return {item:next,mode:'next'};
-  const overdue=active.find(i=>minutesFromTime(i.end||i.start)<now && !i.fixed);
+  const overdue=active.find(i=>minutesFromTime(i.end||i.start)<now && !itemIsFixed(i));
   if(overdue) return {item:overdue,mode:'overdue'};
   return null;
 }
@@ -490,13 +505,16 @@ function renderToday(preserveScroll=false) {
   const missed=items.filter(i=>getStatus(i,key)==='missed').length;
   const adjusted=items.filter(i=>i.adjusted).length;
   const finish=dayFinishState(date);
+  const pendingFlexible=items.filter(i=>!itemManualMoveLocked(i) && !isClosedStatus(getStatus(i,key)));
+  const showWrap=hour>=18 && pendingFlexible.length>0;
+  const heroCanComplete=next && (next.mode==='now'||next.mode==='overdue');
   setHeader('Today',date);
   main.innerHTML=`
     <section class="card hero ${finish?'day-complete':''}">
       <div class="next-card">
         <div>
           <div class="row wrap"><span class="badge">${greeting.toUpperCase()}</span><button class="mode-pill" id="modeBtn">${escapeHTML(modeName())} ▾</button></div>
-          ${next ? `<div class="time-big" style="margin-top:12px">${next.mode==='now'||next.mode==='overdue'?'DO THIS NOW':'NEXT · '+formatClock(next.item.start)}</div><h2>${escapeHTML(next.item.title)}</h2><p class="muted" style="margin-bottom:0">${escapeHTML(next.item.detail||'Do the next useful thing.')}</p>` : finish ? `<div class="completion-label" style="margin-top:12px">${svgIcon('check')} ${finish.type==='full'?'DAY COMPLETE':'RECOVERY COMPLETE'}</div><h2 style="margin-top:8px">${finish.type==='full'?'You finished the day.':'You finished what was still in your control.'}</h2><p class="muted" style="margin-bottom:0">${finish.type==='full'?'Everything planned for today is checked off.':'A fixed event was missed, but every remaining actionable task is done.'}</p>` : `<h2 style="margin-top:14px">You’re clear for now.</h2><p class="muted" style="margin-bottom:0">Use the free time well, or add something useful to today.</p>`}
+          ${next ? `<div class="time-big" style="margin-top:12px">${next.mode==='now'||next.mode==='overdue'?'DO THIS NOW':'NEXT · '+formatClock(next.item.start)}</div><h2>${escapeHTML(next.item.title)}</h2><p class="muted" style="margin-bottom:${heroCanComplete?'12px':'0'}">${escapeHTML(next.item.detail||'Do the next useful thing.')}</p>${heroCanComplete?`<div class="hero-actions"><button class="primary hero-action" id="heroDoneBtn">${svgIcon('check')} Mark done</button>${!itemManualMoveLocked(next.item)?`<button class="secondary hero-action" id="heroMoveBtn">Move</button>`:''}</div>`:''}` : finish ? `<div class="completion-label" style="margin-top:12px">${svgIcon('check')} ${finish.type==='full'?'DAY COMPLETE':'RECOVERY COMPLETE'}</div><h2 style="margin-top:8px">${finish.type==='full'?'You finished the day.':'You finished what was still in your control.'}</h2><p class="muted" style="margin-bottom:0">${finish.type==='full'?'Everything planned for today is checked off.':'A fixed event was missed or something was moved, but every remaining actionable task is done.'}</p>` : `<h2 style="margin-top:14px">You’re clear for now.</h2><p class="muted" style="margin-bottom:0">Use the free time well, or add something useful to today.</p>`}
         </div>
         ${next?`<div class="countdown"><b>${countdownText(next.item,next.mode)}</b><small>${next.mode==='now'?'remaining / now':next.mode==='overdue'?'overdue':'until next'}</small></div>`:`<div class="progress-ring" style="--value:${pct*3.6}deg"><b>${pct}%</b></div>`}
       </div>
@@ -513,6 +531,7 @@ function renderToday(preserveScroll=false) {
       ${items.length ? items.map(i=>timelineItemHTML(i,date,true)).join('') : '<div class="empty-state">Nothing scheduled in this mode today.</div>'}
     </section>
 
+    ${showWrap?`<section class="card compact day-wrap-card"><div><b>Wrapping up?</b><small>${pendingFlexible.length} flexible item${pendingFlexible.length===1?'':'s'} still open. Move them to tomorrow, drop them, or keep them today.</small></div><button class="secondary small-btn" id="wrapDayBtn">Wrap up</button></section>`:''}
     ${parked.length&&currentMode()!=='normal'?`<details class="card flat parked-card"><summary>${parked.length} item${parked.length===1?'':'s'} parked by ${escapeHTML(modeName())} mode</summary><div class="parked-list">${parked.map(i=>`<div><b>${escapeHTML(i.title)}</b><span>${escapeHTML(timeWindow(i))}</span></div>`).join('')}</div></details>`:''}
     ${adjusted?`<p class="muted tiny" style="text-align:center">Adaptive restart moved ${adjusted} item${adjusted===1?'':'s'} to realistic times for today. Fixed classes stay fixed.</p>`:''}
     ${missed?`<p class="muted tiny" style="text-align:center">${missed} fixed event${missed===1?' was':'s were'} already past when you restarted. They remain visible as missed instead of disappearing.</p>`:''}
@@ -532,24 +551,30 @@ function renderToday(preserveScroll=false) {
   $('#addTodayBtn').onclick=()=>openOneOffTaskModal(null,{date:key,start:suggestTimeForNewTask(date)});
   $('#restartBtn').onclick=openRestartModal;
   $('#modeBtn').onclick=openModeModal;
+  if($('#wrapDayBtn')) $('#wrapDayBtn').onclick=()=>openEndOfDayCleanup(date);
+  if($('#heroDoneBtn')&&next){$('#heroDoneBtn').onclick=()=>{const completed=next.item;setStatus(completed,key,'done');renderToday();toast('Marked done','Undo',()=>{setStatus(completed,key,'pending');renderToday();});requestAnimationFrame(()=>maybeCelebrateDayFinish(date));};}
+  if($('#heroMoveBtn')&&next) $('#heroMoveBtn').onclick=()=>openMoveItemModal(next.item,date);
   if(preserveScroll) requestAnimationFrame(()=>window.scrollTo(0,scroll));
 }
 
 function timelineItemHTML(item,date,showActions=false) {
   const key=todayKey(date); const status=getStatus(item,key); const timeState=statusForTime(item,date);
-  const isNext=timeState==='future' && !['done','skipped','missed'].includes(status);
+  const isNext=timeState==='future' && !isClosedStatus(status);
   const nowClass=timeState==='now' && status==='pending'?'now':'';
   const nextClass=isNext?'next':'';
-  return `<div class="timeline-item ${nowClass} ${nextClass} ${status}">
+  const closedStatus=['missed','deferred','dropped'].includes(status);
+  const locked=itemManualMoveLocked(item);
+  const statusBadge=status==='missed'?'<span class="badge danger-badge">MISSED</span>':status==='deferred'?'<span class="badge blue">MOVED</span>':status==='dropped'?'<span class="badge muted-badge">DROPPED</span>':item.adjusted?'<span class="badge adjusted-badge">ADJUSTED</span>':nowClass?'<span class="badge">NOW</span>':'';
+  return `<div class="timeline-item ${nowClass} ${nextClass} ${status}" data-timeline-occ="${escapeAttr(occurrenceKey(item))}">
     <div class="timeline-time">${formatClock(item.start)}</div><span class="timeline-dot"></span>
     <div class="timeline-body">
       <div class="timeline-main">
-        <input class="check" type="checkbox" data-occ="${escapeAttr(occurrenceKey(item))}" data-date="${key}" ${status==='done'?'checked':''} aria-label="Mark ${escapeAttr(item.title)} done">
+        <input class="check" type="checkbox" data-occ="${escapeAttr(occurrenceKey(item))}" data-date="${key}" ${status==='done'?'checked':''} ${closedStatus?'disabled':''} aria-label="Mark ${escapeAttr(item.title)} done">
         <div class="timeline-copy"><b>${escapeHTML(item.title)}</b><small>${escapeHTML(item.detail||'')}</small>
-          <div class="timeline-meta">${categoryBadge(item.category)}<span class="badge blue">${escapeHTML(timeWindow(item))}</span>${status==='missed'?'<span class="badge danger-badge">MISSED</span>':item.adjusted?'<span class="badge adjusted-badge">ADJUSTED</span>':nowClass?'<span class="badge">NOW</span>':''}</div>
+          <div class="timeline-meta">${categoryBadge(item.category)}<span class="badge blue">${escapeHTML(timeWindow(item))}</span>${locked?'<span class="badge lock-badge">LOCKED</span>':''}${statusBadge}</div>
         </div>
       </div>
-      ${showActions?`<div class="quick-actions"><button data-edit-item="${item.source}:${item.id}" type="button">Edit</button>${status==='missed'?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}</div>`:''}
+      ${showActions?`<div class="quick-actions"><button data-edit-item="${item.source}:${item.id}" type="button">Edit</button>${!locked && !isClosedStatus(status) && status!=='done'?`<button data-move-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Move</button>`:''}${status==='missed'?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}${status==='deferred'?`<button data-undo-defer="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Undo move</button>`:''}${status==='dropped'?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}</div>`:''}
     </div>
   </div>`;
 }
@@ -567,9 +592,17 @@ function bindTimeline(date) {
     if(source==='schedule') openScheduleItemModal(id);
     else openOneOffTaskModal(id);
   }));
+  $$('[data-move-item]').forEach(btn=>btn.addEventListener('click',()=>{
+    const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.moveItem);
+    if(item) openMoveItemModal(item,date);
+  }));
   $$('[data-restore-item]').forEach(btn=>btn.addEventListener('click',()=>{
     const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.restoreItem);
     if(item){setStatus(item,key,'pending');render();}
+  }));
+  $$('[data-undo-defer]').forEach(btn=>btn.addEventListener('click',()=>{
+    const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.undoDefer);
+    if(item){restoreDeferredItem(item,key);render();toast('Move undone');}
   }));
 }
 function suggestTimeForNewTask(date) {
@@ -577,6 +610,45 @@ function suggestTimeForNewTask(date) {
   const d=new Date(); d.setMinutes(Math.ceil(d.getMinutes()/15)*15,0,0);
   if(d.getHours()>=23) return '20:00';
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function moveWouldHitLocked(item,date,startTime){
+  const key=todayKey(date), start=minutesFromTime(startTime), end=start+itemDurationForMove(item);
+  return itemsForDate(date).some(other=>occurrenceKey(other)!==occurrenceKey(item) && itemManualMoveLocked(other) && start<minutesFromTime(other.end||other.start) && end>minutesFromTime(other.start));
+}
+function openMoveItemModal(item,date){
+  const key=todayKey(date);
+  if(itemManualMoveLocked(item)) return toast('This item is locked to its planned time');
+  const others=itemsForDate(date).filter(x=>occurrenceKey(x)!==occurrenceKey(item) && !itemManualMoveLocked(x) && !isClosedStatus(getStatus(x,key))).sort((a,b)=>minutesFromTime(a.start)-minutesFromTime(b.start));
+  const hasOverride=!!state.records[key]?.timeOverrides?.[occurrenceKey(item)];
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">MOVE TASK</p><h2>${escapeHTML(item.title)}</h2><p class="muted tiny">Flexible tasks can move. Classes, wake-up, morning reset and sleep stay locked.</p><div class="stack"><label><span class="label">Move to a different time</span><input class="input" id="moveTime" type="time" value="${escapeAttr(item.start)}"></label>${others.length?`<label><span class="label">Or swap times with</span><select id="swapTask"><option value="">No swap</option>${others.map(x=>`<option value="${escapeAttr(occurrenceKey(x))}">${escapeHTML(x.title)} · ${escapeHTML(formatClock(x.start))}</option>`).join('')}</select></label>`:''}</div><button class="primary full" id="saveMove" style="margin-top:14px">Save move</button><button class="secondary full" id="moveTomorrow" style="margin-top:8px">Move to tomorrow</button>${hasOverride?'<button class="secondary full" id="resetMove" style="margin-top:8px">Reset to planned time</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modal.showModal();
+  $('#saveMove').onclick=()=>{
+    const swapOcc=$('#swapTask')?.value||'';
+    if(swapOcc){
+      const other=itemsForDate(date).find(x=>occurrenceKey(x)===swapOcc); if(!other)return toast('That task is no longer available');
+      const aStart=item.start, bStart=other.start;
+      if(moveWouldHitLocked(item,date,bStart)||moveWouldHitLocked(other,date,aStart)) return toast('That swap would overlap a locked item');
+      setItemTimeOverride(item,key,bStart); setItemTimeOverride(other,key,aStart); save(); modal.close(); render(); toast('Tasks swapped'); return;
+    }
+    const time=$('#moveTime').value; if(!time)return toast('Choose a time');
+    if(moveWouldHitLocked(item,date,time)) return toast('That time overlaps a locked item');
+    setItemTimeOverride(item,key,time); modal.close(); render(); toast('Task moved');
+  };
+  $('#moveTomorrow').onclick=()=>{if(moveItemToTomorrow(item,key)){modal.close();render();toast('Moved to tomorrow');}};
+  if($('#resetMove')) $('#resetMove').onclick=()=>{clearItemTimeOverride(item,key);modal.close();render();toast('Planned time restored');};
+  $('#cancelModal').onclick=()=>modal.close();
+}
+function openEndOfDayCleanup(date=new Date()){
+  const key=todayKey(date); const pending=itemsForMode(itemsForDate(date),modeForDate(key)).filter(i=>!itemManualMoveLocked(i) && !isClosedStatus(getStatus(i,key)));
+  if(!pending.length)return toast('No flexible tasks need cleaning up');
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">END OF DAY</p><h2>Clean up unfinished tasks</h2><p class="muted">Choose what happens to each flexible item. Nothing locked is touched.</p><div class="cleanup-list">${pending.map((i,idx)=>`<div class="cleanup-row"><div><b>${escapeHTML(i.title)}</b><small>${escapeHTML(timeWindow(i))}</small></div><select data-cleanup="${escapeAttr(occurrenceKey(i))}"><option value="keep">Keep today</option><option value="tomorrow">Move to tomorrow</option><option value="drop">Drop for today</option></select></div>`).join('')}</div><button class="primary full" id="applyCleanup" style="margin-top:14px">Apply</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modal.showModal();
+  $('#applyCleanup').onclick=()=>{
+    $$('[data-cleanup]',modalContent).forEach(sel=>{const choice=sel.value;if(choice==='keep')return;const current=itemsForDate(date).find(i=>occurrenceKey(i)===sel.dataset.cleanup);if(!current)return;if(choice==='tomorrow')moveItemToTomorrow(current,key);if(choice==='drop')setStatus(current,key,'dropped');});
+    save();modal.close();renderToday();requestAnimationFrame(()=>maybeCelebrateDayFinish(date));toast('Day cleaned up');
+  };
+  $('#cancelModal').onclick=()=>modal.close();
 }
 
 function renderWeek() {
@@ -699,7 +771,8 @@ function renderMoney() {
     <section class="card restart"><h3>Money rule</h3><p class="muted" style="margin-bottom:0">Allocate the important money first. Whatever remains after the plan is your flexible money, without needing another forecast.</p></section>`;
   $('#editMoneyBtn').onclick=openMoneyModal;
   $('#addExpenseBtn').onclick=()=>openExpenseModal();
-  $$('[data-del-tx]').forEach(b=>b.onclick=()=>{state.money.transactions=state.money.transactions.filter(t=>t.id!==b.dataset.delTx);save();renderMoney();});
+  $$('[data-edit-tx]').forEach(b=>b.onclick=()=>openExpenseModal(b.dataset.editTx));
+  $$('[data-del-tx]').forEach(b=>b.onclick=()=>{state.money.transactions=state.money.transactions.filter(t=>t.id!==b.dataset.delTx);save();renderMoney();toast('Spending entry deleted');});
 }
 function transactionsForMonth(mk){return state.money.transactions.filter(t=>String(t.date||'').startsWith(mk));}
 function spentForBucket(bucketId,mk=monthKey()){return transactionsForMonth(mk).filter(t=>t.bucketId===bucketId).reduce((a,t)=>a+Number(t.amount||0),0);}
@@ -709,7 +782,7 @@ function budgetRowHTML(b,mk) {
 }
 function transactionHTML(t) {
   const b=state.money.buckets.find(x=>x.id===t.bucketId);
-  return `<div class="transaction"><div><b>${escapeHTML(t.note||b?.name||'Spending')}</b><small>${escapeHTML(b?.name||'Other')} · ${escapeHTML(formatDateShort(parseDateKey(t.date)))}</small></div><div class="transaction-amount"><b>−${fmtMoney(t.amount)}</b><button class="text-button tiny" data-del-tx="${t.id}">Delete</button></div></div>`;
+  return `<div class="transaction"><div><b>${escapeHTML(t.note||b?.name||'Spending')}</b><small>${escapeHTML(b?.name||'Other')} · ${escapeHTML(formatDateShort(parseDateKey(t.date)))}</small></div><div class="transaction-amount"><b>−${fmtMoney(t.amount)}</b><div class="row"><button class="text-button tiny" data-edit-tx="${t.id}">Edit</button><button class="text-button tiny danger-text" data-del-tx="${t.id}">Delete</button></div></div></div>`;
 }
 function daysUntilPayday() {
   const today=new Date(); today.setHours(12,0,0,0);
@@ -741,6 +814,7 @@ function gymSessionDates(){
     const d=parseDateKey(key);itemsForDate(d).filter(i=>i.category==='Fitness'&&/gym/i.test(i.title||'')).forEach(i=>{if(getStatus(i,key)==='done')set.add(key);});
   });
   (state.gym.logs||[]).forEach(l=>{if(l.date)set.add(l.date);});
+  (state.gym.sessionExcluded||[]).forEach(k=>set.delete(String(k)));
   return set;
 }
 function mealDayIsComplete(date){
@@ -763,14 +837,25 @@ function classDayStreak(){
   }
   return started?streakDays:0;
 }
-function rangeMetrics(range){
-  const dates=dateRange(range); const keys=new Set(dates.map(todayKey)); const gymDates=gymSessionDates();
+function metricsForDates(dates){
+  // Never score days from before Reset existed. This prevents a new user from
+  // inheriting fake missed classes / zero-completion days in 7- and 30-day stats.
+  const started=appStartDate(); started.setHours(12,0,0,0);
+  const eligible=dates.filter(d=>{const x=new Date(d);x.setHours(12,0,0,0);return x>=started && todayKey(x)<=todayKey();});
+  const keys=new Set(eligible.map(todayKey)); const gymDates=gymSessionDates();
   const gym=[...gymDates].filter(k=>keys.has(k)).length;
-  const mealDays=dates.filter(mealDayIsComplete).length;
-  const classes=pastClassOccurrences(dates); const attended=classes.filter(x=>x.done).length;
-  const goodDays=dates.filter(d=>dayCompletion(d)>=70).length;
-  return {dates,gym,mealDays,classes:classes.length,attended,goodDays,classPct:classes.length?Math.round(attended/classes.length*100):0};
+  const mealDays=eligible.filter(mealDayIsComplete).length;
+  const classes=pastClassOccurrences(eligible); const attended=classes.filter(x=>x.done).length;
+  const goodDays=eligible.filter(d=>dayCompletion(d)>=70).length;
+  const completionValues=eligible.map(dayCompletion);
+  const avgCompletion=completionValues.length?Math.round(completionValues.reduce((a,b)=>a+b,0)/completionValues.length):0;
+  return {dates:eligible,gym,mealDays,classes:classes.length,attended,goodDays,classPct:classes.length?Math.round(attended/classes.length*100):0,avgCompletion};
 }
+function rangeMetrics(range){return metricsForDates(dateRange(range));}
+function currentWeekMetrics(){const start=startOfWeek(new Date());const end=new Date();end.setHours(12,0,0,0);return metricsForDates(datesBetween(start,end,8));}
+function previousWeekMetrics(){const thisStart=startOfWeek(new Date());const start=addDays(thisStart,-7);const end=addDays(thisStart,-1);return metricsForDates(datesBetween(start,end,8));}
+function previous30Metrics(){const end=addDays(new Date(),-30);end.setHours(12,0,0,0);return metricsForDates(datesBetween(addDays(end,-29),end,31));}
+function signedDelta(current,previous,suffix=''){const d=current-previous;return `${d>0?'+':''}${d}${suffix}`;}
 function totalProjectSessions(){return (state.projects||[]).reduce((a,p)=>a+Number(p.sessions||0),0);}
 function achievementData(){
   const all=rangeMetrics('all'), gymAll=gymSessionDates().size, meals=all.mealDays, projects=totalProjectSessions(), resets=Object.values(state.records).reduce((a,r)=>a+Number(r.resetCount||0),0);
@@ -804,12 +889,14 @@ function lightweightInsights(){
 function renderMore() {
   const view=state.settings.moreView||'home';
   if(view==='gym') return renderGym();
+  if(view==='health') return renderHealth();
   if(view==='car') return renderCar();
   if(view==='projects') return renderProjects();
   if(view.startsWith('project:')) return renderProjectDetail(view.slice(8));
   if(view==='plan') return renderPlan();
   setHeader('More');
   const range=state.settings.statsRange||'30'; const metrics=rangeMetrics(range); const ach=achievementData(); const unlocked=ach.filter(a=>a.unlocked).length;
+  const wk=currentWeekMetrics(), pw=previousWeekMetrics(), m30=rangeMetrics('30'), p30=previous30Metrics();
   main.innerHTML=`
     <section class="card hero"><span class="badge">PROGRESS</span><h2 style="margin-top:14px">Keep the useful things visible.</h2><p class="muted" style="margin-bottom:0">Track the habits that actually matter without turning life into a spreadsheet.</p></section>
     <div class="segmented" role="group" aria-label="Statistics range"><button data-range="7" class="${range==='7'?'active':''}">7 days</button><button data-range="30" class="${range==='30'?'active':''}">30 days</button><button data-range="all" class="${range==='all'?'active':''}">All time</button></div>
@@ -821,6 +908,22 @@ function renderMore() {
     </section>
     <section class="grid-3"><div class="stat"><small>Daily streak</small><strong>${streak()}</strong></div><div class="stat"><small>Class-day streak</small><strong>${classDayStreak()}</strong></div><div class="stat"><small>Achievements</small><strong>${unlocked}/${ach.length}</strong></div></section>
 
+    <div class="section-title"><h2>This week</h2><span class="muted tiny">vs last week</span></div>
+    <section class="card flat weekly-summary-card">
+      <div class="summary-row"><span>Gym sessions</span><b>${wk.gym}</b><small>${signedDelta(wk.gym,pw.gym)}</small></div>
+      <div class="summary-row"><span>3-meal days</span><b>${wk.mealDays}</b><small>${signedDelta(wk.mealDays,pw.mealDays)}</small></div>
+      <div class="summary-row"><span>Class attendance</span><b>${wk.classes?wk.classPct+'%':'—'}</b><small>${pw.classes?signedDelta(wk.classPct,pw.classPct,'%'):'—'}</small></div>
+      <div class="summary-row"><span>Average completion</span><b>${wk.avgCompletion}%</b><small>${signedDelta(wk.avgCompletion,pw.avgCompletion,'%')}</small></div>
+    </section>
+
+    <div class="section-title"><h2>Last 30 days</h2><span class="muted tiny">vs previous 30</span></div>
+    <section class="comparison-grid">
+      <div class="comparison-card"><small>Gym</small><b>${m30.gym}</b><span>${signedDelta(m30.gym,p30.gym)}</span></div>
+      <div class="comparison-card"><small>Meals</small><b>${m30.mealDays}</b><span>${signedDelta(m30.mealDays,p30.mealDays)}</span></div>
+      <div class="comparison-card"><small>Classes</small><b>${m30.classes?m30.classPct+'%':'—'}</b><span>${p30.classes?signedDelta(m30.classPct,p30.classPct,'%'):'—'}</span></div>
+      <div class="comparison-card"><small>Good days</small><b>${m30.goodDays}</b><span>${signedDelta(m30.goodDays,p30.goodDays)}</span></div>
+    </section>
+
     <div class="section-title"><h2>Achievements</h2></div>
     <section class="achievement-grid">${ach.map(a=>`<article class="achievement ${a.unlocked?'unlocked':''}"><span>${a.unlocked?'✓':'○'}</span><div><b>${escapeHTML(a.title)}</b><small>${escapeHTML(a.desc)}</small><div class="achievement-progress"><i style="width:${Math.round(a.progress/a.target*100)}%"></i></div><em>${a.progress}/${a.target}</em></div></article>`).join('')}</section>
 
@@ -829,8 +932,9 @@ function renderMore() {
 
     <div class="section-title"><h2>Life tools</h2></div>
     <section class="card flat tool-list">
-      ${toolLink('gym','Gym','Weights, exercise progress and workout history.')}
-      ${toolLink('car','Car','Fuel, odometer, service and registration.')}
+      ${toolLink('gym','Gym','Weights, PRs, exercise progress and workout history.')}
+      ${toolLink('health','Health','Simple body-weight progress without calorie tracking.')}
+      ${toolLink('car','Car','Fuel, maintenance history, service and registration.')}
       ${toolLink('projects','Projects',`${state.projects.length} project${state.projects.length===1?'':'s'} · keep the next step clear.`)}
       ${toolLink('plan','Reset plan','Your simple rules and weekly review.')}
     </section>
@@ -839,7 +943,7 @@ function renderMore() {
     <section class="card flat"><p class="muted tiny">Review the week, then choose one focus for the next one.</p><button class="secondary full" id="weeklyReviewBtn">Do weekly review</button></section>`;
   $$('[data-range]').forEach(b=>b.onclick=()=>{state.settings.statsRange=b.dataset.range;save();renderMore();});
   $$('[data-more-view]').forEach(b=>b.onclick=()=>{state.settings.moreView=b.dataset.moreView;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});
-  $('#weeklyReviewBtn').onclick=openWeeklyReviewModal;
+  $('#weeklyReviewBtn').onclick=()=>openWeeklyReviewModal();
 }
 function toolLink(view,title,desc){return `<button class="tool-link" data-more-view="${escapeAttr(view)}"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small></span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`;}
 function moreBack(label='More'){return `<button class="back-link" id="moreBackBtn">${svgIcon('chevronLeft')}<span>${escapeHTML(label)}</span></button>`;}
@@ -847,6 +951,32 @@ function bindMoreBack(){const b=$('#moreBackBtn');if(b)b.onclick=()=>{state.sett
 function morePlanRow(title,text){return `<div class="more-link"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(text)}</small></span></div>`;}
 
 function itemIsFixed(item) { return item.fixed===true || item.isClass===true; }
+function itemManualMoveLocked(item) { return itemIsFixed(item) || item.manualLocked===true || ['wake','groom','breakfast','phone','sleep'].includes(item.id); }
+function isClosedStatus(status){ return ['done','missed','deferred','dropped'].includes(status); }
+function itemDurationForMove(item){ return Math.max(5,durationMinutes(item)); }
+function setItemTimeOverride(item,key,startTime){
+  const rec=ensureRecord(key); const occ=occurrenceKey(item); const dur=itemDurationForMove(item); const start=minutesFromTime(startTime);
+  const existing=rec.timeOverrides[occ]||{};
+  rec.timeOverrides[occ]={...existing,start:minutesToTime(start),end:minutesToTime(start+dur)};
+  save();
+}
+function clearItemTimeOverride(item,key){const rec=ensureRecord(key);delete rec.timeOverrides[occurrenceKey(item)];save();}
+function moveItemToTomorrow(item,key){
+  const tomorrow=todayKey(addDays(parseDateKey(key),1));
+  if(item.source==='oneoff'){
+    const original=state.oneOffTasks.find(x=>x.id===item.id); if(!original)return false;
+    original.date=tomorrow; const rec=ensureRecord(key); delete rec.itemStatus[occurrenceKey(item)]; delete rec.timeOverrides[occurrenceKey(item)];
+  } else {
+    state.oneOffTasks.push({id:uid('one'),title:item.title,date:tomorrow,start:item.start,end:item.end||'',category:item.category||'Life',detail:item.detail||'',movedFrom:{date:key,occurrence:occurrenceKey(item)}});
+    setStatus(item,key,'deferred');
+  }
+  save(); return true;
+}
+function restoreDeferredItem(item,key){
+  state.oneOffTasks=state.oneOffTasks.filter(t=>!(t.movedFrom?.date===key && t.movedFrom?.occurrence===occurrenceKey(item)));
+  setStatus(item,key,'pending');
+  save();
+}
 function findOpenSlot(desired,duration,blocked,limit) {
   let start=Math.max(0,desired);
   const sorted=[...blocked].sort((a,b)=>a.start-b.start);
@@ -861,7 +991,7 @@ function buildAdaptiveRestartPlan(date=new Date()) {
   const key=todayKey(date); const baseItems=itemsForMode(itemsForDate(date,{ignoreOverrides:true}),currentMode());
   const rec=ensureRecord(key); const now=roundUpMinutes(currentMinutes(),5);
   const sleepLimit=Math.max(now+30, minutesFromTime(state.profile.sleepTarget||'23:30'));
-  const pending=baseItems.filter(i=>getStatus(i,key)!=='done');
+  const pending=baseItems.filter(i=>!isClosedStatus(getStatus(i,key)));
   const fixed=pending.filter(itemIsFixed);
   const movable=pending.filter(i=>!itemIsFixed(i));
   const missedFixed=fixed.filter(i=>minutesFromTime(i.end||i.start)<now);
@@ -1007,33 +1137,73 @@ function openMoneyModal() {
 function bucketEditorRow(b){return `<div class="course bucket-editor" data-bucket-id="${escapeAttr(b.id)}"><div class="row"><label style="flex:1"><span class="label">Bucket</span><input class="input bucket-name" value="${escapeAttr(b.name)}"></label><label style="width:130px"><span class="label">Monthly SAR</span><input class="input bucket-target" type="number" min="0" value="${Number(b.target||0)}"></label></div><button class="text-button danger-text bucket-delete" type="button">Remove</button></div>`;}
 function bindBucketDeleteButtons(){ $$('.bucket-delete').forEach(b=>b.onclick=()=>{if($$('.bucket-editor').length<=1)return toast('Keep at least one bucket');b.closest('.bucket-editor').remove();}); }
 
-function openExpenseModal() {
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SPENDING</p><h2>Log an expense</h2><div class="stack"><label><span class="label">Amount (SAR)</span><input class="input" id="expenseAmount" type="number" min="0" step="1" placeholder="0"></label><label><span class="label">Allocation</span><select id="expenseBucket">${state.money.buckets.map(b=>`<option value="${b.id}">${escapeHTML(b.name)}</option>`).join('')}</select></label><label><span class="label">Date</span><input class="input" id="expenseDate" type="date" value="${todayKey()}"></label><label><span class="label">Note</span><input class="input" id="expenseNote" placeholder="e.g. takeaway, fuel, haircut"></label></div><button class="primary full" id="saveExpense" style="margin-top:14px">Add spending</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+function openExpenseModal(id=null) {
+  const existing=id?state.money.transactions.find(t=>t.id===id):null;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SPENDING</p><h2>${existing?'Edit':'Log'} an expense</h2><div class="stack"><label><span class="label">Amount (SAR)</span><input class="input" id="expenseAmount" type="number" min="0" step="1" placeholder="0" value="${existing?Number(existing.amount):''}"></label><label><span class="label">Allocation</span><select id="expenseBucket">${state.money.buckets.map(b=>`<option value="${b.id}" ${existing?.bucketId===b.id?'selected':''}>${escapeHTML(b.name)}</option>`).join('')}</select></label><label><span class="label">Date</span><input class="input" id="expenseDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Note</span><input class="input" id="expenseNote" value="${escapeAttr(existing?.note||'')}" placeholder="e.g. takeaway, fuel, haircut"></label></div><button class="primary full" id="saveExpense" style="margin-top:14px">Save spending</button>${existing?'<button class="danger-btn full" id="deleteExpense" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#saveExpense').onclick=()=>{const amount=Number($('#expenseAmount').value||0);if(amount<=0)return toast('Enter an amount');state.money.transactions.push({id:uid('tx'),amount,bucketId:$('#expenseBucket').value,date:$('#expenseDate').value||todayKey(),note:$('#expenseNote').value.trim()});save();modal.close();toast('Spending logged');renderMoney();};
+  $('#saveExpense').onclick=()=>{const amount=Number($('#expenseAmount').value||0);if(amount<=0)return toast('Enter an amount');const data={amount,bucketId:$('#expenseBucket').value,date:$('#expenseDate').value||todayKey(),note:$('#expenseNote').value.trim()};if(existing)Object.assign(existing,data);else state.money.transactions.push({id:uid('tx'),...data});save();modal.close();toast(existing?'Spending updated':'Spending logged');renderMoney();};
+  if(existing)$('#deleteExpense').onclick=()=>{state.money.transactions=state.money.transactions.filter(t=>t.id!==existing.id);save();modal.close();renderMoney();toast('Spending entry deleted');};
   $('#cancelModal').onclick=()=>modal.close();
 }
 
 
+function weightChartHTML(logs){
+  if(logs.length<2)return `<div class="chart-empty">Log your weight at least twice to see the trend.</div>`;
+  const pts=logs.slice(-16),vals=pts.map(x=>Number(x.weight||0)),min=Math.min(...vals),max=Math.max(...vals),span=Math.max(.5,max-min),w=320,h=130,pad=18;
+  const coords=pts.map((x,i)=>({x:pad+(w-pad*2)*(i/Math.max(1,pts.length-1)),y:h-pad-(h-pad*2)*((Number(x.weight)-min)/span),v:Number(x.weight),date:x.date}));
+  const path=coords.map((pt,i)=>`${i?'L':'M'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(' ');
+  return `<div class="gym-chart-wrap"><svg class="gym-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Body weight progress chart"><path class="chart-line" d="${path}"/>${coords.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="4"><title>${pt.v} kg · ${escapeHTML(pt.date)}</title></circle>`).join('')}<text x="${pad}" y="14">${max.toFixed(1)} kg</text><text x="${pad}" y="${h-3}">${min.toFixed(1)} kg</text></svg></div>`;
+}
+function renderHealth(){
+  setHeader('Health');
+  const logs=[...(state.health.weightLogs||[])].sort((a,b)=>String(a.date).localeCompare(String(b.date))||Number(a.createdAt||0)-Number(b.createdAt||0));
+  const first=logs[0],last=logs[logs.length-1],change=first&&last?Number(last.weight)-Number(first.weight):0;
+  main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge blue">HEALTH</span><h2 style="margin-top:14px">Keep body tracking simple.</h2><p class="muted" style="margin-bottom:0">Only body weight lives here. Gym performance stays in Gym, and food stays intentionally simple.</p></section>
+    <section class="metric-grid"><div class="metric-card"><small>Current</small><strong>${last?Number(last.weight).toFixed(1):'—'}</strong><span>${last?'kg':'no entry'}</span></div><div class="metric-card"><small>First logged</small><strong>${first?Number(first.weight).toFixed(1):'—'}</strong><span>${first?'kg':'no entry'}</span></div><div class="metric-card"><small>Change</small><strong>${logs.length>1?`${change>0?'+':''}${change.toFixed(1)}`:'—'}</strong><span>${logs.length>1?'kg since first':'need 2 entries'}</span></div><div class="metric-card"><small>Entries</small><strong>${logs.length}</strong><span>all time</span></div></section>
+    <section class="card flat">${weightChartHTML(logs)}</section>
+    <button class="primary full" id="addWeightBtn">+ Log body weight</button>
+    <div class="section-title"><h2>Recent weight</h2></div><section class="card flat">${logs.length?logs.slice().reverse().slice(0,12).map(l=>`<div class="gym-log"><div><b>${Number(l.weight).toFixed(1)} kg</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))}</small></div><div class="row"><button class="text-button tiny" data-edit-weight="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-weight="${l.id}">Delete</button></div></div>`).join(''):'<div class="empty-state">No weight entries yet.</div>'}</section>`;
+  bindMoreBack();
+  $('#addWeightBtn').onclick=()=>openWeightModal();
+  $$('[data-edit-weight]').forEach(b=>b.onclick=()=>openWeightModal(b.dataset.editWeight));
+  $$('[data-del-weight]').forEach(b=>b.onclick=()=>{state.health.weightLogs=state.health.weightLogs.filter(x=>x.id!==b.dataset.delWeight);save();renderHealth();toast('Weight entry deleted');});
+}
+function openWeightModal(id=null){
+  const existing=id?(state.health.weightLogs||[]).find(x=>x.id===id):null;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">BODY WEIGHT</p><h2>${existing?'Edit':'Log'} weight</h2><div class="stack"><label><span class="label">Weight (kg)</span><input class="input" id="bodyWeight" type="number" min="20" max="300" step="0.1" inputmode="decimal" value="${existing?Number(existing.weight):''}"></label><label><span class="label">Date</span><input class="input" id="bodyWeightDate" type="date" value="${existing?.date||todayKey()}"></label></div><button class="primary full" id="saveBodyWeight" style="margin-top:14px">Save</button>${existing?'<button class="danger-btn full" id="deleteBodyWeight" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modal.showModal();
+  $('#saveBodyWeight').onclick=()=>{const weight=Number($('#bodyWeight').value);if(!(weight>=20&&weight<=300))return toast('Enter a valid weight');const data={weight,date:$('#bodyWeightDate').value||todayKey(),createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.health.weightLogs.push({id:uid('weight'),...data});save();modal.close();renderHealth();toast(existing?'Weight updated':'Weight logged');};
+  if(existing)$('#deleteBodyWeight').onclick=()=>{state.health.weightLogs=state.health.weightLogs.filter(x=>x.id!==existing.id);save();modal.close();renderHealth();toast('Weight entry deleted');};
+  $('#cancelModal').onclick=()=>modal.close();
+}
+
+
+function exercisePR(exerciseId,excludeId=null){const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===exerciseId && l.id!==excludeId);return logs.length?Math.max(...logs.map(l=>Number(l.weight||0))):0;}
 function renderGym(){
   setHeader('Gym'); const sessions=gymSessionDates(); const exercise=state.gym.exercises.find(x=>x.id===state.settings.selectedExerciseId)||state.gym.exercises[0];
   if(exercise)state.settings.selectedExerciseId=exercise.id;
   const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===exercise?.id).sort((a,b)=>String(a.date).localeCompare(String(b.date))||Number(a.createdAt||0)-Number(b.createdAt||0));
-  const first=logs[0],last=logs[logs.length-1],change=first&&last?Number(last.weight)-Number(first.weight):0;
+  const first=logs[0],last=logs[logs.length-1],change=first&&last?Number(last.weight)-Number(first.weight):0,pr=exercise?exercisePR(exercise.id):0;
   const last30=dateRange('30'); const keys30=new Set(last30.map(todayKey)); const sessions30=[...sessions].filter(k=>keys30.has(k)).length;
-  main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge purple">GYM</span><h2 style="margin-top:14px">Track progress, not perfection.</h2><p class="muted" style="margin-bottom:0">Log the working weight you actually used. Compare each exercise only with itself.</p></section>
+  const prRows=state.gym.exercises.map(ex=>({ex,pr:exercisePR(ex.id)})).filter(x=>x.pr>0).sort((a,b)=>b.pr-a.pr);
+  const recentSessions=[...sessions].sort().reverse().slice(0,12);
+  main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge purple">GYM</span><h2 style="margin-top:14px">Track progress, not perfection.</h2><p class="muted" style="margin-bottom:0">Log the working weight you actually used. Reset keeps your PRs and long-term progress visible.</p></section>
     <section class="grid-3"><div class="stat"><small>Last 30 days</small><strong>${sessions30}</strong></div><div class="stat"><small>All sessions</small><strong>${sessions.size}</strong></div><div class="stat"><small>Exercises</small><strong>${state.gym.exercises.length}</strong></div></section>
     <div class="button-row"><button class="primary" id="logGymBtn">+ Log exercise</button><button class="secondary" id="logGymSessionBtn">${sessions.has(todayKey())?'Today logged':'Log workout day'}</button></div>
     <div class="section-title"><h2>Strength progress</h2><button id="addExerciseBtn">+ Exercise</button></div>
     <section class="card flat"><label><span class="label">Exercise</span><select id="gymExerciseSelect">${state.gym.exercises.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===exercise?.id?'selected':''}>${escapeHTML(x.name)} · ${escapeHTML(x.group||'')}</option>`).join('')}</select></label>
-      ${exercise?`<div class="gym-summary"><div><small>First logged</small><b>${first?Number(first.weight)+' kg':'—'}</b></div><div><small>Current</small><b>${last?Number(last.weight)+' kg':'—'}</b></div><div><small>Change</small><b class="${change>0?'accent':''}">${logs.length>1?(change>0?'+':'')+change+' kg':'—'}</b></div></div>${gymChartHTML(logs)}`:'<div class="empty-state">Add an exercise to start tracking.</div>'}
+      ${exercise?`<div class="metric-grid compact-metrics"><div class="metric-card"><small>First</small><strong>${first?Number(first.weight):'—'}</strong><span>${first?'kg':'no log'}</span></div><div class="metric-card"><small>Current</small><strong>${last?Number(last.weight):'—'}</strong><span>${last?'kg':'no log'}</span></div><div class="metric-card pr-card"><small>Personal best</small><strong>${pr||'—'}</strong><span>${pr?'kg':'no PR yet'}</span></div><div class="metric-card"><small>Change</small><strong class="${change>0?'accent':''}">${logs.length>1?(change>0?'+':'')+change:'—'}</strong><span>${logs.length>1?'kg since first':'need 2 logs'}</span></div></div>${gymChartHTML(logs)}`:'<div class="empty-state">Add an exercise to start tracking.</div>'}
     </section>
-    <div class="section-title"><h2>Recent logs</h2></div><section class="card flat">${logs.length?logs.slice().reverse().slice(0,10).map(l=>`<div class="gym-log"><div><b>${Number(l.weight)} kg</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))} · ${Number(l.sets||0)||'—'} sets × ${Number(l.reps||0)||'—'} reps</small></div><button class="text-button tiny" data-del-gym="${l.id}">Delete</button></div>`).join(''):'<div class="empty-state">No weight logs for this exercise yet.</div>'}</section>`;
+    <div class="section-title"><h2>Personal bests</h2></div><section class="card flat">${prRows.length?prRows.map(({ex,pr})=>`<div class="pr-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'')}</small></div><strong>${Number(pr)} kg</strong></div>`).join(''):'<div class="empty-state">Your PRs will appear after you log exercises.</div>'}</section>
+    <div class="section-title"><h2>Recent logs</h2></div><section class="card flat">${logs.length?logs.slice().reverse().slice(0,12).map(l=>`<div class="gym-log"><div><b>${Number(l.weight)} kg</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))} · ${Number(l.sets||0)||'—'} sets × ${Number(l.reps||0)||'—'} reps</small></div><div class="row"><button class="text-button tiny" data-edit-gym="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-gym="${l.id}">Delete</button></div></div>`).join(''):'<div class="empty-state">No weight logs for this exercise yet.</div>'}</section>
+    <div class="section-title"><h2>Workout days</h2></div><section class="card flat">${recentSessions.length?recentSessions.map(k=>`<div class="gym-log"><div><b>${escapeHTML(formatDateShort(parseDateKey(k)))}</b><small>Workout session</small></div><button class="text-button tiny danger-text" data-del-session="${k}">Remove</button></div>`).join(''):'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
   bindMoreBack();
   $('#gymExerciseSelect')?.addEventListener('change',e=>{state.settings.selectedExerciseId=e.target.value;save();renderGym();});
   $('#logGymBtn').onclick=()=>openGymLogModal(); $('#addExerciseBtn').onclick=()=>openExerciseModal();
-  $('#logGymSessionBtn').onclick=()=>{const k=todayKey();if(!state.gym.sessions.includes(k)){state.gym.sessions.push(k);save();toast('Workout day logged');renderGym();}else toast('Today is already logged');};
-  $$('[data-del-gym]').forEach(b=>b.onclick=()=>{state.gym.logs=state.gym.logs.filter(l=>l.id!==b.dataset.delGym);save();renderGym();});
+  $('#logGymSessionBtn').onclick=()=>{const k=todayKey();state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k)){state.gym.sessions.push(k);save();toast('Workout day logged');renderGym();}else toast('Today is already logged');};
+  $$('[data-edit-gym]').forEach(b=>b.onclick=()=>openGymLogModal(b.dataset.editGym));
+  $$('[data-del-gym]').forEach(b=>b.onclick=()=>{state.gym.logs=state.gym.logs.filter(l=>l.id!==b.dataset.delGym);save();renderGym();toast('Exercise log deleted');});
+  $$('[data-del-session]').forEach(b=>b.onclick=()=>{const k=b.dataset.delSession;state.gym.sessions=state.gym.sessions.filter(x=>x!==k);if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);save();renderGym();toast('Workout day removed');});
 }
 function gymChartHTML(logs){
   if(logs.length<2)return `<div class="chart-empty">Log this exercise at least twice to see a progress chart.</div>`;
@@ -1042,10 +1212,14 @@ function gymChartHTML(logs){
   const path=coords.map((p,i)=>`${i?'L':'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
   return `<div class="gym-chart-wrap"><svg class="gym-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Weight progress chart"><path class="chart-line" d="${path}"/>${coords.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="4"><title>${p.v} kg · ${escapeHTML(p.date)}</title></circle>`).join('')}<text x="${pad}" y="14">${max} kg</text><text x="${pad}" y="${h-3}">${min} kg</text></svg></div>`;
 }
-function openGymLogModal(){
-  const ex=state.gym.exercises.find(x=>x.id===state.settings.selectedExerciseId)||state.gym.exercises[0];
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>Log an exercise</h2><div class="stack"><label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label><div class="form-grid"><label><span class="label">Weight (kg)</span><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal"></label><label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${todayKey()}"></label></div><div class="form-grid"><label><span class="label">Sets</span><input class="input" id="gymSets" type="number" min="1" max="20" value="3"></label><label><span class="label">Reps</span><input class="input" id="gymReps" type="number" min="1" max="100" value="10"></label></div></div><button class="primary full" id="saveGymLog" style="margin-top:14px">Save log</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal(); $('#saveGymLog').onclick=()=>{const weight=Number($('#gymWeight').value);if(!(weight>0))return toast('Enter the weight you used');const date=$('#gymDate').value||todayKey();state.gym.logs.push({id:uid('gymlog'),exerciseId:$('#gymLogExercise').value,weight,sets:clamp(Number($('#gymSets').value||3),1,20),reps:clamp(Number($('#gymReps').value||10),1,100),date,createdAt:Date.now()});if(!state.gym.sessions.includes(date))state.gym.sessions.push(date);state.settings.selectedExerciseId=$('#gymLogExercise').value;save();modal.close();renderGym();toast('Gym progress saved');};$('#cancelModal').onclick=()=>modal.close();
+function openGymLogModal(id=null){
+  const existing=id?(state.gym.logs||[]).find(x=>x.id===id):null;
+  const ex=state.gym.exercises.find(x=>x.id===(existing?.exerciseId||state.settings.selectedExerciseId))||state.gym.exercises[0];
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>${existing?'Edit':'Log'} an exercise</h2><div class="stack"><label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label><div class="form-grid"><label><span class="label">Weight (kg)</span><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal" value="${existing?Number(existing.weight):''}"></label><label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${existing?.date||todayKey()}"></label></div><div class="form-grid"><label><span class="label">Sets</span><input class="input" id="gymSets" type="number" min="1" max="20" value="${existing?Number(existing.sets||3):3}"></label><label><span class="label">Reps</span><input class="input" id="gymReps" type="number" min="1" max="100" value="${existing?Number(existing.reps||10):10}"></label></div></div><button class="primary full" id="saveGymLog" style="margin-top:14px">Save log</button>${existing?'<button class="danger-btn full" id="deleteGymLog" style="margin-top:8px">Delete log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modal.showModal();
+  $('#saveGymLog').onclick=()=>{const weight=Number($('#gymWeight').value);if(!(weight>0))return toast('Enter the weight you used');const exerciseId=$('#gymLogExercise').value,date=$('#gymDate').value||todayKey();const priorPR=exercisePR(exerciseId,existing?.id||null);const data={exerciseId,weight,sets:clamp(Number($('#gymSets').value||3),1,20),reps:clamp(Number($('#gymReps').value||10),1,100),date,createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.gym.logs.push({id:uid('gymlog'),...data});state.gym.sessionExcluded=state.gym.sessionExcluded.filter(k=>k!==date);state.settings.selectedExerciseId=exerciseId;save();modal.close();renderGym();toast(weight>priorPR?`New PR: ${weight} kg`:(existing?'Gym log updated':'Gym progress saved'));};
+  if(existing)$('#deleteGymLog').onclick=()=>{state.gym.logs=state.gym.logs.filter(l=>l.id!==existing.id);save();modal.close();renderGym();toast('Exercise log deleted');};
+  $('#cancelModal').onclick=()=>modal.close();
 }
 function openExerciseModal(){
   modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>Add an exercise</h2><div class="stack"><label><span class="label">Exercise name</span><input class="input" id="exerciseName" placeholder="e.g. Incline dumbbell press"></label><label><span class="label">Muscle group</span><input class="input" id="exerciseGroup" placeholder="e.g. Chest"></label></div><button class="primary full" id="saveExercise" style="margin-top:14px">Add exercise</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
@@ -1053,26 +1227,35 @@ function openExerciseModal(){
 }
 function daysUntilDate(key){if(!key)return null;const d=parseDateKey(key),t=parseDateKey(todayKey());return Math.round((d-t)/86400000);}
 function renderCar(){
-  setHeader('Car');const car=state.car;const rego=daysUntilDate(car.regoDue),service=daysUntilDate(car.serviceDueDate);const fuel=[...(car.fuelLogs||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.odometer||0)-Number(a.odometer||0));
-  main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge blue">CAR</span><h2 style="margin-top:14px">${escapeHTML(car.model||'My car')}</h2><p class="muted" style="margin-bottom:0">Keep the few things that matter visible: kilometres, fuel, service and registration.</p></section>
-  <section class="metric-grid"><div class="metric-card"><small>Odometer</small><strong>${Number(car.odometer||0).toLocaleString()}</strong><span>km</span></div><div class="metric-card"><small>Rego</small><strong>${rego===null?'—':rego<0?'Overdue':rego+'d'}</strong><span>${car.regoDue?escapeHTML(formatDateShort(parseDateKey(car.regoDue))):'not set'}</span></div><div class="metric-card"><small>Service date</small><strong>${service===null?'—':service<0?'Due':service+'d'}</strong><span>${car.serviceDueDate?escapeHTML(formatDateShort(parseDateKey(car.serviceDueDate))):'not set'}</span></div><div class="metric-card"><small>Service km</small><strong>${Number(car.serviceDueKm||0)?Number(car.serviceDueKm).toLocaleString():'—'}</strong><span>${Number(car.serviceDueKm||0)?Math.max(0,Number(car.serviceDueKm)-Number(car.odometer||0)).toLocaleString()+' km left':'not set'}</span></div></section>
-  <div class="button-row"><button class="primary" id="logFuelBtn">+ Fuel fill</button><button class="secondary" id="editCarBtn">Edit car</button></div>
-  <div class="section-title"><h2>Fuel history</h2></div><section class="card flat">${fuel.length?fuel.slice(0,12).map((f,i)=>{const older=fuel[i+1],km=older&&Number(f.odometer)>Number(older.odometer)?Number(f.odometer)-Number(older.odometer):null;return `<div class="fuel-row"><div><b>${Number(f.litres||0).toFixed(1)} L · ${fmtMoney(f.cost)}</b><small>${escapeHTML(formatDateShort(parseDateKey(f.date)))} · ${Number(f.odometer||0).toLocaleString()} km${km?` · ${km.toLocaleString()} km since prior fill`:''}</small></div><button class="text-button tiny" data-del-fuel="${f.id}">Delete</button></div>`}).join(''):'<div class="empty-state">No fuel fills logged yet.</div>'}</section>`;
-  bindMoreBack();$('#logFuelBtn').onclick=openFuelModal;$('#editCarBtn').onclick=openCarModal;$$('[data-del-fuel]').forEach(b=>b.onclick=()=>{state.car.fuelLogs=state.car.fuelLogs.filter(x=>x.id!==b.dataset.delFuel);save();renderCar();});
+  setHeader('Car');const car=state.car;const rego=daysUntilDate(car.regoDue),service=daysUntilDate(car.serviceDueDate);const fuel=[...(car.fuelLogs||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.odometer||0)-Number(a.odometer||0));const maintenance=[...(car.maintenanceLogs||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.odometer||0)-Number(a.odometer||0));
+  const maintenanceTotal=maintenance.reduce((a,x)=>a+Number(x.cost||0),0);
+  main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge blue">CAR</span><h2 style="margin-top:14px">${escapeHTML(car.model||'My car')}</h2><p class="muted" style="margin-bottom:0">Keep kilometres, fuel, service, registration and maintenance history in one place.</p></section>
+  <section class="metric-grid"><div class="metric-card"><small>Odometer</small><strong>${Number(car.odometer||0).toLocaleString()}</strong><span>km</span></div><div class="metric-card"><small>Rego</small><strong>${rego===null?'—':rego<0?'Overdue':rego+'d'}</strong><span>${car.regoDue?escapeHTML(formatDateShort(parseDateKey(car.regoDue))):'not set'}</span></div><div class="metric-card"><small>Service date</small><strong>${service===null?'—':service<0?'Due':service+'d'}</strong><span>${car.serviceDueDate?escapeHTML(formatDateShort(parseDateKey(car.serviceDueDate))):'not set'}</span></div><div class="metric-card"><small>Maintenance</small><strong>${maintenance.length}</strong><span>${fmtMoney(maintenanceTotal)} logged</span></div></section>
+  <div class="three-button-row"><button class="primary" id="logFuelBtn">+ Fuel</button><button class="secondary" id="logMaintenanceBtn">+ Maintenance</button><button class="secondary" id="editCarBtn">Edit car</button></div>
+  <div class="section-title"><h2>Maintenance history</h2></div><section class="card flat">${maintenance.length?maintenance.slice(0,12).map(m=>`<div class="fuel-row"><div><b>${escapeHTML(m.service||'Maintenance')}</b><small>${escapeHTML(formatDateShort(parseDateKey(m.date)))} · ${Number(m.odometer||0).toLocaleString()} km${Number(m.cost||0)?` · ${fmtMoney(m.cost)}`:''}${m.note?` · ${escapeHTML(m.note)}`:''}</small></div><div class="row"><button class="text-button tiny" data-edit-maint="${m.id}">Edit</button><button class="text-button tiny danger-text" data-del-maint="${m.id}">Delete</button></div></div>`).join(''):'<div class="empty-state">No maintenance logged yet.</div>'}</section>
+  <div class="section-title"><h2>Fuel history</h2></div><section class="card flat">${fuel.length?fuel.slice(0,12).map((f,i)=>{const older=fuel[i+1],km=older&&Number(f.odometer)>Number(older.odometer)?Number(f.odometer)-Number(older.odometer):null;return `<div class="fuel-row"><div><b>${Number(f.litres||0).toFixed(1)} L · ${fmtMoney(f.cost)}</b><small>${escapeHTML(formatDateShort(parseDateKey(f.date)))} · ${Number(f.odometer||0).toLocaleString()} km${km?` · ${km.toLocaleString()} km since prior fill`:''}</small></div><div class="row"><button class="text-button tiny" data-edit-fuel="${f.id}">Edit</button><button class="text-button tiny danger-text" data-del-fuel="${f.id}">Delete</button></div></div>`}).join(''):'<div class="empty-state">No fuel fills logged yet.</div>'}</section>`;
+  bindMoreBack();$('#logFuelBtn').onclick=()=>openFuelModal();$('#logMaintenanceBtn').onclick=()=>openMaintenanceModal();$('#editCarBtn').onclick=openCarModal;
+  $$('[data-edit-fuel]').forEach(b=>b.onclick=()=>openFuelModal(b.dataset.editFuel));
+  $$('[data-del-fuel]').forEach(b=>b.onclick=()=>{state.car.fuelLogs=state.car.fuelLogs.filter(x=>x.id!==b.dataset.delFuel);save();renderCar();toast('Fuel entry deleted');});
+  $$('[data-edit-maint]').forEach(b=>b.onclick=()=>openMaintenanceModal(b.dataset.editMaint));
+  $$('[data-del-maint]').forEach(b=>b.onclick=()=>{state.car.maintenanceLogs=state.car.maintenanceLogs.filter(x=>x.id!==b.dataset.delMaint);save();renderCar();toast('Maintenance entry deleted');});
 }
 function openCarModal(){const c=state.car;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>Edit car details</h2><div class="stack"><label><span class="label">Car</span><input class="input" id="carModel" value="${escapeAttr(c.model||'')}"></label><label><span class="label">Current odometer (km)</span><input class="input" id="carOdo" type="number" min="0" value="${Number(c.odometer||0)}"></label><div class="form-grid"><label><span class="label">Rego due</span><input class="input" id="carRego" type="date" value="${c.regoDue||''}"></label><label><span class="label">Service due date</span><input class="input" id="carServiceDate" type="date" value="${c.serviceDueDate||''}"></label></div><label><span class="label">Service due odometer (km)</span><input class="input" id="carServiceKm" type="number" min="0" value="${Number(c.serviceDueKm||0)||''}"></label></div><button class="primary full" id="saveCar" style="margin-top:14px">Save car</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveCar').onclick=()=>{state.car.model=$('#carModel').value.trim()||'My car';state.car.odometer=Math.max(0,Number($('#carOdo').value||0));state.car.regoDue=$('#carRego').value||'';state.car.serviceDueDate=$('#carServiceDate').value||'';state.car.serviceDueKm=Math.max(0,Number($('#carServiceKm').value||0));save();modal.close();renderCar();};$('#cancelModal').onclick=()=>modal.close();}
-function openFuelModal(){const c=state.car;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>Log a fuel fill</h2><div class="stack"><div class="form-grid"><label><span class="label">Litres</span><input class="input" id="fuelLitres" type="number" min="0" step="0.1"></label><label><span class="label">Cost (SAR)</span><input class="input" id="fuelCost" type="number" min="0" step="1"></label></div><div class="form-grid"><label><span class="label">Odometer (km)</span><input class="input" id="fuelOdo" type="number" min="0" value="${Number(c.odometer||0)}"></label><label><span class="label">Date</span><input class="input" id="fuelDate" type="date" value="${todayKey()}"></label></div></div><button class="primary full" id="saveFuel" style="margin-top:14px">Save fuel fill</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveFuel').onclick=()=>{const litres=Number($('#fuelLitres').value||0),cost=Number($('#fuelCost').value||0),odometer=Number($('#fuelOdo').value||0);if(!(litres>0))return toast('Enter litres');if(odometer<Number(state.car.odometer||0))return toast('Odometer cannot go backwards');state.car.fuelLogs.push({id:uid('fuel'),litres,cost:Math.max(0,cost),odometer,date:$('#fuelDate').value||todayKey()});state.car.odometer=Math.max(Number(state.car.odometer||0),odometer);save();modal.close();renderCar();toast('Fuel fill saved');};$('#cancelModal').onclick=()=>modal.close();}
+function openFuelModal(id=null){const c=state.car;const existing=id?(c.fuelLogs||[]).find(x=>x.id===id):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>${existing?'Edit':'Log'} a fuel fill</h2><div class="stack"><div class="form-grid"><label><span class="label">Litres</span><input class="input" id="fuelLitres" type="number" min="0" step="0.1" value="${existing?Number(existing.litres):''}"></label><label><span class="label">Cost (SAR)</span><input class="input" id="fuelCost" type="number" min="0" step="1" value="${existing?Number(existing.cost||0):''}"></label></div><div class="form-grid"><label><span class="label">Odometer (km)</span><input class="input" id="fuelOdo" type="number" min="0" value="${existing?Number(existing.odometer||0):Number(c.odometer||0)}"></label><label><span class="label">Date</span><input class="input" id="fuelDate" type="date" value="${existing?.date||todayKey()}"></label></div></div><button class="primary full" id="saveFuel" style="margin-top:14px">Save fuel fill</button>${existing?'<button class="danger-btn full" id="deleteFuel" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveFuel').onclick=()=>{const litres=Number($('#fuelLitres').value||0),cost=Number($('#fuelCost').value||0),odometer=Number($('#fuelOdo').value||0);if(!(litres>0))return toast('Enter litres');if(odometer<0)return toast('Enter a valid odometer');const data={litres,cost:Math.max(0,cost),odometer,date:$('#fuelDate').value||todayKey()};if(existing)Object.assign(existing,data);else state.car.fuelLogs.push({id:uid('fuel'),...data});state.car.odometer=Math.max(Number(state.car.odometer||0),odometer);save();modal.close();renderCar();toast(existing?'Fuel entry updated':'Fuel fill saved');};if(existing)$('#deleteFuel').onclick=()=>{state.car.fuelLogs=state.car.fuelLogs.filter(x=>x.id!==existing.id);save();modal.close();renderCar();toast('Fuel entry deleted');};$('#cancelModal').onclick=()=>modal.close();}
+function openMaintenanceModal(id=null){const c=state.car;const existing=id?(c.maintenanceLogs||[]).find(x=>x.id===id):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR MAINTENANCE</p><h2>${existing?'Edit':'Log'} maintenance</h2><div class="stack"><label><span class="label">What was done?</span><input class="input" id="maintService" value="${escapeAttr(existing?.service||'')}" placeholder="e.g. Engine oil + filter"></label><div class="form-grid"><label><span class="label">Date</span><input class="input" id="maintDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Odometer (km)</span><input class="input" id="maintOdo" type="number" min="0" value="${existing?Number(existing.odometer||0):Number(c.odometer||0)}"></label></div><label><span class="label">Cost (SAR)</span><input class="input" id="maintCost" type="number" min="0" step="1" value="${existing?Number(existing.cost||0):''}"></label><label><span class="label">Short note (optional)</span><input class="input" id="maintNote" value="${escapeAttr(existing?.note||'')}" placeholder="fluid, parts, next check..."></label></div><button class="primary full" id="saveMaint" style="margin-top:14px">Save maintenance</button>${existing?'<button class="danger-btn full" id="deleteMaint" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveMaint').onclick=()=>{const service=$('#maintService').value.trim();if(!service)return toast('Add what was done');const odometer=Math.max(0,Number($('#maintOdo').value||0));const data={service,date:$('#maintDate').value||todayKey(),odometer,cost:Math.max(0,Number($('#maintCost').value||0)),note:$('#maintNote').value.trim()};if(existing)Object.assign(existing,data);else c.maintenanceLogs.push({id:uid('maint'),...data});c.odometer=Math.max(Number(c.odometer||0),odometer);save();modal.close();renderCar();toast(existing?'Maintenance updated':'Maintenance saved');};if(existing)$('#deleteMaint').onclick=()=>{c.maintenanceLogs=c.maintenanceLogs.filter(x=>x.id!==existing.id);save();modal.close();renderCar();toast('Maintenance entry deleted');};$('#cancelModal').onclick=()=>modal.close();}
 function renderProjects(){setHeader('Projects');main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge purple">PROJECTS</span><h2 style="margin-top:14px">Something meaningful outside university.</h2><p class="muted" style="margin-bottom:0">Keep each project simple: what it is, where it stands and the next useful step.</p></section><div class="section-title"><h2>Your projects</h2><button id="addProjectBtn">+ Project</button></div><section class="project-list">${state.projects.map(p=>`<button class="project-card" data-project="${p.id}"><div class="row between center"><div><span class="badge ${p.status==='Completed'?'':'purple'}">${escapeHTML(p.status)}</span><h3>${escapeHTML(p.name)}</h3></div><strong>${clamp(Number(p.progress||0),0,100)}%</strong></div><div class="weekbar"><span style="width:${clamp(Number(p.progress||0),0,100)}%"></span></div><p>${escapeHTML(p.nextTask||'Set the next task.')}</p></button>`).join('')}</section>`;bindMoreBack();$('#addProjectBtn').onclick=()=>openProjectModal();$$('[data-project]').forEach(b=>b.onclick=()=>{state.settings.moreView='project:'+b.dataset.project;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});}
-function renderProjectDetail(id){const p=state.projects.find(x=>x.id===id);if(!p){state.settings.moreView='projects';return renderProjects();}setHeader(p.name);main.innerHTML=`<button class="back-link" id="projectBackBtn">${svgIcon('chevronLeft')}<span>Projects</span></button><section class="card hero"><div class="row between center"><span class="badge purple">${escapeHTML(p.status)}</span><button class="secondary small-btn" id="editProjectBtn">Edit</button></div><h2 style="margin-top:14px">${escapeHTML(p.name)}</h2><p class="muted">${escapeHTML(p.description||'No description yet.')}</p><div class="project-progress"><div><b>${clamp(Number(p.progress||0),0,100)}%</b><span>progress</span></div><div class="weekbar"><span style="width:${clamp(Number(p.progress||0),0,100)}%"></span></div></div></section><div class="section-title"><h2>Next task</h2></div><section class="card flat"><h3>${escapeHTML(p.nextTask||'Choose the next useful step.')}</h3></section><div class="section-title"><h2>Plan</h2></div><section class="card flat"><p class="project-plan">${escapeHTML(p.plan||'No plan written yet. Keep it short.')}</p></section><section class="grid-3"><div class="stat"><small>Sessions</small><strong>${Number(p.sessions||0)}</strong></div><div class="stat"><small>Status</small><strong>${escapeHTML(p.status)}</strong></div><div class="stat"><small>Progress</small><strong>${clamp(Number(p.progress||0),0,100)}%</strong></div></section><button class="primary full" id="logProjectBtn">+ Log project session</button><div class="section-title"><h2>Recent activity</h2></div><section class="card flat">${(p.logs||[]).length?p.logs.slice().reverse().slice(0,8).map(l=>`<div class="project-log"><b>${escapeHTML(l.note||'Project session')}</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))}</small></div>`).join(''):'<div class="empty-state">No project sessions logged yet.</div>'}</section>`;$('#projectBackBtn').onclick=()=>{state.settings.moreView='projects';save();renderMore();};$('#editProjectBtn').onclick=()=>openProjectModal(p.id);$('#logProjectBtn').onclick=()=>openProjectSessionModal(p.id);}
+function renderProjectDetail(id){const p=state.projects.find(x=>x.id===id);if(!p){state.settings.moreView='projects';return renderProjects();}setHeader(p.name);main.innerHTML=`<button class="back-link" id="projectBackBtn">${svgIcon('chevronLeft')}<span>Projects</span></button><section class="card hero"><div class="row between center"><span class="badge purple">${escapeHTML(p.status)}</span><button class="secondary small-btn" id="editProjectBtn">Edit</button></div><h2 style="margin-top:14px">${escapeHTML(p.name)}</h2><p class="muted">${escapeHTML(p.description||'No description yet.')}</p><div class="project-progress"><div><b>${clamp(Number(p.progress||0),0,100)}%</b><span>progress</span></div><div class="weekbar"><span style="width:${clamp(Number(p.progress||0),0,100)}%"></span></div></div></section><div class="section-title"><h2>Next task</h2></div><section class="card flat"><h3>${escapeHTML(p.nextTask||'Choose the next useful step.')}</h3></section><div class="section-title"><h2>Plan</h2></div><section class="card flat"><p class="project-plan">${escapeHTML(p.plan||'No plan written yet. Keep it short.')}</p></section><section class="grid-3"><div class="stat"><small>Sessions</small><strong>${Number(p.sessions||0)}</strong></div><div class="stat"><small>Status</small><strong>${escapeHTML(p.status)}</strong></div><div class="stat"><small>Progress</small><strong>${clamp(Number(p.progress||0),0,100)}%</strong></div></section><button class="primary full" id="logProjectBtn">+ Log project session</button><div class="section-title"><h2>Recent activity</h2></div><section class="card flat">${(p.logs||[]).length?p.logs.slice().reverse().slice(0,12).map(l=>`<div class="project-log"><div><b>${escapeHTML(l.note||'Project session')}</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))}</small></div><div class="row"><button class="text-button tiny" data-edit-project-log="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-project-log="${l.id}">Delete</button></div></div>`).join(''):'<div class="empty-state">No project sessions logged yet.</div>'}</section>`;$('#projectBackBtn').onclick=()=>{state.settings.moreView='projects';save();renderMore();};$('#editProjectBtn').onclick=()=>openProjectModal(p.id);$('#logProjectBtn').onclick=()=>openProjectSessionModal(p.id);$$('[data-edit-project-log]').forEach(b=>b.onclick=()=>openProjectSessionModal(p.id,b.dataset.editProjectLog));$$('[data-del-project-log]').forEach(b=>b.onclick=()=>{p.logs=p.logs.filter(x=>x.id!==b.dataset.delProjectLog);p.sessions=Math.max(0,Number(p.sessions||0)-1);save();renderProjectDetail(p.id);toast('Project session deleted');});}
 function openProjectModal(id=null){const p=id?state.projects.find(x=>x.id===id):null;const x=p||{name:'',status:'Active',progress:0,description:'',nextTask:'',plan:''};modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT</p><h2>${p?'Edit project':'New project'}</h2><div class="stack"><label><span class="label">Project name</span><input class="input" id="projectName" value="${escapeAttr(x.name)}"></label><label><span class="label">What is this project?</span><textarea id="projectDescription">${escapeHTML(x.description||'')}</textarea></label><label><span class="label">Next task</span><input class="input" id="projectNext" value="${escapeAttr(x.nextTask||'')}" placeholder="The next concrete thing to do"></label><label><span class="label">Plan / notes</span><textarea id="projectPlan">${escapeHTML(x.plan||'')}</textarea></label><div class="form-grid"><label><span class="label">Progress %</span><input class="input" id="projectProgress" type="number" min="0" max="100" value="${Number(x.progress||0)}"></label><label><span class="label">Status</span><select id="projectStatus"><option ${x.status==='Active'?'selected':''}>Active</option><option ${x.status==='Paused'?'selected':''}>Paused</option><option ${x.status==='Completed'?'selected':''}>Completed</option></select></label></div></div><button class="primary full" id="saveProject" style="margin-top:14px">Save project</button>${p?'<button class="danger-btn full" id="deleteProject" style="margin-top:8px">Delete project</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveProject').onclick=()=>{const name=$('#projectName').value.trim();if(!name)return toast('Add a project name');const data={name,status:$('#projectStatus').value,progress:clamp(Number($('#projectProgress').value||0),0,100),description:$('#projectDescription').value.trim(),nextTask:$('#projectNext').value.trim(),plan:$('#projectPlan').value.trim()};if(p)Object.assign(p,data);else state.projects.push({id:uid('project'),sessions:0,logs:[],...data});save();modal.close();if(p){state.settings.moreView='project:'+p.id;renderMore();}else renderProjects();};if(p)$('#deleteProject').onclick=()=>{if(state.projects.length<=1)return toast('Keep at least one project');state.projects=state.projects.filter(x=>x.id!==p.id);state.settings.moreView='projects';save();modal.close();renderMore();};$('#cancelModal').onclick=()=>modal.close();}
-function openProjectSessionModal(id){const p=state.projects.find(x=>x.id===id);if(!p)return;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT SESSION</p><h2>${escapeHTML(p.name)}</h2><label><span class="label">What did you move forward?</span><textarea id="projectSessionNote" placeholder="A short note is enough."></textarea></label><button class="primary full" id="saveProjectSession" style="margin-top:14px">Log session</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveProjectSession').onclick=()=>{p.sessions=Number(p.sessions||0)+1;if(!Array.isArray(p.logs))p.logs=[];p.logs.push({id:uid('projectlog'),date:todayKey(),note:$('#projectSessionNote').value.trim()||'Focused project session'});save();modal.close();renderProjectDetail(p.id);toast('Project session logged');};$('#cancelModal').onclick=()=>modal.close();}
-function renderPlan(){setHeader('Reset plan');main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge">RESET PLAN</span><h2 style="margin-top:14px">Simple enough to live with.</h2><p class="muted" style="margin-bottom:0">The plan stays here. The Today screen is where you actually live it.</p></section><section class="card flat">${morePlanRow('Sleep','8:00 AM wake, 11:30 PM sleep. Get out of bed immediately.')}${morePlanRow('Screen control','No TikTok during the reset. No porn/gooning in bed or after waking. Phone away at 11 PM.')}${morePlanRow('University','Attend current classes first. Urgent assessments second. Backlog third. Attempt work before AI.')}${morePlanRow('Body','Gym M/W/F, walk daily, mobility on other days, 3 meals and 90–110 g protein.')}${morePlanRow('Money','Allocate salary before spending. Whatever remains after the plan is flexible money.')}${morePlanRow('Environment','Weekly bathroom + bedsheets. Curtains open after waking. Groom at home.')}${morePlanRow('Life outside uni','Keep at least one personal project moving.')}</section><div class="section-title"><h2>Weekly review</h2></div><section class="card flat"><button class="secondary full" id="weeklyReviewBtn">Do weekly review</button></section><div class="section-title"><h2>Recent reviews</h2></div><section class="card flat">${state.weeklyReviews.length?state.weeklyReviews.slice().reverse().slice(0,5).map(r=>`<div class="project-log"><div><b>${escapeHTML(r.date)}</b><small>Next focus: ${escapeHTML(r.focus||'—')}</small></div><span class="badge">${r.rating}/10</span></div>`).join(''):'<div class="empty-state">No weekly review yet.</div>'}</section>`;bindMoreBack();$('#weeklyReviewBtn').onclick=openWeeklyReviewModal;}
+function openProjectSessionModal(id,logId=null){const p=state.projects.find(x=>x.id===id);if(!p)return;const existing=logId?(p.logs||[]).find(x=>x.id===logId):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT SESSION</p><h2>${escapeHTML(p.name)}</h2><div class="stack"><label><span class="label">What did you move forward?</span><textarea id="projectSessionNote" placeholder="A short note is enough.">${escapeHTML(existing?.note||'')}</textarea></label><label><span class="label">Date</span><input class="input" id="projectSessionDate" type="date" value="${existing?.date||todayKey()}"></label></div><button class="primary full" id="saveProjectSession" style="margin-top:14px">Save session</button>${existing?'<button class="danger-btn full" id="deleteProjectSession" style="margin-top:8px">Delete session</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveProjectSession').onclick=()=>{const data={date:$('#projectSessionDate').value||todayKey(),note:$('#projectSessionNote').value.trim()||'Focused project session'};if(existing)Object.assign(existing,data);else{p.sessions=Number(p.sessions||0)+1;if(!Array.isArray(p.logs))p.logs=[];p.logs.push({id:uid('projectlog'),...data});}save();modal.close();renderProjectDetail(p.id);toast(existing?'Project session updated':'Project session logged');};if(existing)$('#deleteProjectSession').onclick=()=>{p.logs=p.logs.filter(x=>x.id!==existing.id);p.sessions=Math.max(0,Number(p.sessions||0)-1);save();modal.close();renderProjectDetail(p.id);toast('Project session deleted');};$('#cancelModal').onclick=()=>modal.close();}
+function renderPlan(){setHeader('Reset plan');main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge">RESET PLAN</span><h2 style="margin-top:14px">Simple enough to live with.</h2><p class="muted" style="margin-bottom:0">The plan stays here. The Today screen is where you actually live it.</p></section><section class="card flat">${morePlanRow('Sleep','8:00 AM wake, 11:30 PM sleep. Get out of bed immediately.')}${morePlanRow('Screen control','No TikTok during the reset. No porn/gooning in bed or after waking. Phone away at 11 PM.')}${morePlanRow('University','Attend current classes first. Urgent assessments second. Backlog third. Attempt work before AI.')}${morePlanRow('Body','Gym M/W/F, walk daily, mobility on other days, 3 meals and 90–110 g protein.')}${morePlanRow('Money','Allocate salary before spending. Whatever remains after the plan is flexible money.')}${morePlanRow('Environment','Weekly bathroom + bedsheets. Curtains open after waking. Groom at home.')}${morePlanRow('Life outside uni','Keep at least one personal project moving.')}</section><div class="section-title"><h2>Weekly review</h2></div><section class="card flat"><button class="secondary full" id="weeklyReviewBtn">Do weekly review</button></section><div class="section-title"><h2>Recent reviews</h2></div><section class="card flat">${state.weeklyReviews.length?state.weeklyReviews.slice().reverse().slice(0,8).map(r=>`<div class="project-log"><div><b>${escapeHTML(r.date)}</b><small>Next focus: ${escapeHTML(r.focus||'—')}</small></div><div class="row center"><span class="badge">${r.rating}/10</span><button class="text-button tiny" data-edit-review="${r.id}">Edit</button><button class="text-button tiny danger-text" data-del-review="${r.id}">Delete</button></div></div>`).join(''):'<div class="empty-state">No weekly review yet.</div>'}</section>`;bindMoreBack();$('#weeklyReviewBtn').onclick=()=>openWeeklyReviewModal();$$('[data-edit-review]').forEach(b=>b.onclick=()=>openWeeklyReviewModal(b.dataset.editReview));$$('[data-del-review]').forEach(b=>b.onclick=()=>{state.weeklyReviews=state.weeklyReviews.filter(r=>r.id!==b.dataset.delReview);save();renderPlan();toast('Weekly review deleted');});}
 function openModeModal(){const cur=currentMode();const modes=[['normal','Normal','Full routine and normal weekly plan.'],['bad','Bad day','Today only: keep essentials, classes, meals, outside and sleep. It resets tomorrow.'],['exam','Exam','Temporarily park projects and nonessential life admin. Keep uni, sleep, food and training.'],['holiday','Holiday','Pause university items without deleting the timetable. Keep life, gym, projects and sleep.']];modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DAY MODE</p><h2>How should Reset treat your schedule?</h2><div class="mode-list">${modes.map(([id,name,desc])=>`<button class="mode-option ${id===cur?'active':''}" data-mode="${id}"><span><b>${name}</b><small>${desc}</small></span><strong>${id===cur?'✓':''}</strong></button>`).join('')}</div><button class="secondary full" id="cancelModal" style="margin-top:10px">Cancel</button>`;modal.showModal();$$('[data-mode]').forEach(b=>b.onclick=()=>{state.settings.mode=b.dataset.mode;state.settings.modeSetDate=todayKey();ensureRecord(todayKey()).mode=b.dataset.mode;save();modal.close();renderToday();toast(`${modeName()} mode active`);});$('#cancelModal').onclick=()=>modal.close();}
 
-function openWeeklyReviewModal() {
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SUNDAY RESET</p><h2>Weekly review</h2><div class="stack"><label><span class="label">How was the week? (1–10)</span><input class="input" id="reviewRating" type="number" min="1" max="10" value="7"></label><label><span class="label">What went well?</span><textarea id="reviewWins" placeholder="Small wins count."></textarea></label><label><span class="label">What kept slipping?</span><textarea id="reviewIssues" placeholder="Sleep, scrolling, class, food..."></textarea></label><label><span class="label">One focus for next week</span><input class="input" id="reviewFocus" placeholder="e.g. Attend every class"></label></div><button class="primary full" id="saveReview" style="margin-top:14px">Save weekly review</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+function openWeeklyReviewModal(id=null) {
+  const existing=id?state.weeklyReviews.find(r=>r.id===id):null;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SUNDAY RESET</p><h2>${existing?'Edit':'Weekly'} review</h2><div class="stack"><label><span class="label">How was the week? (1–10)</span><input class="input" id="reviewRating" type="number" min="1" max="10" value="${existing?.rating||7}"></label><label><span class="label">What went well?</span><textarea id="reviewWins" placeholder="Small wins count.">${escapeHTML(existing?.wins||'')}</textarea></label><label><span class="label">What kept slipping?</span><textarea id="reviewIssues" placeholder="Sleep, scrolling, class, food...">${escapeHTML(existing?.issues||'')}</textarea></label><label><span class="label">One focus for next week</span><input class="input" id="reviewFocus" value="${escapeAttr(existing?.focus||'')}" placeholder="e.g. Attend every class"></label></div><button class="primary full" id="saveReview" style="margin-top:14px">Save weekly review</button>${existing?'<button class="danger-btn full" id="deleteReview" style="margin-top:8px">Delete review</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#saveReview').onclick=()=>{state.weeklyReviews.push({id:uid('review'),date:new Date().toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}),rating:clamp(Number($('#reviewRating').value||7),1,10),wins:$('#reviewWins').value.trim(),issues:$('#reviewIssues').value.trim(),focus:$('#reviewFocus').value.trim()});save();modal.close();toast('Weekly review saved');renderMore();};
+  $('#saveReview').onclick=()=>{const data={rating:clamp(Number($('#reviewRating').value||7),1,10),wins:$('#reviewWins').value.trim(),issues:$('#reviewIssues').value.trim(),focus:$('#reviewFocus').value.trim()};if(existing)Object.assign(existing,data);else state.weeklyReviews.push({id:uid('review'),date:new Date().toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}),dateKey:todayKey(),...data});save();modal.close();toast(existing?'Weekly review updated':'Weekly review saved');if(state.settings.moreView==='plan')renderPlan();else renderMore();};
+  if(existing)$('#deleteReview').onclick=()=>{state.weeklyReviews=state.weeklyReviews.filter(r=>r.id!==existing.id);save();modal.close();if(state.settings.moreView==='plan')renderPlan();else renderMore();toast('Weekly review deleted');};
   $('#cancelModal').onclick=()=>modal.close();
 }
 

@@ -1,12 +1,11 @@
-Reset - Life Dashboard
-Version: 2.3.0
-Internal data schema: 5
+RESET LIFE DASHBOARD
+Version: 2.4.0
+Schema: 6
 
-Polish update:
-- iPhone double-tap zoom prevention using touch-action manipulation
-- Consistent SVG navigation/action icons
-- Larger and better-aligned touch targets
-- Scroll position preserved when checking timeline tasks
-- Day Complete and Recovery Complete one-time celebration
-- Today hero reflects completed-day state
-- Mobile spacing/alignment refinements
+Focus of this release:
+- Quick completion of the current/overdue task from the Today hero.
+- Flexible tasks can be moved, swapped, restored, or moved to tomorrow while fixed items stay locked.
+- End-of-day cleanup for unfinished flexible tasks.
+- Edit/delete controls for tracked logs across Gym, Health, Money, Car, Projects and weekly reviews.
+- Weekly and 30-day progress comparisons, gym PRs, body-weight tracking and car maintenance history.
+- Existing v2.3 data migrates forward automatically.

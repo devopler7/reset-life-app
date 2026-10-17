@@ -1,34 +1,50 @@
-RESET LIFE DASHBOARD v2.3.0 TEST REPORT
+RESET LIFE DASHBOARD v2.4.0 TEST REPORT
 
-Static checks
-- JavaScript syntax: PASS
-- Manifest JSON: PASS
-- Required PWA assets: PASS
-- Service worker cache bumped to v2.3.0: PASS
-- CSS/JS cache-busting URLs bumped to v2.3.0: PASS
+TESTED 17 OCT 2026
 
-Mobile browser regression checks
-- Today screen loads: PASS
-- 390 px viewport has no page-level horizontal overflow: PASS
-- 320 px viewport has no page-level horizontal overflow across Today, Week, Uni, Money and More: PASS
-- touch-action: manipulation is active to prevent double-tap zoom on normal app interactions: PASS
-- Settings icon is SVG and mathematically centered in its 44 px touch target: PASS
-- Bottom navigation uses consistent SVG icons: PASS
-- Week previous/next controls use SVG icons: PASS
-- Modal close control uses SVG icon: PASS
-- More/Project back controls use SVG icons: PASS
-- Settings displays v2.3.0: PASS
-- Day modes modal opens: PASS
-- Adaptive Restart modal opens: PASS
-- Week routine manager opens: PASS
-- Gym, Car and Projects views load: PASS
-- v2.2 state migrates to schema 5: PASS
-- Checking a timeline task preserves scroll position: PASS
-- Completing all current-day tasks triggers one Day Complete popup: PASS
-- Today hero changes to Day Complete at 100%: PASS
-- Completion celebration does not repeatedly fire when a completed task is toggled again: PASS
-- Browser page errors during tested flows: NONE
+Automated / source checks
+- app.js JavaScript syntax (Node --check): PASS
+- Manifest JSON parse: PASS
+- HTML/CSS/JS/service-worker asset references exist: PASS
+- Service worker cache and cache-busting URLs use v2.4.0: PASS
+- CSS parsed with tinycss2 without parser errors: PASS
+- Duplicate named JavaScript functions: NONE
+- Settings version label: v2.4.0
 
-Notes
-- iOS Safari/Home Screen double-tap behavior cannot be perfectly emulated by Chromium. The fix uses the standards-based touch-action: manipulation behavior supported by modern WebKit, while keeping normal scrolling and pinch behavior where supported.
-- No software can be guaranteed bug-free on every iOS version, but the primary flows above were regression-tested after the update.
+Core regression tests: 14/14 PASS
+- v2.3-style state migrates to schema 6 and keeps new Health/Car/Gym fields.
+- Wake/morning essentials and classes are locked from manual movement; dinner remains movable.
+- Same-day time overrides preserve task duration and can be reset.
+- Flexible moves are rejected when they overlap a locked event.
+- Recurring tasks can move to tomorrow and the move can be undone.
+- One-off tasks can move to tomorrow without carrying an incorrect completed state.
+- Deferred/dropped items correctly produce Recovery Complete instead of blocking the whole day.
+- Workout-day removal/exclusion works and gym logs can restore a workout day.
+- Gym personal-best calculation returns the correct maximum weight.
+- Body-weight history survives migration.
+- Accidental task completion can be returned to Pending and completion celebration state resets.
+- Progress statistics ignore dates/classes from before the app was first used.
+- Exercise logs count as workout sessions without needing a duplicate manual session record.
+- Today, Week, Uni, Money, More, Gym, Health, Car, Projects and Reset Plan all complete a DOM smoke render without runtime exceptions.
+
+Feature checks
+- Current/overdue Today hero has Mark done control: PASS
+- Hero completion offers quick Undo: PASS
+- Flexible task Move / swap / tomorrow / reset planned time: PASS
+- Fixed item protection: PASS
+- End-of-day Keep / Tomorrow / Drop cleanup: PASS
+- Timeline completion remains reversible: PASS
+- Expense edit/delete: PASS
+- Gym log edit/delete and workout-day removal: PASS
+- Weight edit/delete: PASS
+- Fuel and maintenance edit/delete: PASS
+- Project-session edit/delete: PASS
+- Weekly-review edit/delete: PASS
+- 7-day / 30-day / all-time metrics: PASS
+- Current-week vs previous-week summary: PASS
+- Last-30 vs previous-30 comparison: PASS
+- Gym PRs/charts: PASS
+- Car maintenance history: PASS
+
+LIMITATION
+A real Safari/iPhone browser session could not be launched inside the build environment, so the final device-specific check should be done after GitHub Pages deploy. v2.4 keeps the v2.3 mobile layout/zoom/icon fixes and adds mostly application logic plus responsive components.
