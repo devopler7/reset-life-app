@@ -1,6 +1,6 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 4;
-const APP_DISPLAY_VERSION = '2.2.0';
+const APP_VERSION = 5;
+const APP_DISPLAY_VERSION = '2.3.0';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -10,6 +10,14 @@ const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DAY_LONG = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAY_PICK = ['Su','M','Tu','W','Th','F','Sa'];
 const CATEGORIES = ['Routine','University','Fitness','Food','Life','Project','Sleep'];
+const ICON_PATHS = {
+  chevronLeft:'<path d="M15 18l-6-6 6-6"/>',
+  chevronRight:'<path d="M9 6l6 6-6 6"/>',
+  close:'<path d="M6 6l12 12M18 6L6 18"/>',
+  check:'<path d="M5 12.5l4.2 4.2L19 7"/>',
+  more:'<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>'
+};
+function svgIcon(name, cls='ui-icon') { return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name]||''}</svg>`; }
 
 function todayKey(d = new Date()) {
   const y = d.getFullYear();
@@ -226,6 +234,7 @@ function migrateState(parsed) {
     if(!r.timeOverrides) r.timeOverrides={};
     if(!Number.isFinite(r.resetCount)) r.resetCount=0;
     if(!r.mode) r.mode='normal';
+    if(!('finishCelebrated' in r)) r.finishCelebrated='';
   });
   return next;
 }
@@ -309,10 +318,11 @@ function updateStorageProtectionLabel(result) {
 }
 
 function ensureRecord(key=todayKey()) {
-  if(!state.records[key]) state.records[key] = {itemStatus:{}, timeOverrides:{}, resetCount:0, restartAt:null, mode:key===todayKey()?currentMode():'normal'};
+  if(!state.records[key]) state.records[key] = {itemStatus:{}, timeOverrides:{}, resetCount:0, restartAt:null, mode:key===todayKey()?currentMode():'normal', finishCelebrated:''};
   if(!state.records[key].itemStatus) state.records[key].itemStatus={};
   if(!state.records[key].timeOverrides) state.records[key].timeOverrides={};
   if(!state.records[key].mode) state.records[key].mode=key===todayKey()?currentMode():'normal';
+  if(!('finishCelebrated' in state.records[key])) state.records[key].finishCelebrated='';
   return state.records[key];
 }
 function occurrenceKey(item) { return `${item.source==='oneoff'?'o':'s'}:${item.id}`; }
@@ -358,6 +368,38 @@ function dayCompletion(date) {
   const done=items.filter(i=>getStatus(i,key)==='done').length;
   return Math.round(done/items.length*100);
 }
+function dayFinishState(date=new Date()) {
+  const key=todayKey(date); const items=itemsForMode(itemsForDate(date),modeForDate(key));
+  if(!items.length) return null;
+  const statuses=items.map(i=>getStatus(i,key));
+  const pending=statuses.filter(s=>s!=='done' && s!=='missed').length;
+  const done=statuses.filter(s=>s==='done').length;
+  const missed=statuses.filter(s=>s==='missed').length;
+  if(pending>0 || done===0) return null;
+  return {type:missed?'recovery':'full', done, missed, total:items.length};
+}
+function showDayFinishPop(result) {
+  const old=$('.day-finish-pop'); if(old) old.remove();
+  const el=document.createElement('div');
+  el.className='day-finish-pop';
+  el.setAttribute('role','status');
+  const full=result.type==='full';
+  el.innerHTML=`<div class="day-finish-card"><div class="day-finish-icon">${svgIcon('check')}</div><div class="day-finish-copy"><b>${full?'Day complete':'Recovery complete'}</b><small>${full?'Everything planned for today is done.':'You finished everything still in your control today.'}</small></div><div class="day-finish-sparks" aria-hidden="true"><i></i><i></i><i></i></div></div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  clearTimeout(window.__finishPop);
+  window.__finishPop=setTimeout(()=>{el.classList.remove('show');setTimeout(()=>el.remove(),350);},3600);
+}
+function maybeCelebrateDayFinish(date=new Date()) {
+  if(todayKey(date)!==todayKey()) return;
+  const result=dayFinishState(date); if(!result) return;
+  const rec=ensureRecord(todayKey(date));
+  if(rec.finishCelebrated===result.type) return;
+  rec.finishCelebrated=result.type;
+  rec.finishedAt=new Date().toISOString();
+  save();
+  showDayFinishPop(result);
+}
 function streak() {
   let count=0; const d=new Date();
   for(let i=0;i<60;i++) {
@@ -388,7 +430,7 @@ function setHeader(title, date=new Date()) {
 }
 function render() {
   const tab=state.settings.activeTab || 'today';
-  $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  $$('.tab').forEach(b=>{const active=b.dataset.tab===tab;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
   if(tab==='today') renderToday();
   if(tab==='week') renderWeek();
   if(tab==='university') renderUniversity();
@@ -447,13 +489,14 @@ function renderToday(preserveScroll=false) {
   const next=nextUsefulItem(items,key);
   const missed=items.filter(i=>getStatus(i,key)==='missed').length;
   const adjusted=items.filter(i=>i.adjusted).length;
+  const finish=dayFinishState(date);
   setHeader('Today',date);
   main.innerHTML=`
-    <section class="card hero">
+    <section class="card hero ${finish?'day-complete':''}">
       <div class="next-card">
         <div>
           <div class="row wrap"><span class="badge">${greeting.toUpperCase()}</span><button class="mode-pill" id="modeBtn">${escapeHTML(modeName())} ▾</button></div>
-          ${next ? `<div class="time-big" style="margin-top:12px">${next.mode==='now'||next.mode==='overdue'?'DO THIS NOW':'NEXT · '+formatClock(next.item.start)}</div><h2>${escapeHTML(next.item.title)}</h2><p class="muted" style="margin-bottom:0">${escapeHTML(next.item.detail||'Do the next useful thing.')}</p>` : `<h2 style="margin-top:14px">You’re clear for now.</h2><p class="muted" style="margin-bottom:0">Use the free time well, or add something useful to today.</p>`}
+          ${next ? `<div class="time-big" style="margin-top:12px">${next.mode==='now'||next.mode==='overdue'?'DO THIS NOW':'NEXT · '+formatClock(next.item.start)}</div><h2>${escapeHTML(next.item.title)}</h2><p class="muted" style="margin-bottom:0">${escapeHTML(next.item.detail||'Do the next useful thing.')}</p>` : finish ? `<div class="completion-label" style="margin-top:12px">${svgIcon('check')} ${finish.type==='full'?'DAY COMPLETE':'RECOVERY COMPLETE'}</div><h2 style="margin-top:8px">${finish.type==='full'?'You finished the day.':'You finished what was still in your control.'}</h2><p class="muted" style="margin-bottom:0">${finish.type==='full'?'Everything planned for today is checked off.':'A fixed event was missed, but every remaining actionable task is done.'}</p>` : `<h2 style="margin-top:14px">You’re clear for now.</h2><p class="muted" style="margin-bottom:0">Use the free time well, or add something useful to today.</p>`}
         </div>
         ${next?`<div class="countdown"><b>${countdownText(next.item,next.mode)}</b><small>${next.mode==='now'?'remaining / now':next.mode==='overdue'?'overdue':'until next'}</small></div>`:`<div class="progress-ring" style="--value:${pct*3.6}deg"><b>${pct}%</b></div>`}
       </div>
@@ -515,7 +558,9 @@ function bindTimeline(date) {
   $$('[data-occ]').forEach(cb=>cb.addEventListener('change',()=>{
     const occ=cb.dataset.occ; const item=itemsForDate(date).find(x=>occurrenceKey(x)===occ);
     if(item) setStatus(item,key,cb.checked?'done':'pending');
+    const y=window.scrollY;
     render();
+    requestAnimationFrame(()=>{window.scrollTo(0,y); if(cb.checked) maybeCelebrateDayFinish(date);});
   }));
   $$('[data-edit-item]').forEach(btn=>btn.addEventListener('click',()=>{
     const [source,id]=btn.dataset.editItem.split(':');
@@ -546,9 +591,9 @@ function renderWeek() {
   main.innerHTML=`
     <section class="card flat">
       <div class="week-nav">
-        <button class="icon-button" id="prevWeekBtn" aria-label="Previous week">‹</button>
+        <button class="icon-button" id="prevWeekBtn" aria-label="Previous week">${svgIcon('chevronLeft')}</button>
         <h3>${formatDateShort(weekStart)} – ${formatDateShort(weekEnd)}</h3>
-        <button class="icon-button" id="nextWeekBtn" aria-label="Next week">›</button>
+        <button class="icon-button" id="nextWeekBtn" aria-label="Next week">${svgIcon('chevronRight')}</button>
       </div>
       <div class="week-jump"><button class="secondary small-btn" id="todayWeekBtn">Today</button></div>
       <div class="week-strip">
@@ -796,8 +841,8 @@ function renderMore() {
   $$('[data-more-view]').forEach(b=>b.onclick=()=>{state.settings.moreView=b.dataset.moreView;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});
   $('#weeklyReviewBtn').onclick=openWeeklyReviewModal;
 }
-function toolLink(view,title,desc){return `<button class="tool-link" data-more-view="${escapeAttr(view)}"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small></span><strong>›</strong></button>`;}
-function moreBack(label='More'){return `<button class="back-link" id="moreBackBtn">‹ ${escapeHTML(label)}</button>`;}
+function toolLink(view,title,desc){return `<button class="tool-link" data-more-view="${escapeAttr(view)}"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small></span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`;}
+function moreBack(label='More'){return `<button class="back-link" id="moreBackBtn">${svgIcon('chevronLeft')}<span>${escapeHTML(label)}</span></button>`;}
 function bindMoreBack(){const b=$('#moreBackBtn');if(b)b.onclick=()=>{state.settings.moreView='home';save();renderMore();window.scrollTo({top:0,behavior:'auto'});};}
 function morePlanRow(title,text){return `<div class="more-link"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(text)}</small></span></div>`;}
 
@@ -883,7 +928,7 @@ function openRestartModal() {
 }
 function openScheduleManager() {
   const sorted=[...state.schedule].sort((a,b)=>minutesFromTime(a.start)-minutesFromTime(b.start));
-  modalContent.innerHTML=`<div class="sheet-handle"></div><div class="row between center"><div><p class="eyebrow">WEEKLY ROUTINE</p><h2>Recurring schedule</h2></div><button class="icon-button" id="closeModal">×</button></div><p class="muted tiny">Your university timetable is preloaded. Fixed items stay in place during an adaptive restart. You can still edit or add recurring items.</p><div class="stack" style="margin-top:14px">${sorted.map(s=>`<button class="more-link" data-routine-edit="${s.id}"><span><b>${escapeHTML(s.title)}</b><small>${escapeHTML(s.days.map(d=>DAY_SHORT[d]).join(', '))} · ${escapeHTML(timeWindow(s))}</small></span><b>›</b></button>`).join('')}</div><button class="primary full" id="addRoutineInside" style="margin-top:14px">+ Add recurring item</button>`;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><div class="row between center"><div><p class="eyebrow">WEEKLY ROUTINE</p><h2>Recurring schedule</h2></div><button class="icon-button" id="closeModal" aria-label="Close">${svgIcon('close')}</button></div><p class="muted tiny">Your university timetable is preloaded. Fixed items stay in place during an adaptive restart. You can still edit or add recurring items.</p><div class="stack" style="margin-top:14px">${sorted.map(s=>`<button class="more-link" data-routine-edit="${s.id}"><span><b>${escapeHTML(s.title)}</b><small>${escapeHTML(s.days.map(d=>DAY_SHORT[d]).join(', '))} · ${escapeHTML(timeWindow(s))}</small></span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`).join('')}</div><button class="primary full" id="addRoutineInside" style="margin-top:14px">+ Add recurring item</button>`;
   modal.showModal();
   $('#closeModal').onclick=()=>modal.close();
   $('#addRoutineInside').onclick=()=>openScheduleItemModal();
@@ -1018,7 +1063,7 @@ function renderCar(){
 function openCarModal(){const c=state.car;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>Edit car details</h2><div class="stack"><label><span class="label">Car</span><input class="input" id="carModel" value="${escapeAttr(c.model||'')}"></label><label><span class="label">Current odometer (km)</span><input class="input" id="carOdo" type="number" min="0" value="${Number(c.odometer||0)}"></label><div class="form-grid"><label><span class="label">Rego due</span><input class="input" id="carRego" type="date" value="${c.regoDue||''}"></label><label><span class="label">Service due date</span><input class="input" id="carServiceDate" type="date" value="${c.serviceDueDate||''}"></label></div><label><span class="label">Service due odometer (km)</span><input class="input" id="carServiceKm" type="number" min="0" value="${Number(c.serviceDueKm||0)||''}"></label></div><button class="primary full" id="saveCar" style="margin-top:14px">Save car</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveCar').onclick=()=>{state.car.model=$('#carModel').value.trim()||'My car';state.car.odometer=Math.max(0,Number($('#carOdo').value||0));state.car.regoDue=$('#carRego').value||'';state.car.serviceDueDate=$('#carServiceDate').value||'';state.car.serviceDueKm=Math.max(0,Number($('#carServiceKm').value||0));save();modal.close();renderCar();};$('#cancelModal').onclick=()=>modal.close();}
 function openFuelModal(){const c=state.car;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>Log a fuel fill</h2><div class="stack"><div class="form-grid"><label><span class="label">Litres</span><input class="input" id="fuelLitres" type="number" min="0" step="0.1"></label><label><span class="label">Cost (SAR)</span><input class="input" id="fuelCost" type="number" min="0" step="1"></label></div><div class="form-grid"><label><span class="label">Odometer (km)</span><input class="input" id="fuelOdo" type="number" min="0" value="${Number(c.odometer||0)}"></label><label><span class="label">Date</span><input class="input" id="fuelDate" type="date" value="${todayKey()}"></label></div></div><button class="primary full" id="saveFuel" style="margin-top:14px">Save fuel fill</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveFuel').onclick=()=>{const litres=Number($('#fuelLitres').value||0),cost=Number($('#fuelCost').value||0),odometer=Number($('#fuelOdo').value||0);if(!(litres>0))return toast('Enter litres');if(odometer<Number(state.car.odometer||0))return toast('Odometer cannot go backwards');state.car.fuelLogs.push({id:uid('fuel'),litres,cost:Math.max(0,cost),odometer,date:$('#fuelDate').value||todayKey()});state.car.odometer=Math.max(Number(state.car.odometer||0),odometer);save();modal.close();renderCar();toast('Fuel fill saved');};$('#cancelModal').onclick=()=>modal.close();}
 function renderProjects(){setHeader('Projects');main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge purple">PROJECTS</span><h2 style="margin-top:14px">Something meaningful outside university.</h2><p class="muted" style="margin-bottom:0">Keep each project simple: what it is, where it stands and the next useful step.</p></section><div class="section-title"><h2>Your projects</h2><button id="addProjectBtn">+ Project</button></div><section class="project-list">${state.projects.map(p=>`<button class="project-card" data-project="${p.id}"><div class="row between center"><div><span class="badge ${p.status==='Completed'?'':'purple'}">${escapeHTML(p.status)}</span><h3>${escapeHTML(p.name)}</h3></div><strong>${clamp(Number(p.progress||0),0,100)}%</strong></div><div class="weekbar"><span style="width:${clamp(Number(p.progress||0),0,100)}%"></span></div><p>${escapeHTML(p.nextTask||'Set the next task.')}</p></button>`).join('')}</section>`;bindMoreBack();$('#addProjectBtn').onclick=()=>openProjectModal();$$('[data-project]').forEach(b=>b.onclick=()=>{state.settings.moreView='project:'+b.dataset.project;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});}
-function renderProjectDetail(id){const p=state.projects.find(x=>x.id===id);if(!p){state.settings.moreView='projects';return renderProjects();}setHeader(p.name);main.innerHTML=`<button class="back-link" id="projectBackBtn">‹ Projects</button><section class="card hero"><div class="row between center"><span class="badge purple">${escapeHTML(p.status)}</span><button class="secondary small-btn" id="editProjectBtn">Edit</button></div><h2 style="margin-top:14px">${escapeHTML(p.name)}</h2><p class="muted">${escapeHTML(p.description||'No description yet.')}</p><div class="project-progress"><div><b>${clamp(Number(p.progress||0),0,100)}%</b><span>progress</span></div><div class="weekbar"><span style="width:${clamp(Number(p.progress||0),0,100)}%"></span></div></div></section><div class="section-title"><h2>Next task</h2></div><section class="card flat"><h3>${escapeHTML(p.nextTask||'Choose the next useful step.')}</h3></section><div class="section-title"><h2>Plan</h2></div><section class="card flat"><p class="project-plan">${escapeHTML(p.plan||'No plan written yet. Keep it short.')}</p></section><section class="grid-3"><div class="stat"><small>Sessions</small><strong>${Number(p.sessions||0)}</strong></div><div class="stat"><small>Status</small><strong>${escapeHTML(p.status)}</strong></div><div class="stat"><small>Progress</small><strong>${clamp(Number(p.progress||0),0,100)}%</strong></div></section><button class="primary full" id="logProjectBtn">+ Log project session</button><div class="section-title"><h2>Recent activity</h2></div><section class="card flat">${(p.logs||[]).length?p.logs.slice().reverse().slice(0,8).map(l=>`<div class="project-log"><b>${escapeHTML(l.note||'Project session')}</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))}</small></div>`).join(''):'<div class="empty-state">No project sessions logged yet.</div>'}</section>`;$('#projectBackBtn').onclick=()=>{state.settings.moreView='projects';save();renderMore();};$('#editProjectBtn').onclick=()=>openProjectModal(p.id);$('#logProjectBtn').onclick=()=>openProjectSessionModal(p.id);}
+function renderProjectDetail(id){const p=state.projects.find(x=>x.id===id);if(!p){state.settings.moreView='projects';return renderProjects();}setHeader(p.name);main.innerHTML=`<button class="back-link" id="projectBackBtn">${svgIcon('chevronLeft')}<span>Projects</span></button><section class="card hero"><div class="row between center"><span class="badge purple">${escapeHTML(p.status)}</span><button class="secondary small-btn" id="editProjectBtn">Edit</button></div><h2 style="margin-top:14px">${escapeHTML(p.name)}</h2><p class="muted">${escapeHTML(p.description||'No description yet.')}</p><div class="project-progress"><div><b>${clamp(Number(p.progress||0),0,100)}%</b><span>progress</span></div><div class="weekbar"><span style="width:${clamp(Number(p.progress||0),0,100)}%"></span></div></div></section><div class="section-title"><h2>Next task</h2></div><section class="card flat"><h3>${escapeHTML(p.nextTask||'Choose the next useful step.')}</h3></section><div class="section-title"><h2>Plan</h2></div><section class="card flat"><p class="project-plan">${escapeHTML(p.plan||'No plan written yet. Keep it short.')}</p></section><section class="grid-3"><div class="stat"><small>Sessions</small><strong>${Number(p.sessions||0)}</strong></div><div class="stat"><small>Status</small><strong>${escapeHTML(p.status)}</strong></div><div class="stat"><small>Progress</small><strong>${clamp(Number(p.progress||0),0,100)}%</strong></div></section><button class="primary full" id="logProjectBtn">+ Log project session</button><div class="section-title"><h2>Recent activity</h2></div><section class="card flat">${(p.logs||[]).length?p.logs.slice().reverse().slice(0,8).map(l=>`<div class="project-log"><b>${escapeHTML(l.note||'Project session')}</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))}</small></div>`).join(''):'<div class="empty-state">No project sessions logged yet.</div>'}</section>`;$('#projectBackBtn').onclick=()=>{state.settings.moreView='projects';save();renderMore();};$('#editProjectBtn').onclick=()=>openProjectModal(p.id);$('#logProjectBtn').onclick=()=>openProjectSessionModal(p.id);}
 function openProjectModal(id=null){const p=id?state.projects.find(x=>x.id===id):null;const x=p||{name:'',status:'Active',progress:0,description:'',nextTask:'',plan:''};modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT</p><h2>${p?'Edit project':'New project'}</h2><div class="stack"><label><span class="label">Project name</span><input class="input" id="projectName" value="${escapeAttr(x.name)}"></label><label><span class="label">What is this project?</span><textarea id="projectDescription">${escapeHTML(x.description||'')}</textarea></label><label><span class="label">Next task</span><input class="input" id="projectNext" value="${escapeAttr(x.nextTask||'')}" placeholder="The next concrete thing to do"></label><label><span class="label">Plan / notes</span><textarea id="projectPlan">${escapeHTML(x.plan||'')}</textarea></label><div class="form-grid"><label><span class="label">Progress %</span><input class="input" id="projectProgress" type="number" min="0" max="100" value="${Number(x.progress||0)}"></label><label><span class="label">Status</span><select id="projectStatus"><option ${x.status==='Active'?'selected':''}>Active</option><option ${x.status==='Paused'?'selected':''}>Paused</option><option ${x.status==='Completed'?'selected':''}>Completed</option></select></label></div></div><button class="primary full" id="saveProject" style="margin-top:14px">Save project</button>${p?'<button class="danger-btn full" id="deleteProject" style="margin-top:8px">Delete project</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveProject').onclick=()=>{const name=$('#projectName').value.trim();if(!name)return toast('Add a project name');const data={name,status:$('#projectStatus').value,progress:clamp(Number($('#projectProgress').value||0),0,100),description:$('#projectDescription').value.trim(),nextTask:$('#projectNext').value.trim(),plan:$('#projectPlan').value.trim()};if(p)Object.assign(p,data);else state.projects.push({id:uid('project'),sessions:0,logs:[],...data});save();modal.close();if(p){state.settings.moreView='project:'+p.id;renderMore();}else renderProjects();};if(p)$('#deleteProject').onclick=()=>{if(state.projects.length<=1)return toast('Keep at least one project');state.projects=state.projects.filter(x=>x.id!==p.id);state.settings.moreView='projects';save();modal.close();renderMore();};$('#cancelModal').onclick=()=>modal.close();}
 function openProjectSessionModal(id){const p=state.projects.find(x=>x.id===id);if(!p)return;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT SESSION</p><h2>${escapeHTML(p.name)}</h2><label><span class="label">What did you move forward?</span><textarea id="projectSessionNote" placeholder="A short note is enough."></textarea></label><button class="primary full" id="saveProjectSession" style="margin-top:14px">Log session</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveProjectSession').onclick=()=>{p.sessions=Number(p.sessions||0)+1;if(!Array.isArray(p.logs))p.logs=[];p.logs.push({id:uid('projectlog'),date:todayKey(),note:$('#projectSessionNote').value.trim()||'Focused project session'});save();modal.close();renderProjectDetail(p.id);toast('Project session logged');};$('#cancelModal').onclick=()=>modal.close();}
 function renderPlan(){setHeader('Reset plan');main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge">RESET PLAN</span><h2 style="margin-top:14px">Simple enough to live with.</h2><p class="muted" style="margin-bottom:0">The plan stays here. The Today screen is where you actually live it.</p></section><section class="card flat">${morePlanRow('Sleep','8:00 AM wake, 11:30 PM sleep. Get out of bed immediately.')}${morePlanRow('Screen control','No TikTok during the reset. No porn/gooning in bed or after waking. Phone away at 11 PM.')}${morePlanRow('University','Attend current classes first. Urgent assessments second. Backlog third. Attempt work before AI.')}${morePlanRow('Body','Gym M/W/F, walk daily, mobility on other days, 3 meals and 90–110 g protein.')}${morePlanRow('Money','Allocate salary before spending. Whatever remains after the plan is flexible money.')}${morePlanRow('Environment','Weekly bathroom + bedsheets. Curtains open after waking. Groom at home.')}${morePlanRow('Life outside uni','Keep at least one personal project moving.')}</section><div class="section-title"><h2>Weekly review</h2></div><section class="card flat"><button class="secondary full" id="weeklyReviewBtn">Do weekly review</button></section><div class="section-title"><h2>Recent reviews</h2></div><section class="card flat">${state.weeklyReviews.length?state.weeklyReviews.slice().reverse().slice(0,5).map(r=>`<div class="project-log"><div><b>${escapeHTML(r.date)}</b><small>Next focus: ${escapeHTML(r.focus||'—')}</small></div><span class="badge">${r.rating}/10</span></div>`).join(''):'<div class="empty-state">No weekly review yet.</div>'}</section>`;bindMoreBack();$('#weeklyReviewBtn').onclick=openWeeklyReviewModal;}

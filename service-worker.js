@@ -1,6 +1,6 @@
-const CACHE = 'reset-life-v2.2.0';
+const CACHE = 'reset-life-v2.3.0';
 const ASSETS = [
-  './', './index.html', './styles.css?v=2.2.0', './app.js?v=2.2.0', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=2.3.0', './app.js?v=2.3.0', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', event => {

@@ -1,16 +1,12 @@
 Reset - Life Dashboard
-Version: 2.2.0
-Internal data schema: 4
+Version: 2.3.0
+Internal data schema: 5
 
-This update preserves v2.1 data and migrates the old single-project format into the new Projects section.
-
-Highlights:
-- Progress + achievements + insights
-- Gym strength tracking and charts
-- Car tracking
-- Multiple projects
-- Bad Day / Exam / Holiday modes
-- Week -> Today jump
-- Settings version display
-- Automatic redundant local storage
-- Money wording simplified around "Free after plan"
+Polish update:
+- iPhone double-tap zoom prevention using touch-action manipulation
+- Consistent SVG navigation/action icons
+- Larger and better-aligned touch targets
+- Scroll position preserved when checking timeline tasks
+- Day Complete and Recovery Complete one-time celebration
+- Today hero reflects completed-day state
+- Mobile spacing/alignment refinements
