@@ -1,21 +1,27 @@
-# Reset - Life Dashboard v2.1.0
+# Reset - Life Dashboard v2.2.0
 
-A private, local-first personal dashboard for daily planning, weekly routine, university catch-up, money allocation, fitness and weekly review.
+A private, local-first iPhone-friendly dashboard for daily planning, university, money, fitness, car upkeep, projects and progress.
 
 ## Main tabs
-- Today: current/next task, adaptive restart, timed daily plan.
-- Week: Monday-Sunday schedule, recurring routines and one-off tasks.
-- Uni: course progress and catch-up queue.
-- Money: monthly allocations and spending log.
-- More: life reset plan, progress, project sessions and weekly review.
+- Today: timed day plan, current/next task, safe Adaptive Restart and day modes.
+- Week: weekly routine, one-off tasks, supplied university timetable and a Today jump button.
+- Uni: simple course progress and catch-up queue without topic-level complexity.
+- Money: monthly allocations and spending. "Free after plan" is the amount left after all buckets.
+- More: 7-day / 30-day / all-time progress, achievements, insights, Gym, Car, Projects and the Reset Plan.
 
-## Adaptive Restart
-Adaptive Restart no longer removes overdue routines. It rebuilds the remainder of the current day. Important morning anchors are moved forward, fixed classes remain locked to their real times, flexible tasks shift around them, and past fixed events remain visible as missed.
+## New in v2.2
+- Progress tracking for gym sessions, 3-meal days, class attendance, good days and streaks.
+- Achievements and lightweight local insights.
+- Gym weight tracking with per-exercise progress charts.
+- Car page for odometer, rego, service and fuel fills.
+- Multiple projects with description, progress, next task, plan and session history.
+- Normal, Bad Day, Exam and Holiday modes.
+- Today button on the Week page.
+- App version shown in Settings.
+- Automatic second local snapshot using IndexedDB plus a persistent-storage request where supported.
 
-## Storage
-All personal data stays in the browser using local storage. Use Settings -> Export backup occasionally.
+## Data
+The app remains local-first. It saves the main state in localStorage and automatically keeps a second copy in IndexedDB. No account, server or subscription is required. Clearing website data, deleting the web app, or losing the phone can still remove local data, so JSON export remains available as an extra manual backup.
 
 ## iPhone
 Host the folder on GitHub Pages, open it in Safari, then Share -> Add to Home Screen.
-
-See UPDATE_GITHUB.txt for update instructions.

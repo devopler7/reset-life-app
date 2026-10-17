@@ -1,20 +1,35 @@
-RESET LIFE DASHBOARD v2.1.0 TEST REPORT
+RESET LIFE DASHBOARD v2.2.0 TEST REPORT
 
-Automated checks passed:
-1. Adaptive restart preserves and re-times morning essentials.
-2. 390 px mobile layout has no page-level horizontal overflow.
-3. Supplied university timetable dates and times match the configured schedule.
-4. Default schedule has no overlaps from 12 Oct through 15 Nov 2026.
-5. Restart immediately before a class keeps the class fixed and resumes essentials after it.
-6. Restart after a fixed class keeps the class visible and marks it missed.
-7. One-off tasks save correctly.
-8. University catch-up tasks save correctly.
-9. Money expenses save correctly.
-10. Weekly reviews save correctly.
-11. 320 px mobile layout has no page-level horizontal overflow.
-12. Recurring editor correctly stores fixed-time and date-range fields.
-13. v2 migration restores old skipped tasks and injects the supplied timetable.
-14. PWA manifest, cache version and required assets are valid.
+Static checks:
+- JavaScript syntax: PASS
+- Manifest JSON: PASS
+- Required PWA assets: PASS
+- Service worker cache version/assets: PASS
+- University timetable configuration retained: PASS
 
-JavaScript syntax check: PASS
-Browser page errors during tested flows: NONE
+Automated browser checks at 390 px and 320 px:
+1. Today page loads with no page errors.
+2. No page-level horizontal overflow at 390 px.
+3. Settings shows v2.2.0.
+4. Bad Day mode activates and parks optional tasks without deleting them.
+5. Week page loads and Today jump returns to the real current week/day.
+6. Money page loads with Free-after-plan wording.
+7. More page exposes 7-day / 30-day / all-time statistics.
+8. Achievements render.
+9. Gym page loads.
+10. Gym log saves in memory and a chart renders after two logs.
+11. Car page loads with the saved car profile.
+12. Fuel log saves in memory.
+13. Projects page loads and supports multiple projects.
+14. Project detail page opens and a project session can be logged.
+15. No page-level horizontal overflow at 320 px.
+16. Browser page errors during tested flows: NONE.
+
+Regression checks:
+- v2.1 single-project data migrates to Projects: PASS
+- Gym and Car defaults are added during v2.1 migration: PASS
+- Earliest existing record is used as the all-time tracking start during migration: PASS
+- Adaptive Restart at 10:00 moves Wake -> Grooming -> First meal forward in order rather than removing them: PASS
+- Fixed university timetable remains present and locked from adaptive rescheduling: PASS
+
+Note: no software can be guaranteed to have zero bugs on every iOS/Safari version, but the primary flows above were exercised successfully.

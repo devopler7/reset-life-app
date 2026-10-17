@@ -1,12 +1,16 @@
-RESET LIFE DASHBOARD
-Version 2.1.0 FINAL CANDIDATE
+Reset - Life Dashboard
+Version: 2.2.0
+Internal data schema: 4
 
-- Adaptive restart reflows missed routines instead of deleting them
-- Fixed university classes stay fixed
-- University timetable preloaded through 15 Nov 2026
-- Fluid Mechanics workshop ends after 29 Oct per supplied timetable
-- Date-limited recurring schedule support
-- Overdue essentials are surfaced as DO THIS NOW
-- Fixed missed events remain visible
-- Migration keeps existing local data
-- Bug and conflict testing completed
+This update preserves v2.1 data and migrates the old single-project format into the new Projects section.
+
+Highlights:
+- Progress + achievements + insights
+- Gym strength tracking and charts
+- Car tracking
+- Multiple projects
+- Bad Day / Exam / Holiday modes
+- Week -> Today jump
+- Settings version display
+- Automatic redundant local storage
+- Money wording simplified around "Free after plan"
