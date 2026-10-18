@@ -1,6 +1,6 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 7;
-const APP_DISPLAY_VERSION = '2.5.0';
+const APP_VERSION = 8;
+const APP_DISPLAY_VERSION = '2.6.0';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -15,7 +15,13 @@ const ICON_PATHS = {
   chevronRight:'<path d="M9 6l6 6-6 6"/>',
   close:'<path d="M6 6l12 12M18 6L6 18"/>',
   check:'<path d="M5 12.5l4.2 4.2L19 7"/>',
-  more:'<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>'
+  more:'<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
+  dumbbell:'<path d="M4 9v6M7 7v10M17 7v10M20 9v6M7 12h10"/>',
+  heart:'<path d="M20.8 5.9c-2.1-2.1-5.4-1.9-7.3.3L12 7.9l-1.5-1.7C8.6 4 5.3 3.8 3.2 5.9c-2.3 2.3-2.3 6 0 8.3L12 22l8.8-7.8c2.3-2.3 2.3-6 0-8.3z"/>',
+  car:'<path d="M4 15l1.5-5h13L20 15M5 15h14v4H5zM7 19v2M17 19v2M7.5 15h.01M16.5 15h.01M7 10l1.4-4h7.2l1.4 4"/>',
+  folder:'<path d="M3.5 7.5h6l2 2h9v9.5h-17zM3.5 7.5V5h6l2 2"/>',
+  chart:'<path d="M5 19V11M10 19V6M15 19v-9M20 19V4"/>',
+  wallet:'<path d="M4 7h14a3 3 0 0 1 3 3v8H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h13M16 12h5v4h-5a2 2 0 0 1 0-4z"/>'
 };
 function svgIcon(name, cls='ui-icon') { return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name]||''}</svg>`; }
 
@@ -181,10 +187,11 @@ function defaultState() {
         {id:'buffer', name:'Buffer', target:300}
       ],
       transactions:[],
-      planHistory:{}
+      planHistory:{},
+      bucketPlanHistory:{}
     },
     projects:[{
-      id:'project_life_reset', name:'Life Reset App', status:'Active', progress:0,
+      id:'project_life_reset', name:'Life Reset App', status:'Active', archived:false, progress:0,
       description:'Build and use a personal dashboard that helps keep the rest of life on track.',
       nextTask:'Use the app consistently and improve only what is genuinely useful.',
       plan:'Keep it simple, reliable and useful on iPhone.', sessions:0, logs:[]
@@ -193,7 +200,7 @@ function defaultState() {
     health:{weightLogs:[]},
     car:{model:'2007 Honda Accord V6 Luxury',odometer:180000,regoDue:'',serviceDueDate:'',serviceDueKm:0,fuelLogs:[],maintenanceLogs:[]},
     weeklyReviews:[],
-    settings:{activeTab:'today', selectedWeekDate:todayKey(), statsRange:'30', moreView:'home', mode:'normal', modeSetDate:todayKey(), selectedExerciseId:'chest_press'}
+    settings:{activeTab:'today', selectedWeekDate:todayKey(), statsRange:'30', moreView:'home', mode:'normal', modeSetDate:todayKey(), selectedExerciseId:'chest_press', moneyHistoryMonth:monthKey(), moneyHistoryBucket:'all'}
   };
 }
 
@@ -229,7 +236,8 @@ function migrateState(parsed) {
     ...oldMoney,
     buckets: oldBuckets.map(b => ({id:b.id || uid('bucket'), name:b.name || 'Bucket', target:Number(b.target||0)})),
     transactions: Array.isArray(oldMoney.transactions) ? oldMoney.transactions : [],
-    planHistory: oldMoney.planHistory && typeof oldMoney.planHistory==='object' ? {...oldMoney.planHistory} : {}
+    planHistory: oldMoney.planHistory && typeof oldMoney.planHistory==='object' ? {...oldMoney.planHistory} : {},
+    bucketPlanHistory: oldMoney.bucketPlanHistory && typeof oldMoney.bucketPlanHistory==='object' ? {...oldMoney.bucketPlanHistory} : {}
   };
   const migratedPlanTotal=next.money.buckets.reduce((a,b)=>a+Number(b.target||0),0);
   if(next.money.planHistory[monthKey()]==null) next.money.planHistory[monthKey()]=migratedPlanTotal;
@@ -240,11 +248,14 @@ function migrateState(parsed) {
   }
 
   if(Array.isArray(parsed.projects)) {
-    next.projects=parsed.projects.map(pr=>({id:pr.id||uid('project'),name:pr.name||'Project',status:pr.status||'Active',progress:clamp(Number(pr.progress||0),0,100),description:pr.description||'',nextTask:pr.nextTask||'',plan:pr.plan||'',sessions:Number(pr.sessions||0),logs:Array.isArray(pr.logs)?pr.logs:[]}));
+    next.projects=parsed.projects.map(pr=>({id:pr.id||uid('project'),name:pr.name||'Project',status:pr.status||'Active',archived:!!pr.archived,progress:clamp(Number(pr.progress||0),0,100),description:pr.description||'',nextTask:pr.nextTask||'',plan:pr.plan||'',sessions:Number(pr.sessions||0),logs:Array.isArray(pr.logs)?pr.logs:[]}));
   } else if(parsed.project) {
-    next.projects=[{id:'project_life_reset',name:parsed.project.name||'Life Reset App',status:'Active',progress:0,description:parsed.project.note||'',nextTask:'Choose the next useful step.',plan:'',sessions:Number(parsed.project.sessions||0),logs:[]}];
+    next.projects=[{id:'project_life_reset',name:parsed.project.name||'Life Reset App',status:'Active',archived:false,progress:0,description:parsed.project.note||'',nextTask:'Choose the next useful step.',plan:'',sessions:Number(parsed.project.sessions||0),logs:[]}];
   } else next.projects=base.projects;
   if(!next.projects.length) next.projects=base.projects;
+  if(next.settings.moreView==='plan') next.settings.moreView='home';
+  if(!next.settings.moneyHistoryMonth) next.settings.moneyHistoryMonth=monthKey();
+  if(!next.settings.moneyHistoryBucket) next.settings.moneyHistoryBucket='all';
 
   const oldGym=parsed.gym||{};
   next.gym={
@@ -263,6 +274,7 @@ function migrateState(parsed) {
     if(!r.itemStatus) r.itemStatus={};
     Object.keys(r.itemStatus).forEach(k=>{ if(r.itemStatus[k]==='skipped') delete r.itemStatus[k]; });
     if(!r.timeOverrides) r.timeOverrides={};
+    Object.values(r.timeOverrides).forEach(ov=>{if(ov && typeof ov==='object' && !('manual' in ov) && !('adaptive' in ov)) ov.manual=true;});
     if(!Number.isFinite(r.resetCount)) r.resetCount=0;
     if(!r.mode) r.mode='normal';
     if(!('finishCelebrated' in r)) r.finishCelebrated='';
@@ -275,6 +287,20 @@ let appInitialized=false;
 let durableTimer=null;
 let durableDbPromise=null;
 let moreHomeScrollY=0;
+let weekEditContext=null;
+let moneySelectMode=false;
+let moneySelectedIds=new Set();
+const historySelectMode={weight:false,gym:false,workout:false,fuel:false,maintenance:false,project:false};
+const historySelected={weight:new Set(),gym:new Set(),workout:new Set(),fuel:new Set(),maintenance:new Set(),project:new Set()};
+function historySelectToggle(type,renderer){const turnOn=!historySelectMode[type];Object.keys(historySelectMode).forEach(k=>{historySelectMode[k]=false;historySelected[k].clear();});historySelectMode[type]=turnOn;renderer();}
+function historySelectCheckbox(type,id){return `<input class="history-select-check" type="checkbox" data-history-select="${type}" data-history-id="${escapeAttr(id)}" ${historySelected[type].has(id)?'checked':''} aria-label="Select item">`;}
+function historySelectToolbar(type){return historySelectMode[type]?`<div class="selection-toolbar compact-selection"><span><b data-history-count="${type}">${historySelected[type].size}</b> selected</span><button class="danger-btn small-btn" data-history-delete-selected="${type}" ${historySelected[type].size?'':'disabled'}>Delete selected</button></div>`:'';}
+function bindHistorySelection(type,renderer,deleteFn){
+  $$(`[data-history-select="${type}"]`).forEach(cb=>cb.onchange=()=>{if(cb.checked)historySelected[type].add(cb.dataset.historyId);else historySelected[type].delete(cb.dataset.historyId);const c=$(`[data-history-count="${type}"]`);if(c)c.textContent=historySelected[type].size;const d=$(`[data-history-delete-selected="${type}"]`);if(d)d.disabled=!historySelected[type].size;});
+  const del=$(`[data-history-delete-selected="${type}"]`);if(del)del.onclick=()=>deleteFn([...historySelected[type]]);
+}
+function restoreDeletedObjects(array,removed){removed.slice().sort((a,b)=>a.index-b.index).forEach(x=>array.splice(Math.min(x.index,array.length),0,x.item));}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(APP_KEY);
@@ -320,8 +346,20 @@ async function durableClear() {
   try { const db=await openDurableDB(); if(!db) return; const tx=db.transaction('snapshots','readwrite'); tx.objectStore('snapshots').clear(); } catch(e){}
 }
 function save() {
+  if(!state.meta) state.meta={};
+  state.meta.lastSavedAt=new Date().toISOString();
   try { localStorage.setItem(APP_KEY, JSON.stringify(state)); } catch(e) {}
   if(appInitialized){clearTimeout(durableTimer);durableTimer=setTimeout(()=>durableWrite(),350);}
+}
+async function updateBackupConfidenceLabel(){
+  const el=$('#backupConfidenceStatus'); if(!el)return;
+  try{
+    const snap=await durableRead();
+    const when=snap?.updatedAt ? new Date(snap.updatedAt) : (state.meta?.lastSavedAt?new Date(state.meta.lastSavedAt):null);
+    if(!when || Number.isNaN(when.getTime())){el.textContent='Ready';return;}
+    const mins=Math.max(0,Math.round((Date.now()-when.getTime())/60000));
+    el.textContent=mins<1?'Saved now':mins===1?'1 min ago':mins<60?`${mins} min ago`:when.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+  }catch(e){el.textContent='Local';}
 }
 async function requestPersistentStorage() {
   try {
@@ -575,11 +613,7 @@ function renderToday(preserveScroll=false) {
       <p class="muted">Rebuild only the remaining useful part of today. Essential morning tasks move forward, fixed classes stay fixed, and nothing is deleted.</p>
       <button class="primary full" id="restartBtn">Rebuild today from now</button>
     </section>
-
-    <section class="card flat">
-      <div class="row between center"><div><p class="eyebrow">NON-NEGOTIABLE</p><h3 style="margin:0">One rule</h3></div><span class="badge">KEEP MOVING</span></div>
-      <div class="rule"><strong>An unfinished task never blocks the next task.</strong><span class="muted tiny">If something is missed, continue with the schedule. The day is not cancelled.</span></div>
-    </section>`;
+`;
   bindTimeline(date);
   $('#addTodayBtn').onclick=()=>openOneOffTaskModal(null,{date:key,start:suggestTimeForNewTask(date)});
   $('#restartBtn').onclick=openRestartModal;
@@ -778,21 +812,16 @@ function renderUniversity() {
   const urgent=openTasks.filter(t=>t.priority==='Urgent').length;
   const sorted=[...state.uniTasks].sort((a,b)=>Number(a.done)-Number(b.done) || priorityWeight(a.priority)-priorityWeight(b.priority) || String(a.dueDate||'9999').localeCompare(String(b.dueDate||'9999')));
   main.innerHTML=`
-    <section class="card hero">
-      <span class="badge blue">CURRENT WEEK FIRST</span>
-      <h2 style="margin-top:14px">Catch up without disappearing.</h2>
-      <p class="muted" style="margin-bottom:0">Attend current classes. Then handle urgent assessment content. Backlog comes after that.</p>
-    </section>
-    <section class="grid-3">
+    <section class="grid-3 uni-top-stats">
       <div class="stat"><small>Courses</small><strong>${state.courses.length}</strong></div>
       <div class="stat"><small>Open tasks</small><strong>${openTasks.length}</strong></div>
       <div class="stat"><small>Urgent</small><strong>${urgent}</strong></div>
     </section>
     <div class="section-title"><h2>Courses</h2><button id="addCourseBtn">+ Add</button></div>
-    <section>${state.courses.map(courseHTML).join('') || '<div class="card flat muted">Add your courses and current progress.</div>'}</section>
+    <section>${state.courses.map(courseHTML).join('') || '<div class="card flat empty-state">No courses yet. Add only what you want to track.</div>'}</section>
     <div class="section-title"><h2>Catch-up queue</h2><button id="addUniTaskBtn">+ Task</button></div>
     <section class="card flat">
-      ${sorted.length?sorted.map(uniTaskHTML).join(''):'<div class="empty-state">No university tasks yet. Add the things you need to catch up on.</div>'}
+      ${sorted.length?sorted.map(uniTaskHTML).join(''):'<div class="empty-state">Nothing in the catch-up queue. Current classes can stay your focus.</div>'}
     </section>`;
   $('#addCourseBtn').onclick=()=>openCourseModal();
   $('#addUniTaskBtn').onclick=()=>openUniTaskModal();
@@ -820,48 +849,67 @@ function renderMoney() {
   const totalSpent=transactionsForMonth(mk).reduce((a,t)=>a+Number(t.amount||0),0);
   const remaining=totalTarget-totalSpent;
   const spendPct=totalTarget>0?Math.round(totalSpent/totalTarget*100):0;
-  const freeAfterPlan=Number(state.money.income||0)-totalTarget;
   const daysPay=daysUntilPayday();
-  const latest=[...state.money.transactions].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,10);
+  const historyMonth=state.settings.moneyHistoryMonth||mk;
+  let historyBucket=state.settings.moneyHistoryBucket||'all';
+  if(historyBucket!=='all' && !state.money.buckets.some(b=>b.id===historyBucket)){historyBucket='all';state.settings.moneyHistoryBucket='all';}
+  const filtered=moneyFilteredTransactions(historyMonth,historyBucket);
+  const filteredTotal=filtered.reduce((a,t)=>a+Number(t.amount||0),0);
+  const months=moneyAvailableMonths();
   main.innerHTML=`
-    <section class="card hero">
-      <span class="badge blue">MONTHLY PLAN</span>
-      <div class="money-hero-value ${freeAfterPlan<0?'danger-text':''}">${fmtMoney(freeAfterPlan)}</div>
-      <p class="muted" style="margin-bottom:12px">${freeAfterPlan>=0?'Free after every monthly allocation. This is the flexible amount you have not assigned anywhere else.':'Your allocations are higher than your monthly income. Reduce one or more buckets.'}</p>
-      <div class="row wrap"><span class="badge">${daysPay===0?'PAYDAY TODAY':`${daysPay} day${daysPay===1?'':'s'} to payday`}</span><span class="badge blue">Cash snapshot ${fmtMoney(state.money.currentCash)}</span></div>
+    <section class="card hero money-payday-hero">
+      <span class="badge blue">NEXT SALARY</span>
+      <div class="money-payday-number">${daysPay===0?'TODAY':daysPay}</div>
+      <p class="muted">${daysPay===0?'Salary day is today.':`day${daysPay===1?'':'s'} until your next salary`}</p>
     </section>
     <section class="money-remaining-card ${remaining<0?'over':''}">
       <div><small>${remaining>=0?'LEFT THIS MONTH':'OVER TOTAL ALLOCATION'}</small><strong>${fmtMoney(Math.abs(remaining))}</strong><span>${remaining>=0?`available before you reach the ${fmtMoney(totalTarget)} total allocation`:`above the ${fmtMoney(totalTarget)} total allocation`}</span></div>
       <div class="money-remaining-side"><b>${spendPct}%</b><small>${fmtMoney(totalSpent)} logged</small></div>
       <div class="money-total-track"><i class="${remaining<0?'over':''}" style="width:${Math.min(100,Math.max(0,spendPct))}%"></i></div>
     </section>
-    <section class="grid-3">
+    <section class="grid-3 money-core-stats">
       <div class="stat"><small>Income</small><strong>${fmtMoney(state.money.income)}</strong></div>
       <div class="stat"><small>Allocated</small><strong>${fmtMoney(totalTarget)}</strong></div>
-      <div class="stat"><small>Logged spent</small><strong>${fmtMoney(totalSpent)}</strong></div>
+      <div class="stat"><small>Spent</small><strong>${fmtMoney(totalSpent)}</strong></div>
     </section>
 
     <div class="section-title"><h2>Allocations</h2><button id="editMoneyBtn">Edit</button></div>
     <section class="card flat">${state.money.buckets.map(b=>budgetRowHTML(b,mk)).join('')}</section>
     <button class="primary full" id="addExpenseBtn">+ Log spending</button>
 
-    <div class="section-title"><h2>Monthly trend</h2><span class="muted tiny">last 6 months</span></div>
-    ${moneyTrendHTML()}
+    <div class="section-title"><h2>Spending trend</h2><span class="muted tiny">last 6 months</span></div>
+    ${moneyTrendHTML(historyBucket)}
 
-    <div class="section-title"><h2>Recent spending</h2><span class="muted tiny">${fmtMoney(totalSpent)} this month</span></div>
-    <section class="card flat">${latest.length?latest.map(transactionHTML).join(''):'<div class="empty-state">No spending logged yet. Start with food, fuel and other variable costs.</div>'}</section>
+    <div class="section-title"><h2>Spending history</h2><button class="secondary small-btn" id="selectTxBtn">${moneySelectMode?'Done':'Select'}</button></div>
+    <section class="card flat history-filter-card">
+      <div class="history-filters">
+        <label><span class="label">Month</span><select id="moneyHistoryMonth"><option value="all" ${historyMonth==='all'?'selected':''}>All months</option>${months.map(x=>`<option value="${x}" ${historyMonth===x?'selected':''}>${escapeHTML(moneyMonthLongLabel(x))}</option>`).join('')}</select></label>
+        <label><span class="label">Allocation</span><select id="moneyHistoryBucket"><option value="all">All allocations</option>${state.money.buckets.map(b=>`<option value="${escapeAttr(b.id)}" ${historyBucket===b.id?'selected':''}>${escapeHTML(b.name)}</option>`).join('')}</select></label>
+      </div>
+      <div class="history-summary"><b>${fmtMoney(filteredTotal)}</b><span>${filtered.length} entr${filtered.length===1?'y':'ies'} shown</span></div>
+      ${historyMonth!=='all'?moneyMonthSummaryHTML(historyMonth):''}
+    </section>
+    ${moneySelectMode?`<section class="selection-toolbar"><span><b id="selectedTxCount">${moneySelectedIds.size}</b> selected</span><button class="danger-btn small-btn" id="deleteSelectedTx" ${moneySelectedIds.size?'':'disabled'}>Delete selected</button></section>`:''}
+    <section class="card flat money-history-list">${filtered.length?moneyHistoryHTML(filtered):'<div class="empty-state">No spending matches these filters.</div>'}</section>`;
 
-    <section class="card restart"><h3>Money rule</h3><p class="muted" style="margin-bottom:0">Allocate the important money first. Whatever remains after the plan is your flexible money. The monthly-left card shows how much of your allocations you have not used yet.</p></section>`;
   $('#editMoneyBtn').onclick=openMoneyModal;
   $('#addExpenseBtn').onclick=()=>openExpenseModal();
+  $('#moneyHistoryMonth').onchange=e=>{state.settings.moneyHistoryMonth=e.target.value;moneySelectedIds.clear();save();renderMoney();};
+  $('#moneyHistoryBucket').onchange=e=>{state.settings.moneyHistoryBucket=e.target.value;moneySelectedIds.clear();save();renderMoney();};
+  $('#selectTxBtn').onclick=()=>{moneySelectMode=!moneySelectMode;moneySelectedIds.clear();renderMoney();};
   $$('[data-edit-tx]').forEach(b=>b.onclick=()=>openExpenseModal(b.dataset.editTx));
-  $$('[data-del-tx]').forEach(b=>b.onclick=()=>{state.money.transactions=state.money.transactions.filter(t=>t.id!==b.dataset.delTx);save();renderMoney();toast('Spending entry deleted');});
+  $$('[data-del-tx]').forEach(b=>b.onclick=()=>deleteMoneyTransactionWithUndo(b.dataset.delTx));
+  $$('[data-select-tx]').forEach(cb=>cb.onchange=()=>{if(cb.checked)moneySelectedIds.add(cb.dataset.selectTx);else moneySelectedIds.delete(cb.dataset.selectTx);const c=$('#selectedTxCount');if(c)c.textContent=moneySelectedIds.size;const d=$('#deleteSelectedTx');if(d)d.disabled=!moneySelectedIds.size;});
+  if($('#deleteSelectedTx')) $('#deleteSelectedTx').onclick=deleteSelectedMoneyTransactions;
 }
 function moneyPlanTotal(){return state.money.buckets.reduce((a,b)=>a+Number(b.target||0),0);}
 function captureCurrentMoneyPlan(){
   if(!state.money.planHistory || typeof state.money.planHistory!=='object') state.money.planHistory={};
+  if(!state.money.bucketPlanHistory || typeof state.money.bucketPlanHistory!=='object') state.money.bucketPlanHistory={};
   const mk=monthKey(); const total=moneyPlanTotal();
-  if(Number(state.money.planHistory[mk])!==total){state.money.planHistory[mk]=total;save();}
+  const snap=state.money.buckets.map(b=>({id:b.id,name:b.name,target:Number(b.target||0)}));
+  const before=JSON.stringify(state.money.bucketPlanHistory[mk]||[]);
+  if(Number(state.money.planHistory[mk])!==total || before!==JSON.stringify(snap)){state.money.planHistory[mk]=total;state.money.bucketPlanHistory[mk]=snap;save();}
 }
 function recentMonthKeys(count=6){
   const out=[]; const now=new Date();
@@ -869,21 +917,51 @@ function recentMonthKeys(count=6){
   return out;
 }
 function moneyMonthLabel(mk){const [y,m]=mk.split('-').map(Number);return new Date(y,m-1,1,12).toLocaleDateString(undefined,{month:'short'});}
-function moneyTrendHTML(){
+function moneyMonthLongLabel(mk){const [y,m]=mk.split('-').map(Number);return new Date(y,m-1,1,12).toLocaleDateString(undefined,{month:'long',year:'numeric'});}
+function moneyAvailableMonths(){
+  const set=new Set([monthKey(),...state.money.transactions.map(t=>String(t.date||'').slice(0,7)).filter(x=>/^\d{4}-\d{2}$/.test(x)),...Object.keys(state.money.planHistory||{})]);
+  return [...set].sort().reverse();
+}
+function moneyBucketPlanForMonth(mk,bucketId){
+  const snap=state.money.bucketPlanHistory?.[mk];
+  if(Array.isArray(snap)){const b=snap.find(x=>x.id===bucketId);if(b)return Number(b.target||0);}
+  return mk===monthKey()?Number(state.money.buckets.find(x=>x.id===bucketId)?.target||0):0;
+}
+function moneyTrendHTML(bucketId='all'){
   const keys=recentMonthKeys(6);
-  const rows=keys.map(k=>({key:k,label:moneyMonthLabel(k),spent:transactionsForMonth(k).reduce((a,t)=>a+Number(t.amount||0),0),plan:Number(state.money.planHistory?.[k]||0)}));
+  const rows=keys.map(k=>{const tx=transactionsForMonth(k).filter(t=>bucketId==='all'||t.bucketId===bucketId);const spent=tx.reduce((a,t)=>a+Number(t.amount||0),0);const plan=bucketId==='all'?Number(state.money.planHistory?.[k]||0):moneyBucketPlanForMonth(k,bucketId);return {key:k,label:moneyMonthLabel(k),spent,plan};});
   const max=Math.max(1,...rows.map(r=>Math.max(r.spent,r.plan||0)));
-  return `<section class="card flat money-trend-card"><div class="money-trend-legend"><span><i class="spent-dot"></i>Logged spending</span><span>Current plan ${fmtMoney(moneyPlanTotal())}</span></div>${rows.map(r=>`<div class="money-trend-row"><span>${escapeHTML(r.label)}</span><div class="money-trend-track"><i style="width:${Math.round(r.spent/max*100)}%"></i>${r.plan?`<em style="left:${Math.min(100,Math.round(r.plan/max*100))}%" title="Plan ${fmtMoney(r.plan)}"></em>`:''}</div><b>${r.spent?fmtMoney(r.spent):'—'}</b></div>`).join('')}<p class="muted tiny money-trend-note">Bars use the same scale so month-to-month spending is easy to compare. The small marker shows a saved monthly allocation where one exists.</p></section>`;
+  const label=bucketId==='all'?'All spending':(state.money.buckets.find(b=>b.id===bucketId)?.name||'Selected allocation');
+  return `<section class="card flat money-trend-card"><div class="money-trend-legend"><span><i class="spent-dot"></i>${escapeHTML(label)}</span><span>same scale across months</span></div>${rows.map(r=>`<div class="money-trend-row"><span>${escapeHTML(r.label)}</span><div class="money-trend-track"><i style="width:${Math.round(r.spent/max*100)}%"></i>${r.plan?`<em style="left:${Math.min(100,Math.round(r.plan/max*100))}%" title="Plan ${fmtMoney(r.plan)}"></em>`:''}</div><b>${r.spent?fmtMoney(r.spent):'—'}</b></div>`).join('')}</section>`;
 }
 function transactionsForMonth(mk){return state.money.transactions.filter(t=>String(t.date||'').startsWith(mk));}
+function moneyFilteredTransactions(month,bucket){
+  return [...state.money.transactions].filter(t=>(month==='all'||String(t.date||'').startsWith(month))&&(bucket==='all'||t.bucketId===bucket)).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||Number(b.createdAt||0)-Number(a.createdAt||0));
+}
 function spentForBucket(bucketId,mk=monthKey()){return transactionsForMonth(mk).filter(t=>t.bucketId===bucketId).reduce((a,t)=>a+Number(t.amount||0),0);}
 function budgetRowHTML(b,mk) {
   const spent=spentForBucket(b.id,mk); const target=Number(b.target||0); const pct=target?clamp(Math.round(spent/target*100),0,140):0; const over=spent>target && target>0;
   return `<div class="budget-row"><div class="budget-top"><div><b>${escapeHTML(b.name)}</b><small>${fmtMoney(spent)} spent · ${fmtMoney(Math.max(0,target-spent))} left</small></div><div class="budget-amount"><b>${fmtMoney(target)}</b><small>${target?Math.round(spent/target*100):0}%</small></div></div><div class="budget-track"><div class="budget-fill ${over?'over':''}" style="width:${Math.min(100,pct)}%"></div></div></div>`;
 }
-function transactionHTML(t) {
+function transactionHTML(t,{selectable=false}={}) {
   const b=state.money.buckets.find(x=>x.id===t.bucketId);
-  return `<div class="transaction"><div><b>${escapeHTML(t.note||b?.name||'Spending')}</b><small>${escapeHTML(b?.name||'Other')} · ${escapeHTML(formatDateShort(parseDateKey(t.date)))}</small></div><div class="transaction-amount"><b>−${fmtMoney(t.amount)}</b><div class="row"><button class="text-button tiny" data-edit-tx="${t.id}">Edit</button><button class="text-button tiny danger-text" data-del-tx="${t.id}">Delete</button></div></div></div>`;
+  return `<div class="transaction ${selectable?'selectable-history':''}">${selectable?`<input class="check history-check" type="checkbox" data-select-tx="${escapeAttr(t.id)}" ${moneySelectedIds.has(t.id)?'checked':''} aria-label="Select spending entry">`:''}<div><b>${escapeHTML(t.note||b?.name||'Spending')}</b><small>${escapeHTML(b?.name||'Other')} · ${escapeHTML(formatDateShort(parseDateKey(t.date)))}</small></div><div class="transaction-amount"><b>−${fmtMoney(t.amount)}</b>${selectable?'':`<div class="row"><button class="text-button tiny" data-edit-tx="${t.id}">Edit</button><button class="text-button tiny danger-text" data-del-tx="${t.id}">Delete</button></div>`}</div></div>`;
+}
+function moneyHistoryHTML(list){
+  let last=''; let out='';
+  list.forEach(t=>{if(t.date!==last){last=t.date;out+=`<div class="history-date"><span>${escapeHTML(parseDateKey(t.date).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric'}))}</span></div>`;}out+=transactionHTML(t,{selectable:moneySelectMode});});
+  return out;
+}
+function moneyMonthSummaryHTML(mk){
+  const spent=transactionsForMonth(mk).reduce((a,t)=>a+Number(t.amount||0),0); const plan=Number(state.money.planHistory?.[mk]||0); const diff=plan-spent;
+  const by=state.money.buckets.map(b=>({name:b.name,spent:spentForBucket(b.id,mk)})).sort((a,b)=>b.spent-a.spent); const top=by.find(x=>x.spent>0);
+  return `<div class="month-closeout"><div><small>${escapeHTML(moneyMonthLongLabel(mk))}</small><b>${fmtMoney(spent)} spent</b></div><div><small>${plan?'vs saved allocation':'allocation'}</small><b>${plan?(diff>=0?`${fmtMoney(diff)} left`:`${fmtMoney(Math.abs(diff))} over`):'—'}</b></div><div><small>top category</small><b>${top?`${escapeHTML(top.name)} · ${fmtMoney(top.spent)}`:'—'}</b></div></div>`;
+}
+function deleteMoneyTransactionWithUndo(id){
+  const idx=state.money.transactions.findIndex(t=>t.id===id); if(idx<0)return; const removed=state.money.transactions[idx];state.money.transactions.splice(idx,1);save();renderMoney();toast('Spending entry deleted','Undo',()=>{state.money.transactions.splice(Math.min(idx,state.money.transactions.length),0,removed);save();renderMoney();});
+}
+function deleteSelectedMoneyTransactions(){
+  if(!moneySelectedIds.size)return; const removed=state.money.transactions.map((t,i)=>({t,i})).filter(x=>moneySelectedIds.has(x.t.id)); state.money.transactions=state.money.transactions.filter(t=>!moneySelectedIds.has(t.id));moneySelectedIds.clear();moneySelectMode=false;save();renderMoney();toast(`${removed.length} entries deleted`,'Undo',()=>{removed.sort((a,b)=>a.i-b.i).forEach(x=>state.money.transactions.splice(Math.min(x.i,state.money.transactions.length),0,x.t));save();renderMoney();});
 }
 function daysUntilPayday() {
   const today=new Date(); today.setHours(12,0,0,0);
@@ -894,7 +972,6 @@ function daysUntilPayday() {
   if(pay<today){m+=1;if(m>11){m=0;y+=1;}const last=new Date(y,m+1,0).getDate();pay=new Date(y,m,Math.min(day,last),12,0,0,0);}
   return Math.round((pay-today)/86400000);
 }
-
 function appStartDate(){
   const raw=String(state.meta?.createdAt||todayKey()).slice(0,10);
   try{return parseDateKey(raw);}catch(e){return new Date();}
@@ -958,34 +1035,45 @@ function previousWeekMetrics(){const thisStart=startOfWeek(new Date());const sta
 function previous30Metrics(){const end=addDays(new Date(),-30);end.setHours(12,0,0,0);return metricsForDates(datesBetween(addDays(end,-29),end,31));}
 function signedDelta(current,previous,suffix=''){const d=current-previous;return `${d>0?'+':''}${d}${suffix}`;}
 function totalProjectSessions(){return (state.projects||[]).reduce((a,p)=>a+Number(p.sessions||0),0);}
+function perfectClassDaysCount(){
+  return dateRange('all').filter(d=>{const items=itemsForDate(d,{ignoreOverrides:true}).filter(i=>i.isClass);if(!items.length)return false;const key=todayKey(d);const ended=key<todayKey()||items.every(i=>minutesFromTime(i.end||i.start)<currentMinutes());return ended&&items.every(i=>getStatus(i,key)==='done');}).length;
+}
+function maxStrengthGainPct(){
+  let best=0;
+  (state.gym.exercises||[]).forEach(ex=>{const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===ex.id).sort((a,b)=>String(a.date).localeCompare(String(b.date))||Number(a.createdAt||0)-Number(b.createdAt||0));if(logs.length>=2){const first=Number(logs[0].weight||0), max=Math.max(...logs.map(x=>Number(x.weight||0)));if(first>0)best=Math.max(best,Math.round((max-first)/first*100));}});
+  return best;
+}
 function achievementData(){
-  const all=rangeMetrics('all'), gymAll=gymSessionDates().size, meals=all.mealDays, projects=totalProjectSessions(), resets=Object.values(state.records).reduce((a,r)=>a+Number(r.resetCount||0),0);
+  const all=rangeMetrics('all'), gymAll=gymSessionDates().size, meals=all.mealDays, projects=totalProjectSessions(), perfectClasses=perfectClassDaysCount(), strength=maxStrengthGainPct();
   const specs=[
-    ['first_day','First proper day','Finish at least 70% of one day.',all.goodDays>=1,Math.min(1,all.goodDays),1],
-    ['gym_1','Back in the gym','Complete your first gym session.',gymAll>=1,Math.min(1,gymAll),1],
-    ['gym_10','Building momentum','Complete 10 gym sessions.',gymAll>=10,Math.min(10,gymAll),10],
-    ['meals_7','Food rhythm','Hit all 3 meals on 7 different days.',meals>=7,Math.min(7,meals),7],
-    ['class_5','Showed up','Complete 5 perfect class days in a row.',classDayStreak()>=5,Math.min(5,classDayStreak()),5],
-    ['project_5','Builder','Log 5 focused project sessions.',projects>=5,Math.min(5,projects),5],
-    ['restart_3','Recovered, not ruined','Use Adaptive Restart 3 times and keep going.',resets>=3,Math.min(3,resets),3]
+    ['consistent_14','Two solid weeks','Finish 14 days at 70% or better.',all.goodDays>=14,Math.min(14,all.goodDays),14],
+    ['gym_12','Gym routine','Complete 12 gym sessions.',gymAll>=12,Math.min(12,gymAll),12],
+    ['gym_30','Locked in','Complete 30 gym sessions.',gymAll>=30,Math.min(30,gymAll),30],
+    ['meals_20','Food rhythm','Hit all 3 meals on 20 different days.',meals>=20,Math.min(20,meals),20],
+    ['class_20','Show up','Attend 20 tracked university classes.',all.attended>=20,Math.min(20,all.attended),20],
+    ['class_days_10','Reliable student','Complete every class on 10 class days.',perfectClasses>=10,Math.min(10,perfectClasses),10],
+    ['project_15','Builder','Log 15 focused project sessions.',projects>=15,Math.min(15,projects),15],
+    ['strength_20','Stronger','Improve one tracked lift by at least 20%.',strength>=20,Math.min(20,strength),20],
+    ['good_50','Reset 50','Finish 50 good days at 70% or better.',all.goodDays>=50,Math.min(50,all.goodDays),50]
   ];
   return specs.map(([id,title,desc,unlocked,progress,target])=>({id,title,desc,unlocked,progress,target}));
 }
+function monthMetrics(date=new Date()){
+  const start=new Date(date.getFullYear(),date.getMonth(),1,12); const end=new Date(); const same=date.getFullYear()===end.getFullYear()&&date.getMonth()===end.getMonth(); const last=same?end:new Date(date.getFullYear(),date.getMonth()+1,0,12); const m=metricsForDates(datesBetween(start,last,40)); const mk=monthKey(date); const spending=transactionsForMonth(mk).reduce((a,t)=>a+Number(t.amount||0),0);return {...m,mk,spending};
+}
+function monthInReviewHTML(){
+  const m=monthMetrics(); const label=new Date().toLocaleDateString(undefined,{month:'long'});return `<section class="card flat month-review-card"><div class="row between center"><div><p class="eyebrow">${escapeHTML(label.toUpperCase())}</p><h3 style="margin:0">Month in review</h3></div><span class="badge">LIVE</span></div><div class="month-review-grid"><div><small>Gym</small><b>${m.gym}</b><span>sessions</span></div><div><small>Classes</small><b>${m.classes?m.classPct+'%':'—'}</b><span>${m.attended}/${m.classes}</span></div><div><small>3 meals</small><b>${m.mealDays}</b><span>days</span></div><div><small>Spending</small><b>${fmtMoney(m.spending)}</b><span>logged</span></div><div><small>Completion</small><b>${m.avgCompletion}%</b><span>average</span></div><div><small>Good days</small><b>${m.goodDays}</b><span>70%+</span></div></div></section>`;
+}
 function lightweightInsights(){
-  const m30=rangeMetrics('30'); const prevDates=datesBetween(addDays(new Date(),-59),addDays(new Date(),-30),31); const prevKeys=new Set(prevDates.map(todayKey));
-  const prevGym=[...gymSessionDates()].filter(k=>prevKeys.has(k)).length;
-  const out=[];
-  if(m30.classes) out.push(`You attended ${m30.attended}/${m30.classes} tracked classes in the last 30 days (${m30.classPct}%).`);
-  if(m30.gym||prevGym) out.push(`Gym: ${m30.gym} sessions in the last 30 days${m30.gym===prevGym?' — the same as the previous 30 days':m30.gym>prevGym?` — ${m30.gym-prevGym} more than the previous 30 days`:` — ${prevGym-m30.gym} fewer than the previous 30 days`}.`);
-  if(m30.mealDays) out.push(`You completed the 3-meal target on ${m30.mealDays} of the last 30 days.`);
+  const m30=rangeMetrics('30'), p30=previous30Metrics(); const out=[];
+  if(m30.classes) out.push(`Class attendance is ${m30.classPct}% over the last 30 days (${m30.attended}/${m30.classes}).`);
+  if(m30.gym||p30.gym) out.push(`Gym is ${m30.gym>p30.gym?`${m30.gym-p30.gym} session${m30.gym-p30.gym===1?'':'s'} up`:m30.gym<p30.gym?`${p30.gym-m30.gym} session${p30.gym-m30.gym===1?'':'s'} down`:'unchanged'} versus the previous 30 days.`);
+  if(m30.mealDays||p30.mealDays) out.push(`Three-meal days: ${m30.mealDays} in the last 30 days versus ${p30.mealDays} in the previous 30.`);
+  const currentSpend=transactionsForMonth(monthKey()).reduce((a,t)=>a+Number(t.amount||0),0); const prevDate=new Date();prevDate.setMonth(prevDate.getMonth()-1);const prevSpend=transactionsForMonth(monthKey(prevDate)).reduce((a,t)=>a+Number(t.amount||0),0);if(currentSpend||prevSpend)out.push(`Spending this month is ${fmtMoney(currentSpend)}${prevSpend?` versus ${fmtMoney(prevSpend)} last month`:''}.`);
   const tracked=Object.keys(state.records).filter(k=>state.records[k]?.itemStatus&&Object.keys(state.records[k].itemStatus).length).length;
-  if(tracked>=7){
-    const byDay=Array.from({length:7},()=>[]);Object.keys(state.records).forEach(k=>{const d=parseDateKey(k);byDay[d.getDay()].push(dayCompletion(d));});
-    const avgs=byDay.map(a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):-1); const best=Math.max(...avgs);
-    if(best>=0)out.push(`${DAY_LONG[avgs.indexOf(best)]} has been your strongest tracked day so far at about ${best}% completion.`);
-  }
-  if(!out.length) out.push('Keep using Reset for a few days and useful patterns will appear here automatically.');
-  return out.slice(0,3);
+  if(tracked>=7){const byDay=Array.from({length:7},()=>[]);Object.keys(state.records).forEach(k=>{const d=parseDateKey(k);byDay[d.getDay()].push(dayCompletion(d));});const avgs=byDay.map(a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):-1);const best=Math.max(...avgs);if(best>=0)out.push(`${DAY_LONG[avgs.indexOf(best)]} is your strongest tracked day at about ${best}% completion.`);}
+  if(!out.length)out.push('Keep using Reset and useful patterns will appear here automatically.');
+  return out.slice(0,4);
 }
 function renderMore() {
   const view=state.settings.moreView||'home';
@@ -994,12 +1082,22 @@ function renderMore() {
   if(view==='car') return renderCar();
   if(view==='projects') return renderProjects();
   if(view.startsWith('project:')) return renderProjectDetail(view.slice(8));
-  if(view==='plan') return renderPlan();
   setHeader('More');
   const range=state.settings.statsRange||'30'; const metrics=rangeMetrics(range); const ach=achievementData(); const unlocked=ach.filter(a=>a.unlocked).length;
   const wk=currentWeekMetrics(), pw=previousWeekMetrics(), m30=rangeMetrics('30'), p30=previous30Metrics();
   main.innerHTML=`
-    <section class="card hero"><span class="badge">PROGRESS</span><h2 style="margin-top:14px">Keep the useful things visible.</h2><p class="muted" style="margin-bottom:0">Track the habits that actually matter without turning life into a spreadsheet.</p></section>
+    <div class="section-title first-section"><h2>Life tools</h2><span class="muted tiny">the things you actually use</span></div>
+    <section class="tool-grid">
+      ${toolCard('gym','Gym','Strength, PRs and workout history.','dumbbell',`${gymSessionDates().size} sessions`)}
+      ${toolCard('health','Health','Body weight and simple progress.','heart',`${state.health.weightLogs.length} entries`)}
+      ${toolCard('car','Car','Fuel, service, rego and maintenance.','car',state.car.model||'Vehicle')}
+      ${toolCard('projects','Projects','Keep meaningful work moving.','folder',`${state.projects.filter(p=>!p.archived).length} active`)}
+    </section>
+
+    <div class="section-title"><h2>This month</h2></div>
+    ${monthInReviewHTML()}
+
+    <div class="section-title"><h2>Progress</h2><span class="muted tiny">choose a range</span></div>
     <div class="segmented" role="group" aria-label="Statistics range"><button data-range="7" class="${range==='7'?'active':''}">7 days</button><button data-range="30" class="${range==='30'?'active':''}">30 days</button><button data-range="all" class="${range==='all'?'active':''}">All time</button></div>
     <section class="metric-grid">
       <div class="metric-card"><small>Gym</small><strong>${metrics.gym}</strong><span>session${metrics.gym===1?'':'s'}</span></div>
@@ -1025,40 +1123,25 @@ function renderMore() {
       <div class="comparison-card"><small>Good days</small><b>${m30.goodDays}</b><span>${signedDelta(m30.goodDays,p30.goodDays)}</span></div>
     </section>
 
-    <div class="section-title"><h2>Achievements</h2></div>
-    <section class="achievement-grid">${ach.map(a=>`<article class="achievement ${a.unlocked?'unlocked':''}"><span>${a.unlocked?'✓':'○'}</span><div><b>${escapeHTML(a.title)}</b><small>${escapeHTML(a.desc)}</small><div class="achievement-progress"><i style="width:${Math.round(a.progress/a.target*100)}%"></i></div><em>${a.progress}/${a.target}</em></div></article>`).join('')}</section>
-
     <div class="section-title"><h2>Insights</h2></div>
-    <section class="card flat">${lightweightInsights().map(x=>`<div class="insight-row"><span>↗</span><p>${escapeHTML(x)}</p></div>`).join('')}</section>
+    <section class="card flat insight-list">${lightweightInsights().map((x,i)=>`<div class="insight-row"><span>${i+1}</span><p>${escapeHTML(x)}</p></div>`).join('')}</section>
 
-    <div class="section-title"><h2>Life tools</h2></div>
-    <section class="card flat tool-list">
-      ${toolLink('gym','Gym','Weights, PRs, exercise progress and workout history.')}
-      ${toolLink('health','Health','Simple body-weight progress without calorie tracking.')}
-      ${toolLink('car','Car','Fuel, maintenance history, service and registration.')}
-      ${toolLink('projects','Projects',`${state.projects.length} project${state.projects.length===1?'':'s'} · keep the next step clear.`)}
-      ${toolLink('plan','Reset plan','Your simple rules and weekly review.')}
-    </section>
-
-    <div class="section-title"><h2>Weekly reset</h2></div>
-    <section class="card flat"><p class="muted tiny">Review the week, then choose one focus for the next one.</p><button class="secondary full" id="weeklyReviewBtn">Do weekly review</button></section>`;
+    <div class="section-title"><h2>Achievements</h2><span class="muted tiny">earned, not handed out</span></div>
+    <section class="achievement-grid">${ach.map(a=>`<article class="achievement ${a.unlocked?'unlocked':''}"><span>${a.unlocked?'✓':'○'}</span><div><b>${escapeHTML(a.title)}</b><small>${escapeHTML(a.desc)}</small><div class="achievement-progress"><i style="width:${Math.round(a.progress/a.target*100)}%"></i></div><em>${a.progress}/${a.target}</em></div></article>`).join('')}</section>`;
   $$('[data-range]').forEach(b=>b.onclick=()=>{const y=window.scrollY;state.settings.statsRange=b.dataset.range;save();renderMore();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));});
   $$('[data-more-view]').forEach(b=>b.onclick=()=>{moreHomeScrollY=window.scrollY;state.settings.moreView=b.dataset.moreView;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});
-  $('#weeklyReviewBtn').onclick=()=>openWeeklyReviewModal();
 }
+function toolCard(view,title,desc,icon,meta=''){return `<button class="tool-card" data-more-view="${escapeAttr(view)}"><span class="tool-icon">${svgIcon(icon)}</span><span class="tool-card-copy"><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small>${meta?`<em>${escapeHTML(meta)}</em>`:''}</span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`;}
 function toolLink(view,title,desc){return `<button class="tool-link" data-more-view="${escapeAttr(view)}"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small></span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`;}
 function moreBack(label='More'){return `<button class="back-link" id="moreBackBtn">${svgIcon('chevronLeft')}<span>${escapeHTML(label)}</span></button>`;}
 function bindMoreBack(){const b=$('#moreBackBtn');if(b)b.onclick=()=>{const y=moreHomeScrollY;state.settings.moreView='home';save();renderMore();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));};}
-function morePlanRow(title,text){return `<div class="more-link"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(text)}</small></span></div>`;}
-
 function itemIsFixed(item) { return item.fixed===true || item.isClass===true; }
 function itemManualMoveLocked(item) { return itemIsFixed(item) || item.manualLocked===true || ['wake','groom','breakfast','phone','sleep'].includes(item.id); }
 function isClosedStatus(status){ return ['done','missed','deferred','dropped'].includes(status); }
 function itemDurationForMove(item){ return Math.max(5,durationMinutes(item)); }
 function setItemTimeOverride(item,key,startTime){
-  const rec=ensureRecord(key); const occ=occurrenceKey(item); const dur=itemDurationForMove(item); const start=minutesFromTime(startTime);
-  const existing=rec.timeOverrides[occ]||{};
-  rec.timeOverrides[occ]={...existing,start:minutesToTime(start),end:minutesToTime(start+dur)};
+  const rec=ensureRecord(key); const occ=occurrenceKey(item), dur=itemDurationForMove(item); const start=minutesFromTime(startTime); const existing=rec.timeOverrides[occ]||{};
+  rec.timeOverrides[occ]={...existing,start:minutesToTime(start),end:minutesToTime(start+dur),manual:true,adaptive:false};
   save();
 }
 function clearItemTimeOverride(item,key){const rec=ensureRecord(key);delete rec.timeOverrides[occurrenceKey(item)];save();}
@@ -1088,75 +1171,47 @@ function findOpenSlot(desired,duration,blocked,limit) {
   }
   return null;
 }
-function buildAdaptiveRestartPlan(date=new Date()) {
-  const key=todayKey(date); const baseItems=itemsForMode(itemsForDate(date,{ignoreOverrides:true}),currentMode());
-  const rec=ensureRecord(key); const now=roundUpMinutes(currentMinutes(),5);
+function buildAdaptiveRestartPlan(date=new Date(),preserveManual=false) {
+  const key=todayKey(date); const rec=ensureRecord(key); const manualMap=rec.timeOverrides||{};
+  let baseItems=itemsForMode(itemsForDate(date,{ignoreOverrides:true}),currentMode());
+  if(preserveManual){baseItems=baseItems.map(i=>{const ov=manualMap[occurrenceKey(i)];return ov?.manual?{...i,...ov}:i;});}
+  const now=roundUpMinutes(currentMinutes(),5);
   const sleepLimit=Math.max(now+30, minutesFromTime(state.profile.sleepTarget||'23:30'));
   const pending=baseItems.filter(i=>!isClosedStatus(getStatus(i,key)));
   const fixed=pending.filter(itemIsFixed);
   const movable=pending.filter(i=>!itemIsFixed(i));
   const missedFixed=fixed.filter(i=>minutesFromTime(i.end||i.start)<now);
   const futureFixed=fixed.filter(i=>minutesFromTime(i.end||i.start)>=now).map(i=>({start:minutesFromTime(i.start),end:minutesFromTime(i.end||i.start)+(!i.end?30:0),item:i}));
-  const blocked=[...futureFixed];
-  const overrides={};
-  const moved=[];
-  let lastMealEnd=null;
-
-  const ordered=[...movable].sort((a,b)=>{
-    const aOver=minutesFromTime(a.end||a.start)<now, bOver=minutesFromTime(b.end||b.start)<now;
-    const aRank=aOver&&a.essential?0:aOver?1:2;
-    const bRank=bOver&&b.essential?0:bOver?1:2;
-    return aRank-bRank || minutesFromTime(a.start)-minutesFromTime(b.start);
-  });
-
-  for(const item of ordered) {
-    const status=getStatus(item,key);
-    if(status==='done') continue;
-    const originalStart=minutesFromTime(item.start);
-    const overdue=minutesFromTime(item.end||item.start)<now;
-    const normalDuration=durationMinutes(item);
-    const duration=overdue ? Math.max(5,Math.min(normalDuration,Number(item.minMinutes||normalDuration))) : normalDuration;
-    let desired=overdue ? now : Math.max(now,originalStart);
-    if(item.category==='Food' && lastMealEnd!==null) desired=Math.max(desired,lastMealEnd+150);
-    const slot=findOpenSlot(desired,duration,blocked,sleepLimit);
-    if(slot===null) continue;
-    const newStart=slot, newEnd=slot+duration;
-    blocked.push({start:newStart,end:newEnd,item});
-    if(item.category==='Food') lastMealEnd=newEnd;
-    if(newStart!==originalStart || duration!==normalDuration || overdue) {
-      const ov={start:minutesToTime(newStart),end:minutesToTime(newEnd)};
-      if(item.id==='breakfast' && overdue) { ov.title='First meal + protein'; ov.detail='Eat now. Do not let waking late turn into not eating.'; }
-      if(item.id==='wake' && overdue) ov.title='Get up + curtains open';
-      overrides[occurrenceKey(item)]=ov;
-      moved.push({...item,...ov});
-    }
+  const blocked=[...futureFixed], overrides={}, moved=[]; let lastMealEnd=null;
+  const ordered=[...movable].sort((a,b)=>{const aOver=minutesFromTime(a.end||a.start)<now,bOver=minutesFromTime(b.end||b.start)<now;const aRank=aOver&&a.essential?0:aOver?1:2,bRank=bOver&&b.essential?0:bOver?1:2;return aRank-bRank||minutesFromTime(a.start)-minutesFromTime(b.start);});
+  for(const item of ordered){
+    if(getStatus(item,key)==='done')continue;
+    const originalStart=minutesFromTime(item.start),overdue=minutesFromTime(item.end||item.start)<now,normalDuration=durationMinutes(item),duration=overdue?Math.max(5,Math.min(normalDuration,Number(item.minMinutes||normalDuration))):normalDuration;
+    let desired=overdue?now:Math.max(now,originalStart);if(item.category==='Food'&&lastMealEnd!==null)desired=Math.max(desired,lastMealEnd+150);
+    const slot=findOpenSlot(desired,duration,blocked,sleepLimit);if(slot===null)continue;
+    const newStart=slot,newEnd=slot+duration;blocked.push({start:newStart,end:newEnd,item});if(item.category==='Food')lastMealEnd=newEnd;
+    const wasManual=!!manualMap[occurrenceKey(item)]?.manual;
+    if(newStart!==originalStart||duration!==normalDuration||overdue||wasManual){const ov={start:minutesToTime(newStart),end:minutesToTime(newEnd),adaptive:true,manual:preserveManual&&wasManual};if(item.id==='breakfast'&&overdue){ov.title='First meal + protein';ov.detail='Eat now. Do not let waking late turn into not eating.';}if(item.id==='wake'&&overdue)ov.title='Get up + curtains open';overrides[occurrenceKey(item)]=ov;moved.push({...item,...ov});}
   }
-  return {key,now,overrides,moved,missedFixed};
+  return {key,now,overrides,moved,missedFixed,preserveManual,manualCount:Object.values(manualMap).filter(x=>x?.manual).length};
 }
 function applyAdaptiveRestart(plan) {
-  const rec=ensureRecord(plan.key);
-  rec.timeOverrides=plan.overrides;
-  for(const item of plan.missedFixed) {
-    if(getStatus(item,plan.key)!=='done') rec.itemStatus[occurrenceKey(item)]='missed';
-  }
-  // A new restart should not leave old "missed" marks on flexible items or future fixed items.
-  Object.keys(rec.itemStatus).forEach(k=>{
-    if(rec.itemStatus[k]!=='missed') return;
-    const item=itemsForDate(parseDateKey(plan.key),{ignoreOverrides:true}).find(x=>occurrenceKey(x)===k);
-    if(item && (!itemIsFixed(item) || minutesFromTime(item.end||item.start)>=plan.now)) delete rec.itemStatus[k];
-  });
-  rec.resetCount=(rec.resetCount||0)+1;
-  rec.restartAt=new Date().toISOString();
-  save();
+  const rec=ensureRecord(plan.key);rec.timeOverrides=plan.overrides;
+  for(const item of plan.missedFixed){if(getStatus(item,plan.key)!=='done')rec.itemStatus[occurrenceKey(item)]='missed';}
+  Object.keys(rec.itemStatus).forEach(k=>{if(rec.itemStatus[k]!=='missed')return;const item=itemsForDate(parseDateKey(plan.key),{ignoreOverrides:true}).find(x=>occurrenceKey(x)===k);if(item&&(!itemIsFixed(item)||minutesFromTime(item.end||item.start)>=plan.now))delete rec.itemStatus[k];});
+  rec.resetCount=(rec.resetCount||0)+1;rec.restartAt=new Date().toISOString();save();
 }
 function openRestartModal() {
-  const plan=buildAdaptiveRestartPlan(new Date());
-  const moveCount=plan.moved.length, missCount=plan.missedFixed.length;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ADAPTIVE RESTART</p><h2>Rebuild the rest of today.</h2><p class="muted">Nothing important gets deleted. ${moveCount?`${moveCount} flexible item${moveCount===1?'':'s'} will move to realistic times.`:'Your flexible tasks already fit from here.'} Fixed university classes and sleep times stay fixed.${missCount?` ${missCount} fixed event${missCount===1?' is':'s are'} already past and will stay visible as missed.`:''}</p><div class="card flat restart-preview"><b>Priority order</b><small>Get up / curtains → shower / grooming → first meal → fixed classes → remaining useful tasks.</small></div><button class="primary full" id="confirmRestart" style="margin-top:12px">Rebuild today</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  const keepPlan=buildAdaptiveRestartPlan(new Date(),true), resetPlan=buildAdaptiveRestartPlan(new Date(),false); const manualCount=keepPlan.manualCount; const p=manualCount?keepPlan:resetPlan; const missCount=p.missedFixed.length;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ADAPTIVE RESTART</p><h2>Rebuild the rest of today.</h2><p class="muted">Fixed classes and sleep stay fixed. Nothing important is deleted.${missCount?` ${missCount} fixed event${missCount===1?' is':'s are'} already past and will stay visible as missed.`:''}</p>${manualCount?`<div class="card flat restart-preview"><b>${manualCount} manual move${manualCount===1?'':'s'} detected</b><small>Choose whether Reset should keep the order/timing choices you made or return to the original schedule before rebuilding.</small></div><button class="primary full" id="restartKeepMoves" style="margin-top:12px">Rebuild + keep my moves</button><button class="secondary full" id="restartResetMoves" style="margin-top:8px">Reset my moves + rebuild</button>`:`<div class="card flat restart-preview"><b>Adaptive rebuild</b><small>Overdue flexible tasks move forward around fixed events.</small></div><button class="primary full" id="restartResetMoves" style="margin-top:12px">Rebuild today</button>`}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#confirmRestart').onclick=()=>{applyAdaptiveRestart(plan);modal.close();toast('Today rebuilt around the current time');renderToday();};
+  if($('#restartKeepMoves'))$('#restartKeepMoves').onclick=()=>{applyAdaptiveRestart(keepPlan);modal.close();toast('Today rebuilt and your manual order was kept');renderToday();};
+  $('#restartResetMoves').onclick=()=>{applyAdaptiveRestart(resetPlan);modal.close();toast(manualCount?'Today rebuilt from the original schedule':'Today rebuilt around the current time');renderToday();};
   $('#cancelModal').onclick=()=>modal.close();
 }
+function captureWeekEditContext(){if(state.settings.activeTab==='week')weekEditContext={date:state.settings.selectedWeekDate||todayKey(),scrollY:window.scrollY};else weekEditContext=null;}
+function renderAfterEditor(){if(state.settings.activeTab==='week'&&weekEditContext){const ctx=weekEditContext;weekEditContext=null;state.settings.selectedWeekDate=ctx.date;save();renderWeek();requestAnimationFrame(()=>window.scrollTo({top:ctx.scrollY,behavior:'auto'}));}else{weekEditContext=null;render();}}
+
 function openScheduleManager() {
   const sorted=[...state.schedule].sort((a,b)=>minutesFromTime(a.start)-minutesFromTime(b.start));
   modalContent.innerHTML=`<div class="sheet-handle"></div><div class="row between center"><div><p class="eyebrow">WEEKLY ROUTINE</p><h2>Recurring schedule</h2></div><button class="icon-button" id="closeModal" aria-label="Close">${svgIcon('close')}</button></div><p class="muted tiny">Your university timetable is preloaded. Fixed items stay in place during an adaptive restart. You can still edit or add recurring items.</p><div class="stack" style="margin-top:14px">${sorted.map(s=>`<button class="more-link" data-routine-edit="${s.id}"><span><b>${escapeHTML(s.title)}</b><small>${escapeHTML(s.days.map(d=>DAY_SHORT[d]).join(', '))} · ${escapeHTML(timeWindow(s))}</small></span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`).join('')}</div><button class="primary full" id="addRoutineInside" style="margin-top:14px">+ Add recurring item</button>`;
@@ -1167,6 +1222,7 @@ function openScheduleManager() {
 }
 
 function openScheduleItemModal(id=null,preset={}) {
+  captureWeekEditContext();
   const existing=id?state.schedule.find(x=>x.id===id):null;
   const item=existing || {title:'',days:preset.days||[1,2,3,4,5],start:preset.start||'09:00',end:preset.end||'10:00',category:preset.category||'Life',detail:'',active:true,fixed:false,startDate:'',endDate:''};
   modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">RECURRING ITEM</p><h2>${existing?'Edit weekly item':'Add weekly item'}</h2><div class="stack">
@@ -1186,13 +1242,14 @@ function openScheduleItemModal(id=null,preset={}) {
     if(minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');
     if(startDate&&endDate&&endDate<startDate)return toast('End date must be after start date');
     const data={title,days,start:startTime,end:endTime,category:$('#schedCategory').value,detail:$('#schedDetail').value.trim(),active:true,fixed:$('#schedFixed').checked,startDate,endDate};
-    if(existing){Object.assign(existing,data);if(existing.id==='wake')state.profile.wakeTarget=data.start;if(existing.id==='sleep')state.profile.sleepTarget=data.start;}else state.schedule.push({id:uid('sched'),...data});save();modal.close();toast('Weekly schedule updated');render();
+    if(existing){Object.assign(existing,data);if(existing.id==='wake')state.profile.wakeTarget=data.start;if(existing.id==='sleep')state.profile.sleepTarget=data.start;}else state.schedule.push({id:uid('sched'),...data});save();modal.close();toast('Weekly schedule updated');renderAfterEditor();
   };
-  if(existing)$('#deleteSchedule').onclick=()=>{state.schedule=state.schedule.filter(x=>x.id!==existing.id);save();modal.close();toast('Recurring item deleted');render();};
+  if(existing)$('#deleteSchedule').onclick=()=>{state.schedule=state.schedule.filter(x=>x.id!==existing.id);save();modal.close();toast('Recurring item deleted');renderAfterEditor();};
   $('#cancelModal').onclick=()=>modal.close();
 }
 
 function openOneOffTaskModal(id=null,preset={}) {
+  captureWeekEditContext();
   const existing=id?state.oneOffTasks.find(x=>x.id===id):null;
   const item=existing || {title:preset.title||'',date:preset.date||todayKey(),start:preset.start||'12:00',end:preset.end||'',category:preset.category||'Life',detail:preset.detail||''};
   modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ONE-OFF TASK</p><h2>${existing?'Edit task':'Add task'}</h2><div class="stack">
@@ -1203,8 +1260,8 @@ function openOneOffTaskModal(id=null,preset={}) {
     <label><span class="label">Note</span><textarea id="oneDetail" placeholder="Keep it specific.">${escapeHTML(item.detail||'')}</textarea></label>
   </div><button class="primary full" id="saveOneTask" style="margin-top:14px">Save task</button>${existing?'<button class="danger-btn full" id="deleteOneTask" style="margin-top:8px">Delete task</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#saveOneTask').onclick=()=>{const title=$('#oneTitle').value.trim();if(!title)return toast('Add a task name');const startTime=$('#oneStart').value||'12:00', endTime=$('#oneEnd').value||'';if(endTime&&minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');const data={title,date:$('#oneDate').value||todayKey(),start:startTime,end:endTime,category:$('#oneCategory').value,detail:$('#oneDetail').value.trim()};if(existing)Object.assign(existing,data);else state.oneOffTasks.push({id:uid('one'),...data});save();modal.close();toast('Task scheduled');render();};
-  if(existing)$('#deleteOneTask').onclick=()=>{state.oneOffTasks=state.oneOffTasks.filter(x=>x.id!==existing.id);save();modal.close();toast('Task deleted');render();};
+  $('#saveOneTask').onclick=()=>{const title=$('#oneTitle').value.trim();if(!title)return toast('Add a task name');const startTime=$('#oneStart').value||'12:00', endTime=$('#oneEnd').value||'';if(endTime&&minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');const data={title,date:$('#oneDate').value||todayKey(),start:startTime,end:endTime,category:$('#oneCategory').value,detail:$('#oneDetail').value.trim()};if(existing)Object.assign(existing,data);else state.oneOffTasks.push({id:uid('one'),...data});save();modal.close();toast('Task scheduled');renderAfterEditor();};
+  if(existing)$('#deleteOneTask').onclick=()=>{state.oneOffTasks=state.oneOffTasks.filter(x=>x.id!==existing.id);save();modal.close();toast('Task deleted');renderAfterEditor();};
   $('#cancelModal').onclick=()=>modal.close();
 }
 
@@ -1228,11 +1285,11 @@ function openUniTaskModal(id=null) {
 }
 
 function openMoneyModal() {
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">MONEY PLAN</p><h2>Edit monthly allocation</h2><div class="form-grid"><label><span class="label">Monthly income (SAR)</span><input class="input" id="incomeInput" type="number" min="0" value="${state.money.income}"></label><label><span class="label">Current total cash (SAR)</span><input class="input" id="cashInput" type="number" min="0" value="${state.money.currentCash}"></label></div><label style="display:block;margin-top:10px"><span class="label">Payday day of month</span><input class="input" id="paydayInput" type="number" min="1" max="31" value="${state.profile.paydayDay||29}"></label><hr><div id="bucketEditor" class="stack">${state.money.buckets.map(bucketEditorRow).join('')}</div><button class="secondary full" id="addBucketBtn" style="margin-top:10px">+ Add allocation bucket</button><button class="primary full" id="saveMoney" style="margin-top:14px">Save money plan</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">MONEY PLAN</p><h2>Edit monthly allocation</h2><div class="form-grid"><label><span class="label">Monthly income (SAR)</span><input class="input" id="incomeInput" type="number" min="0" value="${state.money.income}"></label><label><span class="label">Payday day of month</span><input class="input" id="paydayInput" type="number" min="1" max="31" value="${state.profile.paydayDay||29}"></label></div><hr><div id="bucketEditor" class="stack">${state.money.buckets.map(bucketEditorRow).join('')}</div><button class="secondary full" id="addBucketBtn" style="margin-top:10px">+ Add allocation bucket</button><button class="primary full" id="saveMoney" style="margin-top:14px">Save money plan</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
   $('#addBucketBtn').onclick=()=>{const wrap=document.createElement('div');wrap.innerHTML=bucketEditorRow({id:uid('bucket'),name:'New bucket',target:0});$('#bucketEditor').appendChild(wrap.firstElementChild);bindBucketDeleteButtons();};
   bindBucketDeleteButtons();
-  $('#saveMoney').onclick=()=>{state.money.income=Math.max(0,Number($('#incomeInput').value||0));state.money.currentCash=Math.max(0,Number($('#cashInput').value||0));state.profile.paydayDay=clamp(Number($('#paydayInput').value||29),1,31);state.money.buckets=$$('.bucket-editor').map(row=>({id:row.dataset.bucketId||uid('bucket'),name:$('.bucket-name',row).value.trim()||'Bucket',target:Math.max(0,Number($('.bucket-target',row).value||0))}));if(!state.money.planHistory||typeof state.money.planHistory!=='object')state.money.planHistory={};state.money.planHistory[monthKey()]=moneyPlanTotal();save();modal.close();renderMoney();};
+  $('#saveMoney').onclick=()=>{state.money.income=Math.max(0,Number($('#incomeInput').value||0));state.profile.paydayDay=clamp(Number($('#paydayInput').value||29),1,31);state.money.buckets=$$('.bucket-editor').map(row=>({id:row.dataset.bucketId||uid('bucket'),name:$('.bucket-name',row).value.trim()||'Bucket',target:Math.max(0,Number($('.bucket-target',row).value||0))}));captureCurrentMoneyPlan();save();modal.close();renderMoney();};
   $('#cancelModal').onclick=()=>modal.close();
 }
 function bucketEditorRow(b){return `<div class="course bucket-editor" data-bucket-id="${escapeAttr(b.id)}"><div class="row"><label style="flex:1"><span class="label">Bucket</span><input class="input bucket-name" value="${escapeAttr(b.name)}"></label><label style="width:130px"><span class="label">Monthly SAR</span><input class="input bucket-target" type="number" min="0" value="${Number(b.target||0)}"></label></div><button class="text-button danger-text bucket-delete" type="button">Remove</button></div>`;}
@@ -1242,8 +1299,8 @@ function openExpenseModal(id=null) {
   const existing=id?state.money.transactions.find(t=>t.id===id):null;
   modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SPENDING</p><h2>${existing?'Edit':'Log'} an expense</h2><div class="stack"><label><span class="label">Amount (SAR)</span><input class="input" id="expenseAmount" type="number" min="0" step="1" placeholder="0" value="${existing?Number(existing.amount):''}"></label><label><span class="label">Allocation</span><select id="expenseBucket">${state.money.buckets.map(b=>`<option value="${b.id}" ${existing?.bucketId===b.id?'selected':''}>${escapeHTML(b.name)}</option>`).join('')}</select></label><label><span class="label">Date</span><input class="input" id="expenseDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Note</span><input class="input" id="expenseNote" value="${escapeAttr(existing?.note||'')}" placeholder="e.g. takeaway, fuel, haircut"></label></div><button class="primary full" id="saveExpense" style="margin-top:14px">Save spending</button>${existing?'<button class="danger-btn full" id="deleteExpense" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#saveExpense').onclick=()=>{const amount=Number($('#expenseAmount').value||0);if(amount<=0)return toast('Enter an amount');const data={amount,bucketId:$('#expenseBucket').value,date:$('#expenseDate').value||todayKey(),note:$('#expenseNote').value.trim()};if(existing)Object.assign(existing,data);else state.money.transactions.push({id:uid('tx'),...data});save();modal.close();toast(existing?'Spending updated':'Spending logged');renderMoney();};
-  if(existing)$('#deleteExpense').onclick=()=>{state.money.transactions=state.money.transactions.filter(t=>t.id!==existing.id);save();modal.close();renderMoney();toast('Spending entry deleted');};
+  $('#saveExpense').onclick=()=>{const amount=Number($('#expenseAmount').value||0);if(amount<=0)return toast('Enter an amount');const data={amount,bucketId:$('#expenseBucket').value,date:$('#expenseDate').value||todayKey(),note:$('#expenseNote').value.trim(),createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.money.transactions.push({id:uid('tx'),...data});save();modal.close();toast(existing?'Spending updated':'Spending logged');renderMoney();};
+  if(existing)$('#deleteExpense').onclick=()=>{const idx=state.money.transactions.findIndex(t=>t.id===existing.id);if(idx<0)return;const removed=state.money.transactions[idx];state.money.transactions.splice(idx,1);save();modal.close();renderMoney();toast('Spending entry deleted','Undo',()=>{state.money.transactions.splice(Math.min(idx,state.money.transactions.length),0,removed);save();renderMoney();});};
   $('#cancelModal').onclick=()=>modal.close();
 }
 
@@ -1263,18 +1320,20 @@ function renderHealth(){
     <section class="metric-grid"><div class="metric-card"><small>Current</small><strong>${last?Number(last.weight).toFixed(1):'—'}</strong><span>${last?'kg':'no entry'}</span></div><div class="metric-card"><small>First logged</small><strong>${first?Number(first.weight).toFixed(1):'—'}</strong><span>${first?'kg':'no entry'}</span></div><div class="metric-card"><small>Change</small><strong>${logs.length>1?`${change>0?'+':''}${change.toFixed(1)}`:'—'}</strong><span>${logs.length>1?'kg since first':'need 2 entries'}</span></div><div class="metric-card"><small>Entries</small><strong>${logs.length}</strong><span>all time</span></div></section>
     <section class="card flat">${weightChartHTML(logs)}</section>
     <button class="primary full" id="addWeightBtn">+ Log body weight</button>
-    <div class="section-title"><h2>Recent weight</h2></div><section class="card flat">${logs.length?logs.slice().reverse().slice(0,12).map(l=>`<div class="gym-log"><div><b>${Number(l.weight).toFixed(1)} kg</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))}</small></div><div class="row"><button class="text-button tiny" data-edit-weight="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-weight="${l.id}">Delete</button></div></div>`).join(''):'<div class="empty-state">No weight entries yet.</div>'}</section>`;
+    <div class="section-title"><h2>Weight history</h2><button class="secondary small-btn" id="selectWeightBtn">${historySelectMode.weight?'Done':'Select'}</button></div>${historySelectToolbar('weight')}<section class="card flat">${logs.length?logs.slice().reverse().map(l=>`<div class="gym-log">${historySelectMode.weight?historySelectCheckbox('weight',l.id):''}<div><b>${Number(l.weight).toFixed(1)} kg</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))}</small></div>${historySelectMode.weight?'':`<div class="row"><button class="text-button tiny" data-edit-weight="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-weight="${l.id}">Delete</button></div>`}</div>`).join(''):'<div class="empty-state">No weight entries yet.</div>'}</section>`;
   bindMoreBack();
   $('#addWeightBtn').onclick=()=>openWeightModal();
+  $('#selectWeightBtn').onclick=()=>historySelectToggle('weight',renderHealth);
   $$('[data-edit-weight]').forEach(b=>b.onclick=()=>openWeightModal(b.dataset.editWeight));
-  $$('[data-del-weight]').forEach(b=>b.onclick=()=>{state.health.weightLogs=state.health.weightLogs.filter(x=>x.id!==b.dataset.delWeight);save();renderHealth();toast('Weight entry deleted');});
+  $$('[data-del-weight]').forEach(b=>b.onclick=()=>{const idx=state.health.weightLogs.findIndex(x=>x.id===b.dataset.delWeight);if(idx<0)return;const removed=state.health.weightLogs[idx];state.health.weightLogs.splice(idx,1);save();renderHealth();toast('Weight entry deleted','Undo',()=>{state.health.weightLogs.splice(Math.min(idx,state.health.weightLogs.length),0,removed);save();renderHealth();});});
+  bindHistorySelection('weight',renderHealth,ids=>{const set=new Set(ids),removed=state.health.weightLogs.map((item,index)=>({item,index})).filter(x=>set.has(x.item.id));state.health.weightLogs=state.health.weightLogs.filter(x=>!set.has(x.id));historySelected.weight.clear();historySelectMode.weight=false;save();renderHealth();toast(`${removed.length} weight entr${removed.length===1?'y':'ies'} deleted`,'Undo',()=>{restoreDeletedObjects(state.health.weightLogs,removed);save();renderHealth();});});
 }
 function openWeightModal(id=null){
   const existing=id?(state.health.weightLogs||[]).find(x=>x.id===id):null;
   modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">BODY WEIGHT</p><h2>${existing?'Edit':'Log'} weight</h2><div class="stack"><label><span class="label">Weight (kg)</span><input class="input" id="bodyWeight" type="number" min="20" max="300" step="0.1" inputmode="decimal" value="${existing?Number(existing.weight):''}"></label><label><span class="label">Date</span><input class="input" id="bodyWeightDate" type="date" value="${existing?.date||todayKey()}"></label></div><button class="primary full" id="saveBodyWeight" style="margin-top:14px">Save</button>${existing?'<button class="danger-btn full" id="deleteBodyWeight" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
   $('#saveBodyWeight').onclick=()=>{const weight=Number($('#bodyWeight').value);if(!(weight>=20&&weight<=300))return toast('Enter a valid weight');const data={weight,date:$('#bodyWeightDate').value||todayKey(),createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.health.weightLogs.push({id:uid('weight'),...data});save();modal.close();renderHealth();toast(existing?'Weight updated':'Weight logged');};
-  if(existing)$('#deleteBodyWeight').onclick=()=>{state.health.weightLogs=state.health.weightLogs.filter(x=>x.id!==existing.id);save();modal.close();renderHealth();toast('Weight entry deleted');};
+  if(existing)$('#deleteBodyWeight').onclick=()=>{const idx=state.health.weightLogs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=state.health.weightLogs[idx];state.health.weightLogs.splice(idx,1);save();modal.close();renderHealth();toast('Weight entry deleted','Undo',()=>{state.health.weightLogs.splice(Math.min(idx,state.health.weightLogs.length),0,removed);save();renderHealth();});};
   $('#cancelModal').onclick=()=>modal.close();
 }
 
@@ -1287,7 +1346,7 @@ function renderGym(){
   const first=logs[0],last=logs[logs.length-1],change=first&&last?Number(last.weight)-Number(first.weight):0,pr=exercise?exercisePR(exercise.id):0;
   const last30=dateRange('30'); const keys30=new Set(last30.map(todayKey)); const sessions30=[...sessions].filter(k=>keys30.has(k)).length;
   const prRows=state.gym.exercises.map(ex=>({ex,pr:exercisePR(ex.id)})).filter(x=>x.pr>0).sort((a,b)=>b.pr-a.pr);
-  const recentSessions=[...sessions].sort().reverse().slice(0,12);
+  const recentSessions=[...sessions].sort().reverse();
   main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge purple">GYM</span><h2 style="margin-top:14px">Track progress, not perfection.</h2><p class="muted" style="margin-bottom:0">Log the working weight you actually used. Reset keeps your PRs and long-term progress visible.</p></section>
     <section class="grid-3"><div class="stat"><small>Last 30 days</small><strong>${sessions30}</strong></div><div class="stat"><small>All sessions</small><strong>${sessions.size}</strong></div><div class="stat"><small>Exercises</small><strong>${state.gym.exercises.length}</strong></div></section>
     <div class="button-row"><button class="primary" id="logGymBtn">+ Log exercise</button><button class="secondary" id="logGymSessionBtn">${sessions.has(todayKey())?'Today logged':'Log workout day'}</button></div>
@@ -1296,15 +1355,18 @@ function renderGym(){
       ${exercise?`<div class="metric-grid compact-metrics"><div class="metric-card"><small>First</small><strong>${first?Number(first.weight):'—'}</strong><span>${first?'kg':'no log'}</span></div><div class="metric-card"><small>Current</small><strong>${last?Number(last.weight):'—'}</strong><span>${last?'kg':'no log'}</span></div><div class="metric-card pr-card"><small>Personal best</small><strong>${pr||'—'}</strong><span>${pr?'kg':'no PR yet'}</span></div><div class="metric-card"><small>Change</small><strong class="${change>0?'accent':''}">${logs.length>1?(change>0?'+':'')+change:'—'}</strong><span>${logs.length>1?'kg since first':'need 2 logs'}</span></div></div>${gymChartHTML(logs)}`:'<div class="empty-state">Add an exercise to start tracking.</div>'}
     </section>
     <div class="section-title"><h2>Personal bests</h2></div><section class="card flat">${prRows.length?prRows.map(({ex,pr})=>`<div class="pr-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'')}</small></div><strong>${Number(pr)} kg</strong></div>`).join(''):'<div class="empty-state">Your PRs will appear after you log exercises.</div>'}</section>
-    <div class="section-title"><h2>Recent logs</h2></div><section class="card flat">${logs.length?logs.slice().reverse().slice(0,12).map(l=>`<div class="gym-log"><div><b>${Number(l.weight)} kg</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))} · ${Number(l.sets||0)||'—'} sets × ${Number(l.reps||0)||'—'} reps</small></div><div class="row"><button class="text-button tiny" data-edit-gym="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-gym="${l.id}">Delete</button></div></div>`).join(''):'<div class="empty-state">No weight logs for this exercise yet.</div>'}</section>
-    <div class="section-title"><h2>Workout days</h2></div><section class="card flat">${recentSessions.length?recentSessions.map(k=>`<div class="gym-log"><div><b>${escapeHTML(formatDateShort(parseDateKey(k)))}</b><small>Workout session</small></div><button class="text-button tiny danger-text" data-del-session="${k}">Remove</button></div>`).join(''):'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
+    <div class="section-title"><h2>Exercise history</h2><button class="secondary small-btn" id="selectGymBtn">${historySelectMode.gym?'Done':'Select'}</button></div>${historySelectToolbar('gym')}<section class="card flat">${logs.length?logs.slice().reverse().map(l=>`<div class="gym-log">${historySelectMode.gym?historySelectCheckbox('gym',l.id):''}<div><b>${Number(l.weight)} kg</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))} · ${Number(l.sets||0)||'—'} sets × ${Number(l.reps||0)||'—'} reps</small></div>${historySelectMode.gym?'':`<div class="row"><button class="text-button tiny" data-edit-gym="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-gym="${l.id}">Delete</button></div>`}</div>`).join(''):'<div class="empty-state">No weight logs for this exercise yet.</div>'}</section>
+    <div class="section-title"><h2>Workout days</h2><button class="secondary small-btn" id="selectWorkoutBtn">${historySelectMode.workout?'Done':'Select'}</button></div>${historySelectToolbar('workout')}<section class="card flat">${recentSessions.length?recentSessions.map(k=>`<div class="gym-log">${historySelectMode.workout?historySelectCheckbox('workout',k):''}<div><b>${escapeHTML(formatDateShort(parseDateKey(k)))}</b><small>Workout session</small></div>${historySelectMode.workout?'':`<button class="text-button tiny danger-text" data-del-session="${k}">Remove</button>`}</div>`).join(''):'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
   bindMoreBack();
-  $('#gymExerciseSelect')?.addEventListener('change',e=>{state.settings.selectedExerciseId=e.target.value;save();renderGym();});
+  $('#gymExerciseSelect')?.addEventListener('change',e=>{state.settings.selectedExerciseId=e.target.value;historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();});
   $('#logGymBtn').onclick=()=>openGymLogModal(); $('#addExerciseBtn').onclick=()=>openExerciseModal();
   $('#logGymSessionBtn').onclick=()=>{const k=todayKey();state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k)){state.gym.sessions.push(k);save();toast('Workout day logged');renderGym();}else toast('Today is already logged');};
+  $('#selectGymBtn').onclick=()=>historySelectToggle('gym',renderGym); $('#selectWorkoutBtn').onclick=()=>historySelectToggle('workout',renderGym);
   $$('[data-edit-gym]').forEach(b=>b.onclick=()=>openGymLogModal(b.dataset.editGym));
-  $$('[data-del-gym]').forEach(b=>b.onclick=()=>{state.gym.logs=state.gym.logs.filter(l=>l.id!==b.dataset.delGym);save();renderGym();toast('Exercise log deleted');});
-  $$('[data-del-session]').forEach(b=>b.onclick=()=>{const k=b.dataset.delSession;state.gym.sessions=state.gym.sessions.filter(x=>x!==k);if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);save();renderGym();toast('Workout day removed');});
+  $$('[data-del-gym]').forEach(b=>b.onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===b.dataset.delGym);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});});
+  $$('[data-del-session]').forEach(b=>b.onclick=()=>{const k=b.dataset.delSession;const existed=state.gym.sessions.includes(k);state.gym.sessions=state.gym.sessions.filter(x=>x!==k);if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);save();renderGym();toast('Workout day removed','Undo',()=>{state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(existed&&!state.gym.sessions.includes(k))state.gym.sessions.push(k);save();renderGym();});});
+  bindHistorySelection('gym',renderGym,ids=>{const set=new Set(ids),removed=state.gym.logs.map((item,index)=>({item,index})).filter(x=>set.has(x.item.id));state.gym.logs=state.gym.logs.filter(x=>!set.has(x.id));historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();toast(`${removed.length} exercise log${removed.length===1?'':'s'} deleted`,'Undo',()=>{restoreDeletedObjects(state.gym.logs,removed);save();renderGym();});});
+  bindHistorySelection('workout',renderGym,ids=>{const set=new Set(ids);const removed=state.gym.sessions.filter(k=>set.has(k));state.gym.sessions=state.gym.sessions.filter(k=>!set.has(k));removed.forEach(k=>{if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);});historySelected.workout.clear();historySelectMode.workout=false;save();renderGym();toast(`${removed.length} workout day${removed.length===1?'':'s'} removed`,'Undo',()=>{removed.forEach(k=>{state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k))state.gym.sessions.push(k);});save();renderGym();});});
 }
 function gymChartHTML(logs){
   if(logs.length<2)return `<div class="chart-empty">Log this exercise at least twice to see a progress chart.</div>`;
@@ -1319,7 +1381,7 @@ function openGymLogModal(id=null){
   modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>${existing?'Edit':'Log'} an exercise</h2><div class="stack"><label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label><div class="form-grid"><label><span class="label">Weight (kg)</span><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal" value="${existing?Number(existing.weight):''}"></label><label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${existing?.date||todayKey()}"></label></div><div class="form-grid"><label><span class="label">Sets</span><input class="input" id="gymSets" type="number" min="1" max="20" value="${existing?Number(existing.sets||3):3}"></label><label><span class="label">Reps</span><input class="input" id="gymReps" type="number" min="1" max="100" value="${existing?Number(existing.reps||10):10}"></label></div></div><button class="primary full" id="saveGymLog" style="margin-top:14px">Save log</button>${existing?'<button class="danger-btn full" id="deleteGymLog" style="margin-top:8px">Delete log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
   $('#saveGymLog').onclick=()=>{const weight=Number($('#gymWeight').value);if(!(weight>0))return toast('Enter the weight you used');const exerciseId=$('#gymLogExercise').value,date=$('#gymDate').value||todayKey();const priorPR=exercisePR(exerciseId,existing?.id||null);const data={exerciseId,weight,sets:clamp(Number($('#gymSets').value||3),1,20),reps:clamp(Number($('#gymReps').value||10),1,100),date,createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.gym.logs.push({id:uid('gymlog'),...data});state.gym.sessionExcluded=state.gym.sessionExcluded.filter(k=>k!==date);state.settings.selectedExerciseId=exerciseId;save();modal.close();renderGym();toast(weight>priorPR?`New PR: ${weight} kg`:(existing?'Gym log updated':'Gym progress saved'));};
-  if(existing)$('#deleteGymLog').onclick=()=>{state.gym.logs=state.gym.logs.filter(l=>l.id!==existing.id);save();modal.close();renderGym();toast('Exercise log deleted');};
+  if(existing)$('#deleteGymLog').onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===existing.id);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();modal.close();renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});};
   $('#cancelModal').onclick=()=>modal.close();
 }
 function openExerciseModal(){
@@ -1328,42 +1390,51 @@ function openExerciseModal(){
 }
 function daysUntilDate(key){if(!key)return null;const d=parseDateKey(key),t=parseDateKey(todayKey());return Math.round((d-t)/86400000);}
 function renderCar(){
-  setHeader('Car');const car=state.car;const rego=daysUntilDate(car.regoDue),service=daysUntilDate(car.serviceDueDate);const fuel=[...(car.fuelLogs||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.odometer||0)-Number(a.odometer||0));const maintenance=[...(car.maintenanceLogs||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.odometer||0)-Number(a.odometer||0));
-  const maintenanceTotal=maintenance.reduce((a,x)=>a+Number(x.cost||0),0);
-  main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge blue">CAR</span><h2 style="margin-top:14px">${escapeHTML(car.model||'My car')}</h2><p class="muted" style="margin-bottom:0">Keep kilometres, fuel, service, registration and maintenance history in one place.</p></section>
-  <section class="metric-grid"><div class="metric-card"><small>Odometer</small><strong>${Number(car.odometer||0).toLocaleString()}</strong><span>km</span></div><div class="metric-card"><small>Rego</small><strong>${rego===null?'—':rego<0?'Overdue':rego+'d'}</strong><span>${car.regoDue?escapeHTML(formatDateShort(parseDateKey(car.regoDue))):'not set'}</span></div><div class="metric-card"><small>Service date</small><strong>${service===null?'—':service<0?'Due':service+'d'}</strong><span>${car.serviceDueDate?escapeHTML(formatDateShort(parseDateKey(car.serviceDueDate))):'not set'}</span></div><div class="metric-card"><small>Maintenance</small><strong>${maintenance.length}</strong><span>${fmtMoney(maintenanceTotal)} logged</span></div></section>
+  setHeader('Car');const c=state.car;const fuel=[...(c.fuelLogs||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date)));const maintenance=[...(c.maintenanceLogs||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date)));const totalFuel=fuel.reduce((a,x)=>a+Number(x.cost||0),0),maintenanceTotal=maintenance.reduce((a,x)=>a+Number(x.cost||0),0);const latestFuel=fuel[0];
+  main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge blue">CAR</span><h2 style="margin-top:14px">${escapeHTML(c.model||'My car')}</h2><p class="muted" style="margin-bottom:0">${Number(c.odometer||0).toLocaleString()} km · Keep fuel, service, rego and maintenance in one place.</p></section>
+  <section class="metric-grid"><div class="metric-card"><small>Fuel logged</small><strong>${fuel.length}</strong><span>${fmtMoney(totalFuel)}</span></div><div class="metric-card"><small>Last fill</small><strong>${latestFuel?Number(latestFuel.litres||0).toFixed(1):'—'}</strong><span>${latestFuel?'litres':'no fill'}</span></div><div class="metric-card"><small>Rego due</small><strong>${c.regoDue?escapeHTML(formatDateShort(parseDateKey(c.regoDue))):'—'}</strong><span>${c.regoDue?'saved':'set date'}</span></div><div class="metric-card"><small>Maintenance</small><strong>${maintenance.length}</strong><span>${fmtMoney(maintenanceTotal)} logged</span></div></section>
   <div class="three-button-row"><button class="primary" id="logFuelBtn">+ Fuel</button><button class="secondary" id="logMaintenanceBtn">+ Maintenance</button><button class="secondary" id="editCarBtn">Edit car</button></div>
-  <div class="section-title"><h2>Maintenance history</h2></div><section class="card flat">${maintenance.length?maintenance.slice(0,12).map(m=>`<div class="fuel-row"><div><b>${escapeHTML(m.service||'Maintenance')}</b><small>${escapeHTML(formatDateShort(parseDateKey(m.date)))} · ${Number(m.odometer||0).toLocaleString()} km${Number(m.cost||0)?` · ${fmtMoney(m.cost)}`:''}${m.note?` · ${escapeHTML(m.note)}`:''}</small></div><div class="row"><button class="text-button tiny" data-edit-maint="${m.id}">Edit</button><button class="text-button tiny danger-text" data-del-maint="${m.id}">Delete</button></div></div>`).join(''):'<div class="empty-state">No maintenance logged yet.</div>'}</section>
-  <div class="section-title"><h2>Fuel history</h2></div><section class="card flat">${fuel.length?fuel.slice(0,12).map((f,i)=>{const older=fuel[i+1],km=older&&Number(f.odometer)>Number(older.odometer)?Number(f.odometer)-Number(older.odometer):null;return `<div class="fuel-row"><div><b>${Number(f.litres||0).toFixed(1)} L · ${fmtMoney(f.cost)}</b><small>${escapeHTML(formatDateShort(parseDateKey(f.date)))} · ${Number(f.odometer||0).toLocaleString()} km${km?` · ${km.toLocaleString()} km since prior fill`:''}</small></div><div class="row"><button class="text-button tiny" data-edit-fuel="${f.id}">Edit</button><button class="text-button tiny danger-text" data-del-fuel="${f.id}">Delete</button></div></div>`}).join(''):'<div class="empty-state">No fuel fills logged yet.</div>'}</section>`;
+  <div class="section-title"><h2>Maintenance history</h2><button class="secondary small-btn" id="selectMaintenanceBtn">${historySelectMode.maintenance?'Done':'Select'}</button></div>${historySelectToolbar('maintenance')}<section class="card flat">${maintenance.length?maintenance.map(m=>`<div class="fuel-row">${historySelectMode.maintenance?historySelectCheckbox('maintenance',m.id):''}<div><b>${escapeHTML(m.service||'Maintenance')}</b><small>${escapeHTML(formatDateShort(parseDateKey(m.date)))} · ${Number(m.odometer||0).toLocaleString()} km${Number(m.cost||0)?` · ${fmtMoney(m.cost)}`:''}${m.note?` · ${escapeHTML(m.note)}`:''}</small></div>${historySelectMode.maintenance?'':`<div class="row"><button class="text-button tiny" data-edit-maint="${m.id}">Edit</button><button class="text-button tiny danger-text" data-del-maint="${m.id}">Delete</button></div>`}</div>`).join(''):'<div class="empty-state">No maintenance logged yet.</div>'}</section>
+  <div class="section-title"><h2>Fuel history</h2><button class="secondary small-btn" id="selectFuelBtn">${historySelectMode.fuel?'Done':'Select'}</button></div>${historySelectToolbar('fuel')}<section class="card flat">${fuel.length?fuel.map((f,i)=>{const older=fuel[i+1],km=older&&Number(f.odometer)>Number(older.odometer)?Number(f.odometer)-Number(older.odometer):null;return `<div class="fuel-row">${historySelectMode.fuel?historySelectCheckbox('fuel',f.id):''}<div><b>${Number(f.litres||0).toFixed(1)} L · ${fmtMoney(f.cost)}</b><small>${escapeHTML(formatDateShort(parseDateKey(f.date)))} · ${Number(f.odometer||0).toLocaleString()} km${km?` · ${km.toLocaleString()} km since prior fill`:''}${f.note?` · ${escapeHTML(f.note)}`:''}</small></div>${historySelectMode.fuel?'':`<div class="row"><button class="text-button tiny" data-edit-fuel="${f.id}">Edit</button><button class="text-button tiny danger-text" data-del-fuel="${f.id}">Delete</button></div>`}</div>`}).join(''):'<div class="empty-state">No fuel fills logged yet.</div>'}</section>`;
   bindMoreBack();$('#logFuelBtn').onclick=()=>openFuelModal();$('#logMaintenanceBtn').onclick=()=>openMaintenanceModal();$('#editCarBtn').onclick=openCarModal;
+  $('#selectFuelBtn').onclick=()=>historySelectToggle('fuel',renderCar);$('#selectMaintenanceBtn').onclick=()=>historySelectToggle('maintenance',renderCar);
   $$('[data-edit-fuel]').forEach(b=>b.onclick=()=>openFuelModal(b.dataset.editFuel));
-  $$('[data-del-fuel]').forEach(b=>b.onclick=()=>{state.car.fuelLogs=state.car.fuelLogs.filter(x=>x.id!==b.dataset.delFuel);save();renderCar();toast('Fuel entry deleted');});
+  $$('[data-del-fuel]').forEach(b=>b.onclick=()=>{const idx=state.car.fuelLogs.findIndex(x=>x.id===b.dataset.delFuel);if(idx<0)return;const removed=state.car.fuelLogs[idx];state.car.fuelLogs.splice(idx,1);save();renderCar();toast('Fuel entry deleted','Undo',()=>{state.car.fuelLogs.splice(Math.min(idx,state.car.fuelLogs.length),0,removed);save();renderCar();});});
   $$('[data-edit-maint]').forEach(b=>b.onclick=()=>openMaintenanceModal(b.dataset.editMaint));
-  $$('[data-del-maint]').forEach(b=>b.onclick=()=>{state.car.maintenanceLogs=state.car.maintenanceLogs.filter(x=>x.id!==b.dataset.delMaint);save();renderCar();toast('Maintenance entry deleted');});
+  $$('[data-del-maint]').forEach(b=>b.onclick=()=>{const idx=state.car.maintenanceLogs.findIndex(x=>x.id===b.dataset.delMaint);if(idx<0)return;const removed=state.car.maintenanceLogs[idx];state.car.maintenanceLogs.splice(idx,1);save();renderCar();toast('Maintenance entry deleted','Undo',()=>{state.car.maintenanceLogs.splice(Math.min(idx,state.car.maintenanceLogs.length),0,removed);save();renderCar();});});
+  bindHistorySelection('fuel',renderCar,ids=>{const set=new Set(ids),removed=state.car.fuelLogs.map((item,index)=>({item,index})).filter(x=>set.has(x.item.id));state.car.fuelLogs=state.car.fuelLogs.filter(x=>!set.has(x.id));historySelected.fuel.clear();historySelectMode.fuel=false;save();renderCar();toast(`${removed.length} fuel entr${removed.length===1?'y':'ies'} deleted`,'Undo',()=>{restoreDeletedObjects(state.car.fuelLogs,removed);save();renderCar();});});
+  bindHistorySelection('maintenance',renderCar,ids=>{const set=new Set(ids),removed=state.car.maintenanceLogs.map((item,index)=>({item,index})).filter(x=>set.has(x.item.id));state.car.maintenanceLogs=state.car.maintenanceLogs.filter(x=>!set.has(x.id));historySelected.maintenance.clear();historySelectMode.maintenance=false;save();renderCar();toast(`${removed.length} maintenance entr${removed.length===1?'y':'ies'} deleted`,'Undo',()=>{restoreDeletedObjects(state.car.maintenanceLogs,removed);save();renderCar();});});
 }
 function openCarModal(){const c=state.car;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>Edit car details</h2><div class="stack"><label><span class="label">Car</span><input class="input" id="carModel" value="${escapeAttr(c.model||'')}"></label><label><span class="label">Current odometer (km)</span><input class="input" id="carOdo" type="number" min="0" value="${Number(c.odometer||0)}"></label><div class="form-grid"><label><span class="label">Rego due</span><input class="input" id="carRego" type="date" value="${c.regoDue||''}"></label><label><span class="label">Service due date</span><input class="input" id="carServiceDate" type="date" value="${c.serviceDueDate||''}"></label></div><label><span class="label">Service due odometer (km)</span><input class="input" id="carServiceKm" type="number" min="0" value="${Number(c.serviceDueKm||0)||''}"></label></div><button class="primary full" id="saveCar" style="margin-top:14px">Save car</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveCar').onclick=()=>{state.car.model=$('#carModel').value.trim()||'My car';state.car.odometer=Math.max(0,Number($('#carOdo').value||0));state.car.regoDue=$('#carRego').value||'';state.car.serviceDueDate=$('#carServiceDate').value||'';state.car.serviceDueKm=Math.max(0,Number($('#carServiceKm').value||0));save();modal.close();renderCar();};$('#cancelModal').onclick=()=>modal.close();}
-function openFuelModal(id=null){const c=state.car;const existing=id?(c.fuelLogs||[]).find(x=>x.id===id):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>${existing?'Edit':'Log'} a fuel fill</h2><div class="stack"><div class="form-grid"><label><span class="label">Litres</span><input class="input" id="fuelLitres" type="number" min="0" step="0.1" value="${existing?Number(existing.litres):''}"></label><label><span class="label">Cost (SAR)</span><input class="input" id="fuelCost" type="number" min="0" step="1" value="${existing?Number(existing.cost||0):''}"></label></div><div class="form-grid"><label><span class="label">Odometer (km)</span><input class="input" id="fuelOdo" type="number" min="0" value="${existing?Number(existing.odometer||0):Number(c.odometer||0)}"></label><label><span class="label">Date</span><input class="input" id="fuelDate" type="date" value="${existing?.date||todayKey()}"></label></div></div><button class="primary full" id="saveFuel" style="margin-top:14px">Save fuel fill</button>${existing?'<button class="danger-btn full" id="deleteFuel" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveFuel').onclick=()=>{const litres=Number($('#fuelLitres').value||0),cost=Number($('#fuelCost').value||0),odometer=Number($('#fuelOdo').value||0);if(!(litres>0))return toast('Enter litres');if(odometer<0)return toast('Enter a valid odometer');const data={litres,cost:Math.max(0,cost),odometer,date:$('#fuelDate').value||todayKey()};if(existing)Object.assign(existing,data);else state.car.fuelLogs.push({id:uid('fuel'),...data});state.car.odometer=Math.max(Number(state.car.odometer||0),odometer);save();modal.close();renderCar();toast(existing?'Fuel entry updated':'Fuel fill saved');};if(existing)$('#deleteFuel').onclick=()=>{state.car.fuelLogs=state.car.fuelLogs.filter(x=>x.id!==existing.id);save();modal.close();renderCar();toast('Fuel entry deleted');};$('#cancelModal').onclick=()=>modal.close();}
-function openMaintenanceModal(id=null){const c=state.car;const existing=id?(c.maintenanceLogs||[]).find(x=>x.id===id):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR MAINTENANCE</p><h2>${existing?'Edit':'Log'} maintenance</h2><div class="stack"><label><span class="label">What was done?</span><input class="input" id="maintService" value="${escapeAttr(existing?.service||'')}" placeholder="e.g. Engine oil + filter"></label><div class="form-grid"><label><span class="label">Date</span><input class="input" id="maintDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Odometer (km)</span><input class="input" id="maintOdo" type="number" min="0" value="${existing?Number(existing.odometer||0):Number(c.odometer||0)}"></label></div><label><span class="label">Cost (SAR)</span><input class="input" id="maintCost" type="number" min="0" step="1" value="${existing?Number(existing.cost||0):''}"></label><label><span class="label">Short note (optional)</span><input class="input" id="maintNote" value="${escapeAttr(existing?.note||'')}" placeholder="fluid, parts, next check..."></label></div><button class="primary full" id="saveMaint" style="margin-top:14px">Save maintenance</button>${existing?'<button class="danger-btn full" id="deleteMaint" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveMaint').onclick=()=>{const service=$('#maintService').value.trim();if(!service)return toast('Add what was done');const odometer=Math.max(0,Number($('#maintOdo').value||0));const data={service,date:$('#maintDate').value||todayKey(),odometer,cost:Math.max(0,Number($('#maintCost').value||0)),note:$('#maintNote').value.trim()};if(existing)Object.assign(existing,data);else c.maintenanceLogs.push({id:uid('maint'),...data});c.odometer=Math.max(Number(c.odometer||0),odometer);save();modal.close();renderCar();toast(existing?'Maintenance updated':'Maintenance saved');};if(existing)$('#deleteMaint').onclick=()=>{c.maintenanceLogs=c.maintenanceLogs.filter(x=>x.id!==existing.id);save();modal.close();renderCar();toast('Maintenance entry deleted');};$('#cancelModal').onclick=()=>modal.close();}
-function renderProjects(){setHeader('Projects');main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge purple">PROJECTS</span><h2 style="margin-top:14px">Something meaningful outside university.</h2><p class="muted" style="margin-bottom:0">Keep each project simple: what it is, where it stands and the next useful step.</p></section><div class="section-title"><h2>Your projects</h2><button id="addProjectBtn">+ Project</button></div><section class="project-list">${state.projects.map(p=>`<button class="project-card" data-project="${p.id}"><div class="row between center"><div><span class="badge ${p.status==='Completed'?'':'purple'}">${escapeHTML(p.status)}</span><h3>${escapeHTML(p.name)}</h3></div><strong>${clamp(Number(p.progress||0),0,100)}%</strong></div><div class="weekbar"><span style="width:${clamp(Number(p.progress||0),0,100)}%"></span></div><p>${escapeHTML(p.nextTask||'Set the next task.')}</p></button>`).join('')}</section>`;bindMoreBack();$('#addProjectBtn').onclick=()=>openProjectModal();$$('[data-project]').forEach(b=>b.onclick=()=>{state.settings.moreView='project:'+b.dataset.project;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});}
-function renderProjectDetail(id){const p=state.projects.find(x=>x.id===id);if(!p){state.settings.moreView='projects';return renderProjects();}setHeader(p.name);main.innerHTML=`<button class="back-link" id="projectBackBtn">${svgIcon('chevronLeft')}<span>Projects</span></button><section class="card hero"><div class="row between center"><span class="badge purple">${escapeHTML(p.status)}</span><button class="secondary small-btn" id="editProjectBtn">Edit</button></div><h2 style="margin-top:14px">${escapeHTML(p.name)}</h2><p class="muted">${escapeHTML(p.description||'No description yet.')}</p><div class="project-progress"><div><b>${clamp(Number(p.progress||0),0,100)}%</b><span>progress</span></div><div class="weekbar"><span style="width:${clamp(Number(p.progress||0),0,100)}%"></span></div></div></section><div class="section-title"><h2>Next task</h2></div><section class="card flat"><h3>${escapeHTML(p.nextTask||'Choose the next useful step.')}</h3></section><div class="section-title"><h2>Plan</h2></div><section class="card flat"><p class="project-plan">${escapeHTML(p.plan||'No plan written yet. Keep it short.')}</p></section><section class="grid-3"><div class="stat"><small>Sessions</small><strong>${Number(p.sessions||0)}</strong></div><div class="stat"><small>Status</small><strong>${escapeHTML(p.status)}</strong></div><div class="stat"><small>Progress</small><strong>${clamp(Number(p.progress||0),0,100)}%</strong></div></section><button class="primary full" id="logProjectBtn">+ Log project session</button><div class="section-title"><h2>Recent activity</h2></div><section class="card flat">${(p.logs||[]).length?p.logs.slice().reverse().slice(0,12).map(l=>`<div class="project-log"><div><b>${escapeHTML(l.note||'Project session')}</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))}</small></div><div class="row"><button class="text-button tiny" data-edit-project-log="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-project-log="${l.id}">Delete</button></div></div>`).join(''):'<div class="empty-state">No project sessions logged yet.</div>'}</section>`;$('#projectBackBtn').onclick=()=>{state.settings.moreView='projects';save();renderMore();};$('#editProjectBtn').onclick=()=>openProjectModal(p.id);$('#logProjectBtn').onclick=()=>openProjectSessionModal(p.id);$$('[data-edit-project-log]').forEach(b=>b.onclick=()=>openProjectSessionModal(p.id,b.dataset.editProjectLog));$$('[data-del-project-log]').forEach(b=>b.onclick=()=>{p.logs=p.logs.filter(x=>x.id!==b.dataset.delProjectLog);p.sessions=Math.max(0,Number(p.sessions||0)-1);save();renderProjectDetail(p.id);toast('Project session deleted');});}
-function openProjectModal(id=null){const p=id?state.projects.find(x=>x.id===id):null;const x=p||{name:'',status:'Active',progress:0,description:'',nextTask:'',plan:''};modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT</p><h2>${p?'Edit project':'New project'}</h2><div class="stack"><label><span class="label">Project name</span><input class="input" id="projectName" value="${escapeAttr(x.name)}"></label><label><span class="label">What is this project?</span><textarea id="projectDescription">${escapeHTML(x.description||'')}</textarea></label><label><span class="label">Next task</span><input class="input" id="projectNext" value="${escapeAttr(x.nextTask||'')}" placeholder="The next concrete thing to do"></label><label><span class="label">Plan / notes</span><textarea id="projectPlan">${escapeHTML(x.plan||'')}</textarea></label><div class="form-grid"><label><span class="label">Progress %</span><input class="input" id="projectProgress" type="number" min="0" max="100" value="${Number(x.progress||0)}"></label><label><span class="label">Status</span><select id="projectStatus"><option ${x.status==='Active'?'selected':''}>Active</option><option ${x.status==='Paused'?'selected':''}>Paused</option><option ${x.status==='Completed'?'selected':''}>Completed</option></select></label></div></div><button class="primary full" id="saveProject" style="margin-top:14px">Save project</button>${p?'<button class="danger-btn full" id="deleteProject" style="margin-top:8px">Delete project</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveProject').onclick=()=>{const name=$('#projectName').value.trim();if(!name)return toast('Add a project name');const data={name,status:$('#projectStatus').value,progress:clamp(Number($('#projectProgress').value||0),0,100),description:$('#projectDescription').value.trim(),nextTask:$('#projectNext').value.trim(),plan:$('#projectPlan').value.trim()};if(p)Object.assign(p,data);else state.projects.push({id:uid('project'),sessions:0,logs:[],...data});save();modal.close();if(p){state.settings.moreView='project:'+p.id;renderMore();}else renderProjects();};if(p)$('#deleteProject').onclick=()=>{if(state.projects.length<=1)return toast('Keep at least one project');state.projects=state.projects.filter(x=>x.id!==p.id);state.settings.moreView='projects';save();modal.close();renderMore();};$('#cancelModal').onclick=()=>modal.close();}
-function openProjectSessionModal(id,logId=null){const p=state.projects.find(x=>x.id===id);if(!p)return;const existing=logId?(p.logs||[]).find(x=>x.id===logId):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT SESSION</p><h2>${escapeHTML(p.name)}</h2><div class="stack"><label><span class="label">What did you move forward?</span><textarea id="projectSessionNote" placeholder="A short note is enough.">${escapeHTML(existing?.note||'')}</textarea></label><label><span class="label">Date</span><input class="input" id="projectSessionDate" type="date" value="${existing?.date||todayKey()}"></label></div><button class="primary full" id="saveProjectSession" style="margin-top:14px">Save session</button>${existing?'<button class="danger-btn full" id="deleteProjectSession" style="margin-top:8px">Delete session</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveProjectSession').onclick=()=>{const data={date:$('#projectSessionDate').value||todayKey(),note:$('#projectSessionNote').value.trim()||'Focused project session'};if(existing)Object.assign(existing,data);else{p.sessions=Number(p.sessions||0)+1;if(!Array.isArray(p.logs))p.logs=[];p.logs.push({id:uid('projectlog'),...data});}save();modal.close();renderProjectDetail(p.id);toast(existing?'Project session updated':'Project session logged');};if(existing)$('#deleteProjectSession').onclick=()=>{p.logs=p.logs.filter(x=>x.id!==existing.id);p.sessions=Math.max(0,Number(p.sessions||0)-1);save();modal.close();renderProjectDetail(p.id);toast('Project session deleted');};$('#cancelModal').onclick=()=>modal.close();}
-function renderPlan(){setHeader('Reset plan');main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge">RESET PLAN</span><h2 style="margin-top:14px">Simple enough to live with.</h2><p class="muted" style="margin-bottom:0">The plan stays here. The Today screen is where you actually live it.</p></section><section class="card flat">${morePlanRow('Sleep','8:00 AM wake, 11:30 PM sleep. Get out of bed immediately.')}${morePlanRow('Screen control','No TikTok during the reset. No porn/gooning in bed or after waking. Phone away at 11 PM.')}${morePlanRow('University','Attend current classes first. Urgent assessments second. Backlog third. Attempt work before AI.')}${morePlanRow('Body','Gym M/W/F, walk daily, mobility on other days, 3 meals and 90–110 g protein.')}${morePlanRow('Money','Allocate salary before spending. Whatever remains after the plan is flexible money.')}${morePlanRow('Environment','Weekly bathroom + bedsheets. Curtains open after waking. Groom at home.')}${morePlanRow('Life outside uni','Keep at least one personal project moving.')}</section><div class="section-title"><h2>Weekly review</h2></div><section class="card flat"><button class="secondary full" id="weeklyReviewBtn">Do weekly review</button></section><div class="section-title"><h2>Recent reviews</h2></div><section class="card flat">${state.weeklyReviews.length?state.weeklyReviews.slice().reverse().slice(0,8).map(r=>`<div class="project-log"><div><b>${escapeHTML(r.date)}</b><small>Next focus: ${escapeHTML(r.focus||'—')}</small></div><div class="row center"><span class="badge">${r.rating}/10</span><button class="text-button tiny" data-edit-review="${r.id}">Edit</button><button class="text-button tiny danger-text" data-del-review="${r.id}">Delete</button></div></div>`).join(''):'<div class="empty-state">No weekly review yet.</div>'}</section>`;bindMoreBack();$('#weeklyReviewBtn').onclick=()=>openWeeklyReviewModal();$$('[data-edit-review]').forEach(b=>b.onclick=()=>openWeeklyReviewModal(b.dataset.editReview));$$('[data-del-review]').forEach(b=>b.onclick=()=>{state.weeklyReviews=state.weeklyReviews.filter(r=>r.id!==b.dataset.delReview);save();renderPlan();toast('Weekly review deleted');});}
-function openModeModal(){const cur=currentMode();const modes=[['normal','Normal','Full routine and normal weekly plan.'],['bad','Bad day','Today only: keep essentials, classes, meals, outside and sleep. It resets tomorrow.'],['exam','Exam','Temporarily park projects and nonessential life admin. Keep uni, sleep, food and training.'],['holiday','Holiday','Pause university items without deleting the timetable. Keep life, gym, projects and sleep.']];modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DAY MODE</p><h2>How should Reset treat your schedule?</h2><div class="mode-list">${modes.map(([id,name,desc])=>`<button class="mode-option ${id===cur?'active':''}" data-mode="${id}"><span><b>${name}</b><small>${desc}</small></span><strong>${id===cur?'✓':''}</strong></button>`).join('')}</div><button class="secondary full" id="cancelModal" style="margin-top:10px">Cancel</button>`;modal.showModal();$$('[data-mode]').forEach(b=>b.onclick=()=>{state.settings.mode=b.dataset.mode;state.settings.modeSetDate=todayKey();ensureRecord(todayKey()).mode=b.dataset.mode;save();modal.close();renderToday();toast(`${modeName()} mode active`);});$('#cancelModal').onclick=()=>modal.close();}
-
-function openWeeklyReviewModal(id=null) {
-  const existing=id?state.weeklyReviews.find(r=>r.id===id):null;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SUNDAY RESET</p><h2>${existing?'Edit':'Weekly'} review</h2><div class="stack"><label><span class="label">How was the week? (1–10)</span><input class="input" id="reviewRating" type="number" min="1" max="10" value="${existing?.rating||7}"></label><label><span class="label">What went well?</span><textarea id="reviewWins" placeholder="Small wins count.">${escapeHTML(existing?.wins||'')}</textarea></label><label><span class="label">What kept slipping?</span><textarea id="reviewIssues" placeholder="Sleep, scrolling, class, food...">${escapeHTML(existing?.issues||'')}</textarea></label><label><span class="label">One focus for next week</span><input class="input" id="reviewFocus" value="${escapeAttr(existing?.focus||'')}" placeholder="e.g. Attend every class"></label></div><button class="primary full" id="saveReview" style="margin-top:14px">Save weekly review</button>${existing?'<button class="danger-btn full" id="deleteReview" style="margin-top:8px">Delete review</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+function openFuelModal(id=null){const c=state.car;const existing=id?(c.fuelLogs||[]).find(x=>x.id===id):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>${existing?'Edit':'Log'} a fuel fill</h2><div class="stack"><div class="form-grid"><label><span class="label">Litres</span><input class="input" id="fuelLitres" type="number" min="0" step="0.1" value="${existing?Number(existing.litres):''}"></label><label><span class="label">Cost (SAR)</span><input class="input" id="fuelCost" type="number" min="0" step="1" value="${existing?Number(existing.cost||0):''}"></label></div><div class="form-grid"><label><span class="label">Odometer (km)</span><input class="input" id="fuelOdo" type="number" min="0" value="${existing?Number(existing.odometer||0):Number(c.odometer||0)}"></label><label><span class="label">Date</span><input class="input" id="fuelDate" type="date" value="${existing?.date||todayKey()}"></label></div></div><button class="primary full" id="saveFuel" style="margin-top:14px">Save fuel fill</button>${existing?'<button class="danger-btn full" id="deleteFuel" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveFuel').onclick=()=>{const litres=Number($('#fuelLitres').value||0),cost=Number($('#fuelCost').value||0),odometer=Number($('#fuelOdo').value||0);if(!(litres>0))return toast('Enter litres');if(odometer<0)return toast('Enter a valid odometer');const data={litres,cost:Math.max(0,cost),odometer,date:$('#fuelDate').value||todayKey()};if(existing)Object.assign(existing,data);else state.car.fuelLogs.push({id:uid('fuel'),...data});state.car.odometer=Math.max(Number(state.car.odometer||0),odometer);save();modal.close();renderCar();toast(existing?'Fuel entry updated':'Fuel fill saved');};if(existing)$('#deleteFuel').onclick=()=>{const idx=state.car.fuelLogs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=state.car.fuelLogs[idx];state.car.fuelLogs.splice(idx,1);save();modal.close();renderCar();toast('Fuel entry deleted','Undo',()=>{state.car.fuelLogs.splice(Math.min(idx,state.car.fuelLogs.length),0,removed);save();renderCar();});};$('#cancelModal').onclick=()=>modal.close();}
+function openMaintenanceModal(id=null){const c=state.car;const existing=id?(c.maintenanceLogs||[]).find(x=>x.id===id):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR MAINTENANCE</p><h2>${existing?'Edit':'Log'} maintenance</h2><div class="stack"><label><span class="label">What was done?</span><input class="input" id="maintService" value="${escapeAttr(existing?.service||'')}" placeholder="e.g. Engine oil + filter"></label><div class="form-grid"><label><span class="label">Date</span><input class="input" id="maintDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Odometer (km)</span><input class="input" id="maintOdo" type="number" min="0" value="${existing?Number(existing.odometer||0):Number(c.odometer||0)}"></label></div><label><span class="label">Cost (SAR)</span><input class="input" id="maintCost" type="number" min="0" step="1" value="${existing?Number(existing.cost||0):''}"></label><label><span class="label">Short note (optional)</span><input class="input" id="maintNote" value="${escapeAttr(existing?.note||'')}" placeholder="fluid, parts, next check..."></label></div><button class="primary full" id="saveMaint" style="margin-top:14px">Save maintenance</button>${existing?'<button class="danger-btn full" id="deleteMaint" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveMaint').onclick=()=>{const service=$('#maintService').value.trim();if(!service)return toast('Add what was done');const odometer=Math.max(0,Number($('#maintOdo').value||0));const data={service,date:$('#maintDate').value||todayKey(),odometer,cost:Math.max(0,Number($('#maintCost').value||0)),note:$('#maintNote').value.trim()};if(existing)Object.assign(existing,data);else c.maintenanceLogs.push({id:uid('maint'),...data});c.odometer=Math.max(Number(c.odometer||0),odometer);save();modal.close();renderCar();toast(existing?'Maintenance updated':'Maintenance saved');};if(existing)$('#deleteMaint').onclick=()=>{const idx=c.maintenanceLogs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=c.maintenanceLogs[idx];c.maintenanceLogs.splice(idx,1);save();modal.close();renderCar();toast('Maintenance entry deleted','Undo',()=>{c.maintenanceLogs.splice(Math.min(idx,c.maintenanceLogs.length),0,removed);save();renderCar();});};$('#cancelModal').onclick=()=>modal.close();}
+function renderProjects(){
+  setHeader('Projects'); const active=state.projects.filter(p=>!p.archived), archived=state.projects.filter(p=>p.archived);
+  const cards=list=>list.map(p=>`<button class="project-card ${p.archived?'archived':''}" data-project="${p.id}"><div class="row between center"><div><span class="badge ${p.archived?'muted-badge':p.status==='Completed'?'':'purple'}">${p.archived?'Archived':escapeHTML(p.status)}</span><h3>${escapeHTML(p.name)}</h3></div><strong>${clamp(Number(p.progress||0),0,100)}%</strong></div><div class="weekbar"><span style="width:${clamp(Number(p.progress||0),0,100)}%"></span></div><p>${escapeHTML(p.nextTask||'Set the next task.')}</p></button>`).join('');
+  main.innerHTML=`${moreBack()}<div class="section-title first-section"><h2>Active projects</h2><button id="addProjectBtn">+ Project</button></div><section class="project-list">${active.length?cards(active):'<div class="card flat empty-state">No active projects. Start one when you have something worth building.</div>'}</section>${archived.length?`<details class="card flat archive-section"><summary>Archive · ${archived.length}</summary><section class="project-list archive-list">${cards(archived)}</section></details>`:''}`;
+  bindMoreBack();$('#addProjectBtn').onclick=()=>openProjectModal();$$('[data-project]').forEach(b=>b.onclick=()=>{historySelected.project.clear();historySelectMode.project=false;state.settings.moreView='project:'+b.dataset.project;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});
+}
+function renderProjectDetail(id){
+  const p=state.projects.find(x=>x.id===id);if(!p){state.settings.moreView='projects';return renderProjects();}setHeader(p.name);
+  main.innerHTML=`<button class="back-link" id="projectBackBtn">${svgIcon('chevronLeft')}<span>Projects</span></button><section class="card hero"><div class="row between center"><span class="badge ${p.archived?'muted-badge':'purple'}">${p.archived?'ARCHIVED':escapeHTML(p.status)}</span><button class="secondary small-btn" id="editProjectBtn">Edit</button></div><h2 style="margin-top:14px">${escapeHTML(p.name)}</h2><p class="muted">${escapeHTML(p.description||'No description yet.')}</p><div class="project-progress"><div><b>${clamp(Number(p.progress||0),0,100)}%</b><span>progress</span></div><div class="weekbar"><span style="width:${clamp(Number(p.progress||0),0,100)}%"></span></div></div></section><div class="section-title"><h2>Next task</h2></div><section class="card flat"><h3>${escapeHTML(p.nextTask||'Choose the next useful step.')}</h3></section><div class="section-title"><h2>Plan</h2></div><section class="card flat"><p class="project-plan">${escapeHTML(p.plan||'No plan written yet. Keep it short.')}</p></section><section class="grid-3"><div class="stat"><small>Sessions</small><strong>${Number(p.sessions||0)}</strong></div><div class="stat"><small>Status</small><strong>${p.archived?'Archived':escapeHTML(p.status)}</strong></div><div class="stat"><small>Progress</small><strong>${clamp(Number(p.progress||0),0,100)}%</strong></div></section>${p.archived?'<button class="secondary full" id="restoreProjectBtn">Restore project</button>':'<button class="primary full" id="logProjectBtn">+ Log project session</button>'}<div class="section-title"><h2>Activity history</h2><button class="secondary small-btn" id="selectProjectHistoryBtn">${historySelectMode.project?'Done':'Select'}</button></div>${historySelectToolbar('project')}<section class="card flat">${(p.logs||[]).length?p.logs.slice().reverse().map(l=>`<div class="project-log">${historySelectMode.project?historySelectCheckbox('project',l.id):''}<div><b>${escapeHTML(l.note||'Project session')}</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))}</small></div>${historySelectMode.project?'':`<div class="row"><button class="text-button tiny" data-edit-project-log="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-project-log="${l.id}">Delete</button></div>`}</div>`).join(''):'<div class="empty-state">No project sessions logged yet.</div>'}</section>`;
+  $('#projectBackBtn').onclick=()=>{historySelected.project.clear();historySelectMode.project=false;state.settings.moreView='projects';save();renderMore();};$('#editProjectBtn').onclick=()=>openProjectModal(p.id);if($('#logProjectBtn'))$('#logProjectBtn').onclick=()=>openProjectSessionModal(p.id);if($('#restoreProjectBtn'))$('#restoreProjectBtn').onclick=()=>{p.archived=false;save();renderProjectDetail(p.id);toast('Project restored');};if($('#selectProjectHistoryBtn'))$('#selectProjectHistoryBtn').onclick=()=>historySelectToggle('project',()=>renderProjectDetail(p.id));$$('[data-edit-project-log]').forEach(b=>b.onclick=()=>openProjectSessionModal(p.id,b.dataset.editProjectLog));$$('[data-del-project-log]').forEach(b=>b.onclick=()=>{const idx=p.logs.findIndex(x=>x.id===b.dataset.delProjectLog);if(idx<0)return;const removed=p.logs[idx];p.logs.splice(idx,1);p.sessions=Math.max(0,Number(p.sessions||0)-1);save();renderProjectDetail(p.id);toast('Project session deleted','Undo',()=>{p.logs.splice(Math.min(idx,p.logs.length),0,removed);p.sessions=Number(p.sessions||0)+1;save();renderProjectDetail(p.id);});});bindHistorySelection('project',()=>renderProjectDetail(p.id),ids=>{const set=new Set(ids),removed=p.logs.map((item,index)=>({item,index})).filter(x=>set.has(x.item.id));p.logs=p.logs.filter(x=>!set.has(x.id));p.sessions=Math.max(0,Number(p.sessions||0)-removed.length);historySelected.project.clear();historySelectMode.project=false;save();renderProjectDetail(p.id);toast(`${removed.length} project session${removed.length===1?'':'s'} deleted`,'Undo',()=>{restoreDeletedObjects(p.logs,removed);p.sessions=Number(p.sessions||0)+removed.length;save();renderProjectDetail(p.id);});});
+}
+function openProjectModal(id=null){
+  const p=id?state.projects.find(x=>x.id===id):null;const x=p||{name:'',status:'Active',archived:false,progress:0,description:'',nextTask:'',plan:''};
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT</p><h2>${p?'Edit project':'New project'}</h2><div class="stack"><label><span class="label">Project name</span><input class="input" id="projectName" value="${escapeAttr(x.name)}"></label><label><span class="label">What is this project?</span><textarea id="projectDescription">${escapeHTML(x.description||'')}</textarea></label><label><span class="label">Next task</span><input class="input" id="projectNext" value="${escapeAttr(x.nextTask||'')}" placeholder="The next concrete thing to do"></label><label><span class="label">Plan / notes</span><textarea id="projectPlan">${escapeHTML(x.plan||'')}</textarea></label><div class="form-grid"><label><span class="label">Progress %</span><input class="input" id="projectProgress" type="number" min="0" max="100" value="${Number(x.progress||0)}"></label><label><span class="label">Status</span><select id="projectStatus"><option ${x.status==='Active'?'selected':''}>Active</option><option ${x.status==='Paused'?'selected':''}>Paused</option><option ${x.status==='Completed'?'selected':''}>Completed</option></select></label></div></div><button class="primary full" id="saveProject" style="margin-top:14px">Save project</button>${p?`<button class="secondary full" id="archiveProject" style="margin-top:8px">${p.archived?'Restore from archive':'Archive project'}</button>${p.archived?'<button class="danger-btn full" id="deleteProject" style="margin-top:8px">Delete permanently</button>':''}`:''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#saveReview').onclick=()=>{const data={rating:clamp(Number($('#reviewRating').value||7),1,10),wins:$('#reviewWins').value.trim(),issues:$('#reviewIssues').value.trim(),focus:$('#reviewFocus').value.trim()};if(existing)Object.assign(existing,data);else state.weeklyReviews.push({id:uid('review'),date:new Date().toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}),dateKey:todayKey(),...data});save();modal.close();toast(existing?'Weekly review updated':'Weekly review saved');if(state.settings.moreView==='plan')renderPlan();else renderMore();};
-  if(existing)$('#deleteReview').onclick=()=>{state.weeklyReviews=state.weeklyReviews.filter(r=>r.id!==existing.id);save();modal.close();if(state.settings.moreView==='plan')renderPlan();else renderMore();toast('Weekly review deleted');};
+  $('#saveProject').onclick=()=>{const name=$('#projectName').value.trim();if(!name)return toast('Add a project name');const data={name,status:$('#projectStatus').value,progress:clamp(Number($('#projectProgress').value||0),0,100),description:$('#projectDescription').value.trim(),nextTask:$('#projectNext').value.trim(),plan:$('#projectPlan').value.trim()};if(p)Object.assign(p,data);else state.projects.push({id:uid('project'),archived:false,sessions:0,logs:[],...data});save();modal.close();if(p){state.settings.moreView='project:'+p.id;renderMore();}else renderProjects();};
+  if(p)$('#archiveProject').onclick=()=>{p.archived=!p.archived;save();modal.close();renderProjectDetail(p.id);toast(p.archived?'Project archived':'Project restored');};
+  if(p&&$('#deleteProject'))$('#deleteProject').onclick=()=>{if(!confirm('Permanently delete this archived project and its history?'))return;state.projects=state.projects.filter(x=>x.id!==p.id);state.settings.moreView='projects';save();modal.close();renderMore();};
   $('#cancelModal').onclick=()=>modal.close();
 }
+function openProjectSessionModal(id,logId=null){const p=state.projects.find(x=>x.id===id);if(!p)return;const existing=logId?(p.logs||[]).find(x=>x.id===logId):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT SESSION</p><h2>${escapeHTML(p.name)}</h2><div class="stack"><label><span class="label">What did you move forward?</span><textarea id="projectSessionNote" placeholder="A short note is enough.">${escapeHTML(existing?.note||'')}</textarea></label><label><span class="label">Date</span><input class="input" id="projectSessionDate" type="date" value="${existing?.date||todayKey()}"></label></div><button class="primary full" id="saveProjectSession" style="margin-top:14px">Save session</button>${existing?'<button class="danger-btn full" id="deleteProjectSession" style="margin-top:8px">Delete session</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveProjectSession').onclick=()=>{const data={date:$('#projectSessionDate').value||todayKey(),note:$('#projectSessionNote').value.trim()||'Focused project session'};if(existing)Object.assign(existing,data);else{p.sessions=Number(p.sessions||0)+1;if(!Array.isArray(p.logs))p.logs=[];p.logs.push({id:uid('projectlog'),...data});}save();modal.close();renderProjectDetail(p.id);toast(existing?'Project session updated':'Project session logged');};if(existing)$('#deleteProjectSession').onclick=()=>{const idx=p.logs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=p.logs[idx];p.logs.splice(idx,1);p.sessions=Math.max(0,Number(p.sessions||0)-1);save();modal.close();renderProjectDetail(p.id);toast('Project session deleted','Undo',()=>{p.logs.splice(Math.min(idx,p.logs.length),0,removed);p.sessions=Number(p.sessions||0)+1;save();renderProjectDetail(p.id);});};$('#cancelModal').onclick=()=>modal.close();}
+function openModeModal(){const cur=currentMode();const modes=[['normal','Normal','Full routine and normal weekly plan.'],['bad','Bad day','Today only: keep essentials, classes, meals, outside and sleep. It resets tomorrow.'],['exam','Exam','Temporarily park projects and nonessential life admin. Keep uni, sleep, food and training.'],['holiday','Holiday','Pause university items without deleting the timetable. Keep life, gym, projects and sleep.']];modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DAY MODE</p><h2>How should Reset treat your schedule?</h2><div class="mode-list">${modes.map(([id,name,desc])=>`<button class="mode-option ${id===cur?'active':''}" data-mode="${id}"><span><b>${name}</b><small>${desc}</small></span><strong>${id===cur?'✓':''}</strong></button>`).join('')}</div><button class="secondary full" id="cancelModal" style="margin-top:10px">Cancel</button>`;modal.showModal();$$('[data-mode]').forEach(b=>b.onclick=()=>{state.settings.mode=b.dataset.mode;state.settings.modeSetDate=todayKey();ensureRecord(todayKey()).mode=b.dataset.mode;save();modal.close();renderToday();toast(`${modeName()} mode active`);});$('#cancelModal').onclick=()=>modal.close();}
 
 $$('.tab').forEach(btn=>btn.addEventListener('click',()=>{state.settings.activeTab=btn.dataset.tab;if(btn.dataset.tab==='more')state.settings.moreView='home';save();render();window.scrollTo({top:0,behavior:'auto'});}));
 
 const settingsDialog=$('#settingsDialog');
-$('#settingsBtn').onclick=()=>{const v=$('#versionLabel');if(v)v.textContent='v'+APP_DISPLAY_VERSION;requestPersistentStorage().then(updateStorageProtectionLabel);settingsDialog.showModal();};
+$('#settingsBtn').onclick=()=>{const v=$('#versionLabel');if(v)v.textContent='v'+APP_DISPLAY_VERSION;requestPersistentStorage().then(updateStorageProtectionLabel);updateBackupConfidenceLabel();settingsDialog.showModal();};
 $('#exportBtn').onclick=()=>{
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`reset-backup-${todayKey()}.json`;a.click();URL.revokeObjectURL(url);toast('Backup exported');
 };

@@ -1,10 +1,1 @@
-RESET LIFE DASHBOARD
-Version: 2.5.0
-Schema: 7
-
-Focus of this release:
-- Money page now shows total allocation remaining for the current month before the monthly plan is reached.
-- Added a lightweight six-month spending trend with saved monthly-plan markers where available.
-- Returning from Gym, Health, Car, Projects or Reset Plan restores the previous scroll position on More.
-- Added late-sleep logging so the sleep task can be recorded after midnight and still count toward the intended day.
-- Existing v2.4 data migrates forward automatically.
+2.6.0

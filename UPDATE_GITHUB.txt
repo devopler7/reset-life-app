@@ -1,16 +1,12 @@
-RESET v2.5.0 UPDATE
+RESET v2.6.0 UPDATE
 
-1. In your current Reset app, open ••• and Export backup once.
-2. Unzip this package.
-3. Open the life-reset-app folder.
-4. Open your existing reset-life-app GitHub repository.
-5. Choose Add file → Upload files.
-6. Drag EVERYTHING inside life-reset-app into GitHub, including the icons folder.
-7. Commit directly to main.
-8. Wait about 1–3 minutes for GitHub Pages to deploy.
-9. Fully close Reset on your iPhone and reopen it.
-10. Open ••• and confirm App version says v2.5.0.
+1. In the current app, export one backup.
+2. Open your existing GitHub reset-life-app repository.
+3. Add file > Upload files.
+4. Upload EVERYTHING inside this life-reset-app folder, including icons.
+5. Commit to main.
+6. Wait 1-3 minutes for GitHub Pages.
+7. Fully close Reset on iPhone and reopen it.
+8. Open Settings and confirm v2.6.0.
 
-If the old version remains, open the GitHub Pages link once in Safari, refresh it, then fully close/reopen the Home Screen app.
-
-Your v2.4 data is designed to migrate automatically.
+If the old version remains, open the Pages URL in Safari once, refresh, then fully close/reopen the Home Screen app.

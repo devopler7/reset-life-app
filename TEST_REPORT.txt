@@ -1,38 +1,74 @@
-RESET LIFE DASHBOARD v2.5.0 TEST REPORT
+RESET LIFE DASHBOARD v2.6.0 TEST REPORT
 
-TESTED 18 OCT 2026
+TESTED 19 OCT 2026
 
-Automated / source checks
+CORE CHECKS
 - app.js JavaScript syntax (Node --check): PASS
 - Manifest JSON parse: PASS
-- HTML/CSS/JS/service-worker version references use v2.5.0: PASS
-- CSS parsed with tinycss2 without parser errors: PASS
-- Settings version label: v2.5.0
-- Schema version: 7
+- HTML parse: PASS
+- Static HTML duplicate IDs: none
+- CSS parse with tinycss2: 0 parser errors
+- CSS brace balance: PASS
+- Service worker asset paths exist: PASS
+- v2.6.0 version references are consistent: PASS
+- PWA standalone / iPhone metadata present: PASS
+- Existing touch-action protection against accidental double-tap zoom retained: PASS
 
-Browser regression checks using headless Chromium with the complete HTML/CSS/JS injected directly
-- Today renders without runtime errors: PASS
-- Week renders without runtime errors: PASS
-- Uni renders without runtime errors: PASS
-- Money renders without runtime errors: PASS
-- More renders without runtime errors: PASS
-- Gym, Health, Car, Projects and Reset Plan open and return without runtime errors: PASS
-- 320 px mobile layout has no horizontal overflow: PASS
-- 390 px mobile layout has no horizontal overflow: PASS
+DETERMINISTIC LOGIC / REGRESSION TESTS: 30 / 30 PASS
+Included:
+- v2.5-style data migration without losing money, project or record data
+- complete spending history with 1,200 transactions (no silent truncation)
+- allocation/category filters and exact totals
+- all-month spending filters
+- empty/zero money trend protection (no NaN or Infinity)
+- historical month closeout calculations
+- money batch delete behavior
+- serialization with 5,000 spending records
+- payday calculations for every configured day from 1 through 31
+- deleted/renamed allocation filter fallback
+- Week selected-date + scroll restoration after an editor action
+- selected Week day preservation
+- Adaptive Rebuild with manual moves preserved
+- Adaptive Rebuild with original schedule restored
+- locked classes, wake and sleep remain non-movable
+- project archive migration and active/archive separation
+- batch deletion for weight history
+- batch deletion for gym exercise logs
+- batch deletion for workout days
+- batch deletion for fuel history
+- batch deletion for maintenance history
+- batch deletion for project sessions with session-count correction
+- harder achievement thresholds on fresh data
+- Month in Review safe rendering
+- Insights safe rendering with sparse data
+- full gym, health and car histories without truncation
+- 2,000 mixed random data mutations followed by serialization/stat calculations
 
-v2.5 feature checks
-- Total monthly allocation remaining card is present: PASS
-- Remaining amount updates correctly after new spending is logged: PASS
-- Over-allocation state is shown correctly: PASS
-- Six monthly trend rows render: PASS
-- Current monthly plan snapshot is retained for trend comparison: PASS
-- More-page scroll position restores after entering and leaving Gym: PASS
-- More-page scroll restoration behaves at both 320 px and 390 px widths: PASS
-- Sleep timeline has Log/Edit sleep time control: PASS
-- Sleep time can be saved on the following calendar day and still complete the intended sleep task: PASS
-- After-midnight sleep displays the actual logged time badge: PASS
-- Unlogged previous-night sleep produces the Today reminder: PASS
-- Clearing a sleep log returns the sleep task to pending: PASS
+RANDOMIZED STRESS TEST
+- 100 simulated user profiles: 100 / 100 PASS
+- Each profile used random money histories, gym logs, workout days, health logs, fuel/maintenance histories and task completion records.
+- Each profile repeatedly rendered Today, Week, Uni, Money, More, Gym, Health, Car and Projects.
+- Each profile repeatedly generated both Adaptive Rebuild modes.
+- No tested scenario produced NaN, Infinity, undefined render output, invalid JSON, or an uncaught application error in the logic harness.
+
+DATA / STORAGE CHECKS
+- localStorage primary state remains enabled: PASS
+- IndexedDB automatic second local snapshot remains enabled: PASS
+- persistent-storage request remains available where supported: PASS
+- backup confidence indicator remains present: PASS
+- manual JSON export/import remains present: PASS
+
+CLEANUP / UX REGRESSION CHECKS
+- old Free-after-allocation card removed: PASS
+- old Money Rule / Reset Plan / Weekly Review UI removed: PASS
+- More opens with Life Tools first: PASS
+- full money transaction history + month/allocation filters present: PASS
+- batch selection does not require confirming every individual deletion: PASS
+- single-history deletions use Undo on the main history screens: PASS
+- project archive instead of forced deletion: PASS
+- Rebuild offers Keep my moves vs Reset my moves when manual moves exist: PASS
+- Month in Review and stronger Insights present: PASS
+- harder achievements present: PASS
 
 LIMITATION
-A real Safari/iPhone session cannot be launched inside this build environment. The app was tested at iPhone-like widths in Chromium, but final Safari-specific behavior should still be confirmed after GitHub Pages deployment.
+A real iPhone/Safari runtime cannot be launched inside this build environment. Automated browser access to local pages is restricted here, so the final device-specific visual/touch check still happens after you deploy to GitHub Pages. Logic, migration, data-volume, static/PWA, and repeated randomized regression testing were completed before packaging.
