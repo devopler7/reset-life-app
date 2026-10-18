@@ -1,43 +1,27 @@
-RESET v3.0.0 — PERSONAL DESIGN EDITION
-TEST REPORT — 19 OCT 2026
+RESET v3.1.0 TEST REPORT
 
-SCOPE
-This release is a design/localization rebuild of the personal v2.6 app. It intentionally contains no public onboarding, accounts, cloud database, AI, ads, analytics, or online currency conversion.
+Static checks
+- JavaScript syntax: PASS
+- Version/cache references updated: PASS
+- No external currency/exchange-rate functionality: PASS
+- Offline/local data architecture retained: PASS
 
-STATIC CHECKS
-- app.js JavaScript syntax (Node --check): PASS
-- service-worker.js JavaScript syntax (Node --check): PASS
-- manifest.webmanifest JSON parse: PASS
-- v3.0.0 version/cache references: PASS
-- no external HTTP/HTTPS URLs in app HTML/CSS/JS: PASS
-- no exchange-rate/API code remaining: PASS
-- local PWA assets present: PASS
-- iPhone standalone/viewport metadata retained: PASS
-- touch-action protection against accidental double-tap zoom retained: PASS
+Browser regression suite
+- 59/59 checks passed in headless Chromium using 390px and 320px iPhone-sized viewports.
+- No uncaught JavaScript errors in tested flows.
+- No horizontal overflow in tested main screens.
 
-BROWSER SMOKE TEST — 390 px: 16 / 16 PASS
-- Today renders
-- Week renders without horizontal overflow
-- University renders without horizontal overflow
-- Money renders without horizontal overflow
-- More renders without horizontal overflow
-- SAR-only spending form
-- expense logging and canonical SAR storage
-- language picker displays Saudi flag for Arabic
-- Arabic enables RTL
-- Arabic Today title renders
-- Arabic layout has no horizontal overflow
-- no uncaught page errors
+Verified flows include:
+- Today mode pill visibility and styling
+- More tools and combined Progress entry
+- Health simplification
+- Gym weekly goal changes (1-7)
+- Add/edit/delete exercise flow
+- Car odometer stepper and status cards
+- Rego/service day countdown and service-km remaining
+- Fuel history before maintenance history
+- Progress/insight layout spacing
+- Arabic RTL smoke test
+- Existing navigation and local persistence
 
-BROWSER SMOKE TEST — 320 px: 16 / 16 PASS
-The same interaction set above was repeated at a narrow iPhone-sized width with no uncaught page errors or horizontal overflow.
-
-DATA / STORAGE
-- v2.6 local data model remains supported through migrateState
-- localStorage remains the primary local copy
-- IndexedDB automatic local backup copy retained
-- JSON export/import retained
-- no remote application data service is used
-
-LIMITATION
-A real iPhone Safari/Home Screen runtime cannot be launched in this build environment. The final device-specific visual/touch check still happens after deployment on the user's iPhone.
+Final real-device visual/touch verification should still be done on the iPhone Home Screen build after GitHub Pages deployment.

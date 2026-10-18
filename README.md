@@ -1,19 +1,15 @@
-# Reset v3.0.0 — Personal Design Edition
+# Reset v3.1.0 — Personal Edition
 
-Reset v3.0 is the major visual upgrade of the personal Reset app. It keeps the data and core features from v2.6 while rebuilding the main experience around the polished iPhone-style OLED design.
+A local-first personal dashboard for Today, Week, University, Money, Gym, Health, Car, Projects and Progress.
 
-## Main changes
-- Rebuilt Today, Week, Money, Spending History, Gym, Progress and More screens
-- Cleaner native-style navigation, cards, controls, spacing and icons
-- English and Arabic from Settings, including full RTL layout and the Saudi flag for Arabic
-- Existing university, adaptive rebuild, flexible task moving, money, gym, health, car, projects, progress and history features remain
-- Spending can be logged in SAR or AUD
-- AUD expenses are automatically converted and stored in SAR using the saved AUD → SAR rate
-- The app can refresh an online reference rate and also allows a manual rate override
-- Existing v2.6 data is designed to migrate forward automatically
-- Data remains local-first with the existing IndexedDB backup copy and JSON export/import
+## v3.1 changes
+- Clear visual day-mode pill on Today.
+- Adjustable weekly gym goal.
+- Exercises can be added, edited and deleted, including built-in exercises.
+- Health screen simplified.
+- More screen simplified to Gym, Health, Car and Projects, with one combined Progress entry.
+- Car dashboard redesigned with quick odometer control, days-to-rego/service and fuel-first history.
+- Insight layout spacing fixed.
+- Achievements continue into higher milestone tiers after unlocking.
 
-## Personal edition
-This build intentionally does NOT include public-launch onboarding, accounts, subscriptions, tutorials, module-selection onboarding, or other commercial features.
-
-Upload the contents of this folder to the existing GitHub Pages repository.
+All existing v3.0 data migrates forward automatically.
