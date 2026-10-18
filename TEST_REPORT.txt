@@ -1,50 +1,38 @@
-RESET LIFE DASHBOARD v2.4.0 TEST REPORT
+RESET LIFE DASHBOARD v2.5.0 TEST REPORT
 
-TESTED 17 OCT 2026
+TESTED 18 OCT 2026
 
 Automated / source checks
 - app.js JavaScript syntax (Node --check): PASS
 - Manifest JSON parse: PASS
-- HTML/CSS/JS/service-worker asset references exist: PASS
-- Service worker cache and cache-busting URLs use v2.4.0: PASS
+- HTML/CSS/JS/service-worker version references use v2.5.0: PASS
 - CSS parsed with tinycss2 without parser errors: PASS
-- Duplicate named JavaScript functions: NONE
-- Settings version label: v2.4.0
+- Settings version label: v2.5.0
+- Schema version: 7
 
-Core regression tests: 14/14 PASS
-- v2.3-style state migrates to schema 6 and keeps new Health/Car/Gym fields.
-- Wake/morning essentials and classes are locked from manual movement; dinner remains movable.
-- Same-day time overrides preserve task duration and can be reset.
-- Flexible moves are rejected when they overlap a locked event.
-- Recurring tasks can move to tomorrow and the move can be undone.
-- One-off tasks can move to tomorrow without carrying an incorrect completed state.
-- Deferred/dropped items correctly produce Recovery Complete instead of blocking the whole day.
-- Workout-day removal/exclusion works and gym logs can restore a workout day.
-- Gym personal-best calculation returns the correct maximum weight.
-- Body-weight history survives migration.
-- Accidental task completion can be returned to Pending and completion celebration state resets.
-- Progress statistics ignore dates/classes from before the app was first used.
-- Exercise logs count as workout sessions without needing a duplicate manual session record.
-- Today, Week, Uni, Money, More, Gym, Health, Car, Projects and Reset Plan all complete a DOM smoke render without runtime exceptions.
+Browser regression checks using headless Chromium with the complete HTML/CSS/JS injected directly
+- Today renders without runtime errors: PASS
+- Week renders without runtime errors: PASS
+- Uni renders without runtime errors: PASS
+- Money renders without runtime errors: PASS
+- More renders without runtime errors: PASS
+- Gym, Health, Car, Projects and Reset Plan open and return without runtime errors: PASS
+- 320 px mobile layout has no horizontal overflow: PASS
+- 390 px mobile layout has no horizontal overflow: PASS
 
-Feature checks
-- Current/overdue Today hero has Mark done control: PASS
-- Hero completion offers quick Undo: PASS
-- Flexible task Move / swap / tomorrow / reset planned time: PASS
-- Fixed item protection: PASS
-- End-of-day Keep / Tomorrow / Drop cleanup: PASS
-- Timeline completion remains reversible: PASS
-- Expense edit/delete: PASS
-- Gym log edit/delete and workout-day removal: PASS
-- Weight edit/delete: PASS
-- Fuel and maintenance edit/delete: PASS
-- Project-session edit/delete: PASS
-- Weekly-review edit/delete: PASS
-- 7-day / 30-day / all-time metrics: PASS
-- Current-week vs previous-week summary: PASS
-- Last-30 vs previous-30 comparison: PASS
-- Gym PRs/charts: PASS
-- Car maintenance history: PASS
+v2.5 feature checks
+- Total monthly allocation remaining card is present: PASS
+- Remaining amount updates correctly after new spending is logged: PASS
+- Over-allocation state is shown correctly: PASS
+- Six monthly trend rows render: PASS
+- Current monthly plan snapshot is retained for trend comparison: PASS
+- More-page scroll position restores after entering and leaving Gym: PASS
+- More-page scroll restoration behaves at both 320 px and 390 px widths: PASS
+- Sleep timeline has Log/Edit sleep time control: PASS
+- Sleep time can be saved on the following calendar day and still complete the intended sleep task: PASS
+- After-midnight sleep displays the actual logged time badge: PASS
+- Unlogged previous-night sleep produces the Today reminder: PASS
+- Clearing a sleep log returns the sleep task to pending: PASS
 
 LIMITATION
-A real Safari/iPhone browser session could not be launched inside the build environment, so the final device-specific check should be done after GitHub Pages deploy. v2.4 keeps the v2.3 mobile layout/zoom/icon fixes and adds mostly application logic plus responsive components.
+A real Safari/iPhone session cannot be launched inside this build environment. The app was tested at iPhone-like widths in Chromium, but final Safari-specific behavior should still be confirmed after GitHub Pages deployment.

@@ -1,6 +1,6 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 6;
-const APP_DISPLAY_VERSION = '2.4.0';
+const APP_VERSION = 7;
+const APP_DISPLAY_VERSION = '2.5.0';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -62,6 +62,28 @@ function formatClock(value) {
 }
 function formatDateShort(date) {
   return date.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+}
+function localDateTimeInput(date=new Date()) {
+  const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0');
+  const h=String(date.getHours()).padStart(2,'0'), min=String(date.getMinutes()).padStart(2,'0');
+  return `${y}-${m}-${d}T${h}:${min}`;
+}
+function actualSleepClock(value) {
+  if(!value || !value.includes('T')) return '';
+  return formatClock(value.slice(11,16));
+}
+function sleepItemForKey(key) {
+  return itemsForDate(parseDateKey(key)).find(i=>i.id==='sleep') || null;
+}
+function previousUnloggedSleep() {
+  const yesterday=addDays(new Date(),-1);
+  const key=todayKey(yesterday);
+  if(parseDateKey(key)<appStartDate()) return null;
+  const item=sleepItemForKey(key);
+  if(!item) return null;
+  const rec=state.records[key];
+  if(rec?.actualSleepAt || getStatus(item,key)==='done') return null;
+  return {key,date:yesterday,item};
 }
 function escapeHTML(s='') { return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function escapeAttr(s='') { return escapeHTML(s); }
@@ -158,7 +180,8 @@ function defaultState() {
         {id:'fun', name:'Clothes + fun', target:500},
         {id:'buffer', name:'Buffer', target:300}
       ],
-      transactions:[]
+      transactions:[],
+      planHistory:{}
     },
     projects:[{
       id:'project_life_reset', name:'Life Reset App', status:'Active', progress:0,
@@ -205,8 +228,11 @@ function migrateState(parsed) {
     ...base.money,
     ...oldMoney,
     buckets: oldBuckets.map(b => ({id:b.id || uid('bucket'), name:b.name || 'Bucket', target:Number(b.target||0)})),
-    transactions: Array.isArray(oldMoney.transactions) ? oldMoney.transactions : []
+    transactions: Array.isArray(oldMoney.transactions) ? oldMoney.transactions : [],
+    planHistory: oldMoney.planHistory && typeof oldMoney.planHistory==='object' ? {...oldMoney.planHistory} : {}
   };
+  const migratedPlanTotal=next.money.buckets.reduce((a,b)=>a+Number(b.target||0),0);
+  if(next.money.planHistory[monthKey()]==null) next.money.planHistory[monthKey()]=migratedPlanTotal;
   if(!next.money.transactions.length) {
     oldBuckets.filter(b=>Number(b.spent)>0).forEach(b=>next.money.transactions.push({
       id:uid('tx'), date:todayKey(), amount:Number(b.spent), bucketId:b.id, note:'Imported from previous version'
@@ -248,6 +274,7 @@ let initialLocalStateFound=false;
 let appInitialized=false;
 let durableTimer=null;
 let durableDbPromise=null;
+let moreHomeScrollY=0;
 function loadState() {
   try {
     const raw = localStorage.getItem(APP_KEY);
@@ -334,8 +361,11 @@ function occurrenceKey(item) { return `${item.source==='oneoff'?'o':'s'}:${item.
 function getStatus(item,key) { return state.records[key]?.itemStatus?.[occurrenceKey(item)] || 'pending'; }
 function setStatus(item,key,status) {
   const rec=ensureRecord(key);
-  if(status==='pending') { delete rec.itemStatus[occurrenceKey(item)]; rec.finishCelebrated=''; }
-  else rec.itemStatus[occurrenceKey(item)]=status;
+  if(status==='pending') {
+    delete rec.itemStatus[occurrenceKey(item)];
+    rec.finishCelebrated='';
+    if(item.id==='sleep') delete rec.actualSleepAt;
+  } else rec.itemStatus[occurrenceKey(item)]=status;
   if(status==='done' && item.category==='Fitness' && /gym/i.test(item.title||'')) state.gym.sessionExcluded=(state.gym.sessionExcluded||[]).filter(k=>k!==key);
   save();
 }
@@ -508,6 +538,7 @@ function renderToday(preserveScroll=false) {
   const pendingFlexible=items.filter(i=>!itemManualMoveLocked(i) && !isClosedStatus(getStatus(i,key)));
   const showWrap=hour>=18 && pendingFlexible.length>0;
   const heroCanComplete=next && (next.mode==='now'||next.mode==='overdue');
+  const lastSleep=previousUnloggedSleep();
   setHeader('Today',date);
   main.innerHTML=`
     <section class="card hero ${finish?'day-complete':''}">
@@ -525,6 +556,8 @@ function renderToday(preserveScroll=false) {
       <div class="stat"><small>Streak</small><strong>${streak()} days</strong></div>
       <div class="stat"><small>Sleep target</small><strong>${formatClock(state.profile.sleepTarget)}</strong></div>
     </section>
+
+    ${lastSleep?`<section class="card compact late-sleep-card"><div><span class="badge warn">LAST NIGHT</span><b>Sleep was not logged.</b><small>You can still record it even if you went to sleep after midnight.</small></div><button class="secondary small-btn" id="logLastSleepBtn">Log sleep</button></section>`:''}
 
     <div class="section-title"><h2>Today’s timeline</h2><button id="addTodayBtn">+ Task</button></div>
     <section class="card flat timeline">
@@ -551,6 +584,7 @@ function renderToday(preserveScroll=false) {
   $('#addTodayBtn').onclick=()=>openOneOffTaskModal(null,{date:key,start:suggestTimeForNewTask(date)});
   $('#restartBtn').onclick=openRestartModal;
   $('#modeBtn').onclick=openModeModal;
+  if($('#logLastSleepBtn')&&lastSleep) $('#logLastSleepBtn').onclick=()=>openSleepLogModal(lastSleep.key);
   if($('#wrapDayBtn')) $('#wrapDayBtn').onclick=()=>openEndOfDayCleanup(date);
   if($('#heroDoneBtn')&&next){$('#heroDoneBtn').onclick=()=>{const completed=next.item;setStatus(completed,key,'done');renderToday();toast('Marked done','Undo',()=>{setStatus(completed,key,'pending');renderToday();});requestAnimationFrame(()=>maybeCelebrateDayFinish(date));};}
   if($('#heroMoveBtn')&&next) $('#heroMoveBtn').onclick=()=>openMoveItemModal(next.item,date);
@@ -565,16 +599,18 @@ function timelineItemHTML(item,date,showActions=false) {
   const closedStatus=['missed','deferred','dropped'].includes(status);
   const locked=itemManualMoveLocked(item);
   const statusBadge=status==='missed'?'<span class="badge danger-badge">MISSED</span>':status==='deferred'?'<span class="badge blue">MOVED</span>':status==='dropped'?'<span class="badge muted-badge">DROPPED</span>':item.adjusted?'<span class="badge adjusted-badge">ADJUSTED</span>':nowClass?'<span class="badge">NOW</span>':'';
+  const actualSleep=item.id==='sleep' ? state.records[key]?.actualSleepAt : '';
+  const sleepBadge=actualSleep?`<span class="badge sleep-badge">SLEPT ${escapeHTML(actualSleepClock(actualSleep))}</span>`:'';
   return `<div class="timeline-item ${nowClass} ${nextClass} ${status}" data-timeline-occ="${escapeAttr(occurrenceKey(item))}">
     <div class="timeline-time">${formatClock(item.start)}</div><span class="timeline-dot"></span>
     <div class="timeline-body">
       <div class="timeline-main">
         <input class="check" type="checkbox" data-occ="${escapeAttr(occurrenceKey(item))}" data-date="${key}" ${status==='done'?'checked':''} ${closedStatus?'disabled':''} aria-label="Mark ${escapeAttr(item.title)} done">
         <div class="timeline-copy"><b>${escapeHTML(item.title)}</b><small>${escapeHTML(item.detail||'')}</small>
-          <div class="timeline-meta">${categoryBadge(item.category)}<span class="badge blue">${escapeHTML(timeWindow(item))}</span>${locked?'<span class="badge lock-badge">LOCKED</span>':''}${statusBadge}</div>
+          <div class="timeline-meta">${categoryBadge(item.category)}<span class="badge blue">${escapeHTML(timeWindow(item))}</span>${locked?'<span class="badge lock-badge">LOCKED</span>':''}${statusBadge}${sleepBadge}</div>
         </div>
       </div>
-      ${showActions?`<div class="quick-actions"><button data-edit-item="${item.source}:${item.id}" type="button">Edit</button>${!locked && !isClosedStatus(status) && status!=='done'?`<button data-move-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Move</button>`:''}${status==='missed'?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}${status==='deferred'?`<button data-undo-defer="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Undo move</button>`:''}${status==='dropped'?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}</div>`:''}
+      ${showActions?`<div class="quick-actions"><button data-edit-item="${item.source}:${item.id}" type="button">Edit</button>${item.id==='sleep'?`<button data-log-sleep="${key}" type="button">${actualSleep?'Edit sleep time':'Log sleep time'}</button>`:''}${!locked && !isClosedStatus(status) && status!=='done'?`<button data-move-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Move</button>`:''}${status==='missed'?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}${status==='deferred'?`<button data-undo-defer="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Undo move</button>`:''}${status==='dropped'?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}</div>`:''}
     </div>
   </div>`;
 }
@@ -592,6 +628,7 @@ function bindTimeline(date) {
     if(source==='schedule') openScheduleItemModal(id);
     else openOneOffTaskModal(id);
   }));
+  $$('[data-log-sleep]').forEach(btn=>btn.addEventListener('click',()=>openSleepLogModal(btn.dataset.logSleep)));
   $$('[data-move-item]').forEach(btn=>btn.addEventListener('click',()=>{
     const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.moveItem);
     if(item) openMoveItemModal(item,date);
@@ -605,6 +642,41 @@ function bindTimeline(date) {
     if(item){restoreDeferredItem(item,key);render();toast('Move undone');}
   }));
 }
+function openSleepLogModal(targetKey) {
+  const item=sleepItemForKey(targetKey);
+  if(!item) return toast('Sleep task was not found for that day');
+  const rec=ensureRecord(targetKey);
+  const targetDate=parseDateKey(targetKey);
+  const nextKey=todayKey(addDays(targetDate,1));
+  let defaultValue=rec.actualSleepAt||'';
+  if(!defaultValue){
+    const now=new Date();
+    if(targetKey===todayKey(addDays(now,-1))) defaultValue=localDateTimeInput(now);
+    else if(targetKey===todayKey() && currentMinutes()>=minutesFromTime(state.profile.sleepTarget||'23:30')) defaultValue=localDateTimeInput(now);
+    else {
+      const planned=new Date(targetDate);
+      const [h,m]=(state.profile.sleepTarget||item.start||'23:30').split(':').map(Number);
+      planned.setHours(h,m,0,0);
+      defaultValue=localDateTimeInput(planned);
+    }
+  }
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Log when you actually went to sleep</h2><p class="muted">Your target is ${escapeHTML(formatClock(state.profile.sleepTarget||'23:30'))}. Going past it does not stop you recording the night properly.</p><label><span class="label">Actual sleep time</span><input class="input" id="actualSleepInput" type="datetime-local" value="${escapeAttr(defaultValue)}"></label><button class="primary full" id="saveSleepLog" style="margin-top:14px">Save sleep time</button>${rec.actualSleepAt?'<button class="danger-btn full" id="clearSleepLog" style="margin-top:8px">Clear sleep log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modal.showModal();
+  $('#saveSleepLog').onclick=()=>{
+    const value=$('#actualSleepInput').value;
+    if(!value || !value.includes('T')) return toast('Choose the actual sleep time');
+    const actualKey=value.slice(0,10);
+    if(actualKey!==targetKey && actualKey!==nextKey) return toast('Use that evening or the following morning');
+    rec.actualSleepAt=value;
+    setStatus(item,targetKey,'done');
+    save(); modal.close(); renderToday(true);
+    toast(`Sleep logged at ${actualSleepClock(value)}`);
+    requestAnimationFrame(()=>maybeCelebrateDayFinish(parseDateKey(targetKey)));
+  };
+  if($('#clearSleepLog')) $('#clearSleepLog').onclick=()=>{delete rec.actualSleepAt;setStatus(item,targetKey,'pending');save();modal.close();renderToday(true);toast('Sleep log cleared');};
+  $('#cancelModal').onclick=()=>modal.close();
+}
+
 function suggestTimeForNewTask(date) {
   if(todayKey(date)!==todayKey()) return '12:00';
   const d=new Date(); d.setMinutes(Math.ceil(d.getMinutes()/15)*15,0,0);
@@ -742,9 +814,12 @@ function uniTaskHTML(t) {
 
 function renderMoney() {
   setHeader('Money');
+  captureCurrentMoneyPlan();
   const mk=monthKey();
-  const totalTarget=state.money.buckets.reduce((a,b)=>a+Number(b.target||0),0);
+  const totalTarget=moneyPlanTotal();
   const totalSpent=transactionsForMonth(mk).reduce((a,t)=>a+Number(t.amount||0),0);
+  const remaining=totalTarget-totalSpent;
+  const spendPct=totalTarget>0?Math.round(totalSpent/totalTarget*100):0;
   const freeAfterPlan=Number(state.money.income||0)-totalTarget;
   const daysPay=daysUntilPayday();
   const latest=[...state.money.transactions].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,10);
@@ -754,6 +829,11 @@ function renderMoney() {
       <div class="money-hero-value ${freeAfterPlan<0?'danger-text':''}">${fmtMoney(freeAfterPlan)}</div>
       <p class="muted" style="margin-bottom:12px">${freeAfterPlan>=0?'Free after every monthly allocation. This is the flexible amount you have not assigned anywhere else.':'Your allocations are higher than your monthly income. Reduce one or more buckets.'}</p>
       <div class="row wrap"><span class="badge">${daysPay===0?'PAYDAY TODAY':`${daysPay} day${daysPay===1?'':'s'} to payday`}</span><span class="badge blue">Cash snapshot ${fmtMoney(state.money.currentCash)}</span></div>
+    </section>
+    <section class="money-remaining-card ${remaining<0?'over':''}">
+      <div><small>${remaining>=0?'LEFT THIS MONTH':'OVER TOTAL ALLOCATION'}</small><strong>${fmtMoney(Math.abs(remaining))}</strong><span>${remaining>=0?`available before you reach the ${fmtMoney(totalTarget)} total allocation`:`above the ${fmtMoney(totalTarget)} total allocation`}</span></div>
+      <div class="money-remaining-side"><b>${spendPct}%</b><small>${fmtMoney(totalSpent)} logged</small></div>
+      <div class="money-total-track"><i class="${remaining<0?'over':''}" style="width:${Math.min(100,Math.max(0,spendPct))}%"></i></div>
     </section>
     <section class="grid-3">
       <div class="stat"><small>Income</small><strong>${fmtMoney(state.money.income)}</strong></div>
@@ -765,14 +845,35 @@ function renderMoney() {
     <section class="card flat">${state.money.buckets.map(b=>budgetRowHTML(b,mk)).join('')}</section>
     <button class="primary full" id="addExpenseBtn">+ Log spending</button>
 
+    <div class="section-title"><h2>Monthly trend</h2><span class="muted tiny">last 6 months</span></div>
+    ${moneyTrendHTML()}
+
     <div class="section-title"><h2>Recent spending</h2><span class="muted tiny">${fmtMoney(totalSpent)} this month</span></div>
     <section class="card flat">${latest.length?latest.map(transactionHTML).join(''):'<div class="empty-state">No spending logged yet. Start with food, fuel and other variable costs.</div>'}</section>
 
-    <section class="card restart"><h3>Money rule</h3><p class="muted" style="margin-bottom:0">Allocate the important money first. Whatever remains after the plan is your flexible money, without needing another forecast.</p></section>`;
+    <section class="card restart"><h3>Money rule</h3><p class="muted" style="margin-bottom:0">Allocate the important money first. Whatever remains after the plan is your flexible money. The monthly-left card shows how much of your allocations you have not used yet.</p></section>`;
   $('#editMoneyBtn').onclick=openMoneyModal;
   $('#addExpenseBtn').onclick=()=>openExpenseModal();
   $$('[data-edit-tx]').forEach(b=>b.onclick=()=>openExpenseModal(b.dataset.editTx));
   $$('[data-del-tx]').forEach(b=>b.onclick=()=>{state.money.transactions=state.money.transactions.filter(t=>t.id!==b.dataset.delTx);save();renderMoney();toast('Spending entry deleted');});
+}
+function moneyPlanTotal(){return state.money.buckets.reduce((a,b)=>a+Number(b.target||0),0);}
+function captureCurrentMoneyPlan(){
+  if(!state.money.planHistory || typeof state.money.planHistory!=='object') state.money.planHistory={};
+  const mk=monthKey(); const total=moneyPlanTotal();
+  if(Number(state.money.planHistory[mk])!==total){state.money.planHistory[mk]=total;save();}
+}
+function recentMonthKeys(count=6){
+  const out=[]; const now=new Date();
+  for(let i=count-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1,12,0,0,0);out.push(monthKey(d));}
+  return out;
+}
+function moneyMonthLabel(mk){const [y,m]=mk.split('-').map(Number);return new Date(y,m-1,1,12).toLocaleDateString(undefined,{month:'short'});}
+function moneyTrendHTML(){
+  const keys=recentMonthKeys(6);
+  const rows=keys.map(k=>({key:k,label:moneyMonthLabel(k),spent:transactionsForMonth(k).reduce((a,t)=>a+Number(t.amount||0),0),plan:Number(state.money.planHistory?.[k]||0)}));
+  const max=Math.max(1,...rows.map(r=>Math.max(r.spent,r.plan||0)));
+  return `<section class="card flat money-trend-card"><div class="money-trend-legend"><span><i class="spent-dot"></i>Logged spending</span><span>Current plan ${fmtMoney(moneyPlanTotal())}</span></div>${rows.map(r=>`<div class="money-trend-row"><span>${escapeHTML(r.label)}</span><div class="money-trend-track"><i style="width:${Math.round(r.spent/max*100)}%"></i>${r.plan?`<em style="left:${Math.min(100,Math.round(r.plan/max*100))}%" title="Plan ${fmtMoney(r.plan)}"></em>`:''}</div><b>${r.spent?fmtMoney(r.spent):'—'}</b></div>`).join('')}<p class="muted tiny money-trend-note">Bars use the same scale so month-to-month spending is easy to compare. The small marker shows a saved monthly allocation where one exists.</p></section>`;
 }
 function transactionsForMonth(mk){return state.money.transactions.filter(t=>String(t.date||'').startsWith(mk));}
 function spentForBucket(bucketId,mk=monthKey()){return transactionsForMonth(mk).filter(t=>t.bucketId===bucketId).reduce((a,t)=>a+Number(t.amount||0),0);}
@@ -941,13 +1042,13 @@ function renderMore() {
 
     <div class="section-title"><h2>Weekly reset</h2></div>
     <section class="card flat"><p class="muted tiny">Review the week, then choose one focus for the next one.</p><button class="secondary full" id="weeklyReviewBtn">Do weekly review</button></section>`;
-  $$('[data-range]').forEach(b=>b.onclick=()=>{state.settings.statsRange=b.dataset.range;save();renderMore();});
-  $$('[data-more-view]').forEach(b=>b.onclick=()=>{state.settings.moreView=b.dataset.moreView;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});
+  $$('[data-range]').forEach(b=>b.onclick=()=>{const y=window.scrollY;state.settings.statsRange=b.dataset.range;save();renderMore();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));});
+  $$('[data-more-view]').forEach(b=>b.onclick=()=>{moreHomeScrollY=window.scrollY;state.settings.moreView=b.dataset.moreView;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});
   $('#weeklyReviewBtn').onclick=()=>openWeeklyReviewModal();
 }
 function toolLink(view,title,desc){return `<button class="tool-link" data-more-view="${escapeAttr(view)}"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small></span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`;}
 function moreBack(label='More'){return `<button class="back-link" id="moreBackBtn">${svgIcon('chevronLeft')}<span>${escapeHTML(label)}</span></button>`;}
-function bindMoreBack(){const b=$('#moreBackBtn');if(b)b.onclick=()=>{state.settings.moreView='home';save();renderMore();window.scrollTo({top:0,behavior:'auto'});};}
+function bindMoreBack(){const b=$('#moreBackBtn');if(b)b.onclick=()=>{const y=moreHomeScrollY;state.settings.moreView='home';save();renderMore();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));};}
 function morePlanRow(title,text){return `<div class="more-link"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(text)}</small></span></div>`;}
 
 function itemIsFixed(item) { return item.fixed===true || item.isClass===true; }
@@ -1131,7 +1232,7 @@ function openMoneyModal() {
   modal.showModal();
   $('#addBucketBtn').onclick=()=>{const wrap=document.createElement('div');wrap.innerHTML=bucketEditorRow({id:uid('bucket'),name:'New bucket',target:0});$('#bucketEditor').appendChild(wrap.firstElementChild);bindBucketDeleteButtons();};
   bindBucketDeleteButtons();
-  $('#saveMoney').onclick=()=>{state.money.income=Math.max(0,Number($('#incomeInput').value||0));state.money.currentCash=Math.max(0,Number($('#cashInput').value||0));state.profile.paydayDay=clamp(Number($('#paydayInput').value||29),1,31);state.money.buckets=$$('.bucket-editor').map(row=>({id:row.dataset.bucketId||uid('bucket'),name:$('.bucket-name',row).value.trim()||'Bucket',target:Math.max(0,Number($('.bucket-target',row).value||0))}));save();modal.close();renderMoney();};
+  $('#saveMoney').onclick=()=>{state.money.income=Math.max(0,Number($('#incomeInput').value||0));state.money.currentCash=Math.max(0,Number($('#cashInput').value||0));state.profile.paydayDay=clamp(Number($('#paydayInput').value||29),1,31);state.money.buckets=$$('.bucket-editor').map(row=>({id:row.dataset.bucketId||uid('bucket'),name:$('.bucket-name',row).value.trim()||'Bucket',target:Math.max(0,Number($('.bucket-target',row).value||0))}));if(!state.money.planHistory||typeof state.money.planHistory!=='object')state.money.planHistory={};state.money.planHistory[monthKey()]=moneyPlanTotal();save();modal.close();renderMoney();};
   $('#cancelModal').onclick=()=>modal.close();
 }
 function bucketEditorRow(b){return `<div class="course bucket-editor" data-bucket-id="${escapeAttr(b.id)}"><div class="row"><label style="flex:1"><span class="label">Bucket</span><input class="input bucket-name" value="${escapeAttr(b.name)}"></label><label style="width:130px"><span class="label">Monthly SAR</span><input class="input bucket-target" type="number" min="0" value="${Number(b.target||0)}"></label></div><button class="text-button danger-text bucket-delete" type="button">Remove</button></div>`;}
