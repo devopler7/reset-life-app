@@ -1,14 +1,22 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 8;
-const APP_DISPLAY_VERSION = '2.6.0';
+const APP_VERSION = 9;
+const APP_DISPLAY_VERSION = '3.0.0';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
 const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
-const fmtMoney = n => `${Number(n || 0).toLocaleString(undefined,{maximumFractionDigits:0})} SAR`;
-const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const DAY_LONG = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function isArabic(){return state?.settings?.language==='ar';}
+function currentLocale(){return isArabic()?'ar-SA':'en-AU';}
+function fmtNumber(n,opts={}){return Number(n||0).toLocaleString(currentLocale(),opts);}
+function fmtMoney(n){return isArabic()?new Intl.NumberFormat('ar-SA',{style:'currency',currency:'SAR',maximumFractionDigits:0}).format(Number(n||0)):`${Number(n||0).toLocaleString('en-AU',{maximumFractionDigits:0})} SAR`;}
+const DAY_SHORT_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DAY_LONG_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAY_SHORT_AR = ['أحد','اثن','ثلا','أرب','خمي','جمع','سبت'];
+const DAY_LONG_AR = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 const DAY_PICK = ['Su','M','Tu','W','Th','F','Sa'];
+function dayShort(i){return isArabic()?DAY_SHORT_AR[i]:DAY_SHORT_EN[i];}
+function dayLong(i){return isArabic()?DAY_LONG_AR[i]:DAY_LONG_EN[i];}
+const DAY_SHORT=DAY_SHORT_EN, DAY_LONG=DAY_LONG_EN;
 const CATEGORIES = ['Routine','University','Fitness','Food','Life','Project','Sleep'];
 const ICON_PATHS = {
   chevronLeft:'<path d="M15 18l-6-6 6-6"/>',
@@ -21,9 +29,80 @@ const ICON_PATHS = {
   car:'<path d="M4 15l1.5-5h13L20 15M5 15h14v4H5zM7 19v2M17 19v2M7.5 15h.01M16.5 15h.01M7 10l1.4-4h7.2l1.4 4"/>',
   folder:'<path d="M3.5 7.5h6l2 2h9v9.5h-17zM3.5 7.5V5h6l2 2"/>',
   chart:'<path d="M5 19V11M10 19V6M15 19v-9M20 19V4"/>',
-  wallet:'<path d="M4 7h14a3 3 0 0 1 3 3v8H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h13M16 12h5v4h-5a2 2 0 0 1 0-4z"/>'
+  wallet:'<path d="M4 7h14a3 3 0 0 1 3 3v8H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h13M16 12h5v4h-5a2 2 0 0 1 0-4z"/>',
+  calendar:'<rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3.5V7M16 3.5V7M3.5 9h17"/>',
+  university:'<path d="M3 10l9-5 9 5-9 5-9-5zM6 13v4c3 2 9 2 12 0v-4M21 10v6"/>',
+  money:'<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v5c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 11v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/>',
+  lightbulb:'<path d="M9 18h6M10 21h4M8.5 14.5c-1.5-1-2.5-2.8-2.5-4.8a6 6 0 1 1 12 0c0 2-1 3.8-2.5 4.8-.7.5-1.1 1.3-1.2 2.1h-4.6c-.1-.8-.5-1.6-1.2-2.1z"/>',
+  trophy:'<path d="M8 4h8v4c0 4-2 6-4 6s-4-2-4-6V4zM8 6H4v2c0 2 1.2 3 3.5 3M16 6h4v2c0 2-1.2 3-3.5 3M12 14v4M8.5 21h7M9 18h6"/>',
+  settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
+  arrowUpRight:'<path d="M7 17L17 7M9 7h8v8"/>',
+  fork:'<path d="M7 3v7M4 3v5c0 2 1 3 3 3s3-1 3-3V3M7 11v10M15 3v18M15 3c4 2 4 7 0 9"/>',
+  spark:'<path d="M12 3l1.2 4.3L17.5 9l-4.3 1.7L12 15l-1.2-4.3L6.5 9l4.3-1.7L12 3zM19 15l.7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15z"/>'
 };
 function svgIcon(name, cls='ui-icon') { return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name]||''}</svg>`; }
+
+const AR_UI = {
+  'Today':'اليوم','Week':'الأسبوع','University':'الجامعة','Money':'المال','More':'المزيد','Gym':'النادي','Health':'الصحة','Car':'السيارة','Projects':'المشاريع','Progress':'التقدم',
+  'Settings & backup':'الإعدادات والنسخ الاحتياطي','Export backup':'تصدير نسخة احتياطية','Import backup':'استيراد نسخة احتياطية','Add to iPhone Home Screen':'إضافة إلى شاشة الآيفون الرئيسية','Local data protection':'حماية البيانات المحلية','Automatic backup copy':'نسخة احتياطية تلقائية','App version':'إصدار التطبيق','Erase all app data':'مسح جميع بيانات التطبيق','Language':'اللغة',
+  'English':'English','Arabic':'العربية','Close':'إغلاق','Cancel':'إلغاء','Save':'حفظ','Edit':'تعديل','Delete':'حذف','Remove':'إزالة','Done':'تم','Select':'تحديد','Selected':'محدد','Back':'رجوع','Today’s timeline':'جدول اليوم','Today\'s timeline':'جدول اليوم','Today’s Progress':'تقدم اليوم',
+  'Now':'الآن','Next':'التالي','NEXT':'التالي','DO THIS NOW':'افعل هذا الآن','Mark done':'تم','Move':'نقل','Add task':'إضافة مهمة','Task':'مهمة','Routine':'روتين','Fitness':'لياقة','Food':'طعام','Life':'حياة','Project':'مشروع','Sleep':'نوم',
+  'Classes':'المحاضرات','Habits':'العادات','Other':'أخرى','Done today':'تم اليوم','Streak':'السلسلة','Sleep target':'هدف النوم','Rebuild today from now':'إعادة بناء اليوم من الآن','ADAPTIVE RESTART':'إعادة ضبط ذكية','Normal':'عادي','Bad day':'يوم صعب','Exam':'اختبارات','Holiday':'إجازة',
+  'Previous week':'الأسبوع السابق','Next week':'الأسبوع التالي','Recurring routine':'الروتين المتكرر','Weekly schedule':'الجدول الأسبوعي','Manage routine':'إدارة الروتين','Recurring item':'مهمة متكررة','Nothing scheduled for this day.':'لا يوجد شيء مجدول لهذا اليوم.',
+  'Courses':'المقررات','Open tasks':'المهام المفتوحة','Urgent':'عاجل','Catch-up queue':'قائمة اللحاق','Schedule it':'جدولها','Important':'مهم','Later':'لاحقاً','General':'عام',
+  'Next salary':'الراتب القادم','days until salary':'أيام حتى الراتب','+ Log spending':'+ تسجيل مصروف','NEXT SALARY':'الراتب القادم','left to spend':'متبقي للصرف','LEFT TO SPEND':'متبقي للصرف','Monthly Spending':'مصروفات الشهر','Monthly spending':'مصروفات الشهر','Allocations':'التخصيصات','Log spending':'تسجيل مصروف','Recent Spending':'آخر المصروفات','Recent spending':'آخر المصروفات','See all':'عرض الكل','Spending History':'سجل المصروفات','Spending history':'سجل المصروفات','All':'الكل','All months':'كل الأشهر','All allocations':'كل التخصيصات','Allocation':'التخصيص','Month':'الشهر','Spending trend':'اتجاه المصروفات','Income':'الدخل','Allocated':'المخصص','Spent':'المصروف','Save money plan':'حفظ خطة المال','Edit monthly allocation':'تعديل التخصيص الشهري','Monthly income (SAR)':'الدخل الشهري (ر.س)','Payday day of month':'يوم نزول الراتب','Add allocation bucket':'إضافة تخصيص','Bucket':'التخصيص','Monthly SAR':'شهرياً (ر.س)','Log an expense':'تسجيل مصروف','Edit an expense':'تعديل مصروف','Amount':'المبلغ','Date':'التاريخ','Note':'ملاحظة','Save spending':'حفظ المصروف','Delete entry':'حذف السجل',
+  'Workouts':'التمارين','History':'السجل','This Week':'هذا الأسبوع','This week':'هذا الأسبوع','sessions':'جلسات','Start Workout':'ابدأ التمرين','Recent Sessions':'الجلسات الأخيرة','Recent sessions':'الجلسات الأخيرة','Strength progress':'تقدم القوة','Personal bests':'الأرقام الشخصية','Personal best':'الرقم الشخصي','Exercise history':'سجل التمارين','Workout days':'أيام التمرين','Log exercise':'تسجيل تمرين','Log workout day':'تسجيل يوم تمرين','Exercise':'التمرين','Weight (kg)':'الوزن (كجم)','Sets':'الجولات','Reps':'التكرارات','Save log':'حفظ السجل','Add an exercise':'إضافة تمرين','Exercise name':'اسم التمرين','Muscle group':'المجموعة العضلية','Add exercise':'إضافة تمرين',
+  'Overview':'نظرة عامة','Month':'الشهر','All time':'كل الوقت','Daily completion':'إنجاز اليوم','Class attendance':'حضور المحاضرات','Three-meal days':'أيام 3 وجبات','Money spent':'المصروف','Insights':'الملاحظات','Achievements':'الإنجازات','Month in review':'ملخص الشهر','Good days':'الأيام الجيدة','Completion':'الإنجاز','3 meals':'3 وجبات','Daily streak':'السلسلة اليومية','Class-day streak':'سلسلة أيام الدراسة',
+  'Life Tools':'أدوات الحياة','Life tools':'أدوات الحياة','Strength, PRs and workout history.':'القوة والأرقام الشخصية وسجل التمارين.','Body weight and simple progress.':'الوزن والتقدم بشكل بسيط.','Fuel, service, rego and maintenance.':'الوقود والصيانة والتسجيل.','Keep meaningful work moving.':'استمر في مشاريعك المهمة.','Track your spending':'تتبع مصروفاتك','See patterns':'شاهد الأنماط','Long-term goals':'أهداف طويلة المدى',
+  'Body weight':'وزن الجسم','Weight history':'سجل الوزن','Log body weight':'تسجيل الوزن','Fuel':'وقود','Maintenance':'صيانة','Edit car':'تعديل السيارة','Fuel logged':'الوقود المسجل','Last fill':'آخر تعبئة','Rego due':'موعد التسجيل','Active projects':'المشاريع النشطة','Next task':'المهمة التالية','Plan':'الخطة','Activity history':'سجل النشاط','Log project session':'تسجيل جلسة مشروع','Archive project':'أرشفة المشروع',
+  'Protected':'محمي','Best effort':'حماية جزئية','Local':'محلي','Checking…':'جاري التحقق…','Saved now':'تم الحفظ الآن','Ready':'جاهز','How':'الطريقة','Choose file':'اختر ملف','Reset':'إعادة ضبط',
+  'Wake up + curtains open':'استيقظ وافتح الستائر','Shower + grooming':'استحمام وعناية','Breakfast':'الإفطار','Money check':'مراجعة المال','Plan the coming week':'تخطيط الأسبوع','Focused university catch-up':'تعويض جامعي مركز','Lunch':'الغداء','Outside + walk':'خروج ومشي','Mobility / easy movement':'مرونة / حركة خفيفة','Dinner':'العشاء','Personal project':'مشروع شخصي','Phone away':'إبعاد الهاتف','Lights out':'إطفاء الأنوار',
+  'Production Engineering Forum':'ملتقى هندسة الإنتاج','Production Engineering Workshop':'ورشة هندسة الإنتاج','Reservoir Engineering Workshop':'ورشة هندسة المكامن','Production Engineering Tutorial':'تمارين هندسة الإنتاج','Reservoir Engineering Tutorial':'تمارين هندسة المكامن','Reservoir Engineering Lecture':'محاضرة هندسة المكامن','Fluid Mechanics Workshop':'ورشة ميكانيكا الموائع','Systems Engineering Workshop':'ورشة هندسة النظم',
+  'Get out of bed immediately. No scrolling or gooning in bed.':'قم من السرير فورًا. لا تبقَ في السرير للتصفح أو إضاعة الوقت.','Teeth, deodorant, hair/beard and clean clothes.':'أسنان، مزيل عرق، شعر أو لحية وملابس نظيفة.','Eat early and include protein.':'تناول وجبة مبكرة تحتوي على بروتين.','Check spending, allocations and upcoming car/travel costs.':'راجع المصروفات والتخصيصات وتكاليف السيارة والسفر القادمة.','Classes, urgent uni work, gym and one focus for the week.':'المحاضرات والعمل الجامعي العاجل والنادي وهدف واحد للأسبوع.','Proper meal, not random snacking.':'وجبة حقيقية بدل الأكل العشوائي.','Leave the room and get at least 30 minutes outside.':'اخرج من الغرفة واقضِ 30 دقيقة على الأقل خارج المنزل.','10–15 minutes for hips, hamstrings, back and shoulders.':'10–15 دقيقة للورك وأوتار الركبة والظهر والكتفين.','A real meal with protein.':'وجبة حقيقية تحتوي على بروتين.','Build something outside university. The app itself can count.':'ابنِ شيئًا خارج الجامعة. حتى تطوير التطبيق يُحسب.','Charge it away from the bed. No late scroll spiral.':'اشحن الهاتف بعيدًا عن السرير. لا تدخل في دوامة تصفح ليلية.','Protect tomorrow before it starts.':'احمِ يوم الغد قبل أن يبدأ.',
+  'Rebuild the rest of today':'أعد بناء بقية اليوم','Keep fixed events safe and rebuild only what is still useful.':'حافظ على المواعيد الثابتة وأعد ترتيب ما زال مفيدًا فقط.','Rebuild':'إعادة بناء','Review':'مراجعة','Last night':'الليلة الماضية','Sleep was not logged':'لم يتم تسجيل النوم','Record it even if you slept after midnight.':'سجله حتى لو نمت بعد منتصف الليل.','Log sleep':'سجل النوم','Complete':'مكتمل','Next up':'التالي','left':'متبقي','until':'حتى','overdue':'متأخر','LOCKED':'مقفل','ADJUSTED':'معدل','MOVED':'منقول','DROPPED':'محذوف','MISSED':'فات',
+
+  'Good morning':'صباح الخير','Good afternoon':'مساء الخير','Good evening':'مساء الخير','now':'الآن','Log sleep time':'سجل وقت النوم','Do the next useful thing.':'افعل الشيء المفيد التالي.','You’re clear for now.':'لا يوجد شيء مطلوب الآن.','Use the free time well, or add something useful.':'استفد من الوقت أو أضف مهمة مفيدة.','You finished what mattered today.':'أنهيت ما كان مهمًا اليوم.','Day complete':'اكتمل اليوم','Recovery complete':'اكتمل التعافي','End of day':'نهاية اليوم','flexible item still open':'مهمة مرنة ما زالت مفتوحة','flexible items still open':'مهام مرنة ما زالت مفتوحة','Move, drop or keep them.':'انقلها أو احذفها أو أبقها.','Weekly routine':'الروتين الأسبوعي','recurring items':'عناصر متكررة','Add':'إضافة','Open':'فتح','Workout':'تمرين','Sleep, weight, habits':'النوم والوزن والعادات','Fuel & maintenance':'الوقود والصيانة','Track your progress':'تتبع تقدمك','earned':'مكتسب','Gym Sessions':'جلسات النادي','Class Attendance':'حضور المحاضرات','Three-Meal Days':'أيام ثلاث وجبات','Money Spent':'المصروفات','Daily Completion':'الإنجاز اليومي','Weight':'الوزن','30-day comparison':'مقارنة 30 يومًا','Meals':'الوجبات','Gym':'النادي','Previous 30 days':'آخر 30 يومًا سابقًا','All spending':'كل المصروفات','Selected allocation':'التخصيص المحدد','Transactions':'المعاملات','Trend':'الاتجاه','entries':'سجلات','No spending logged this month.':'لا توجد مصروفات مسجلة هذا الشهر.','No spending matches these filters.':'لا توجد مصروفات مطابقة لهذه الفلاتر.','Online rate':'سعر مباشر','manual':'يدوي','Refresh or set an AUD → SAR rate first.':'حدّث أو أدخل سعر تحويل الدولار الأسترالي إلى الريال أولاً.','One clean catch-up block before the new week.':'جلسة لحاق مركزة واحدة قبل الأسبوع الجديد.',
+  '+ Add':'+ إضافة','Rent + bills':'الإيجار والفواتير','Car fuel + reserve':'وقود السيارة والاحتياطي','Travel':'السفر','Invisalign':'إنفزلاين','Savings':'الادخار','Clothes + fun':'الملابس والترفيه','Buffer':'احتياطي','Not logged':'غير مسجل','No workout days logged yet.':'لم يتم تسجيل أيام تمرين بعد.','Push':'دفع','Pull':'سحب','Legs':'الأرجل','Upper Body':'الجزء العلوي','Chest, Shoulders, Triceps':'الصدر، الأكتاف، الترايسبس','Back, Biceps':'الظهر، البايسبس','Chest, Back, Shoulders':'الصدر، الظهر، الأكتاف','Keep using Reset and useful patterns will appear here automatically.':'استمر باستخدام Reset وستظهر الأنماط المفيدة هنا تلقائيًا.','Two solid weeks':'أسبوعان قويان','Finish 14 days at 70% or better.':'أنهِ 14 يومًا بنسبة 70% أو أكثر.','Gym routine':'روتين النادي','Complete 12 gym sessions.':'أكمل 12 جلسة في النادي.','Locked in':'ملتزم','Complete 30 gym sessions.':'أكمل 30 جلسة في النادي.','Food rhythm':'انتظام الوجبات','Hit all 3 meals on 20 different days.':'أكمل الوجبات الثلاث في 20 يومًا مختلفًا.','Show up':'الحضور','Attend 20 tracked university classes.':'احضر 20 محاضرة جامعية متتبعة.','Reliable student':'طالب ملتزم','Complete every class on 10 class days.':'أكمل جميع المحاضرات في 10 أيام دراسية.','Builder':'بنّاء','Log 15 focused project sessions.':'سجل 15 جلسة مشروع مركزة.','Stronger':'أقوى','Improve one tracked lift by at least 20%.':'حسّن أحد الأوزان المتتبعة بنسبة 20% على الأقل.','Reset 50':'Reset 50','Finish 50 good days at 70% or better.':'أنهِ 50 يومًا جيدًا بنسبة 70% أو أكثر.','Nothing in the catch-up queue. Current classes can stay your focus.':'لا توجد مهام في قائمة اللحاق. ركز على المحاضرات الحالية.','Update this to your real position.':'حدّث هذا إلى تقدمك الحقيقي.',
+  'Current saved rate':'السعر المحفوظ الحالي','AUD → SAR conversion':'تحويل الدولار الأسترالي إلى الريال','Currency':'العملة','Refresh':'تحديث','Saved directly in SAR':'سيتم الحفظ مباشرة بالريال','No rate saved':'لا يوجد سعر محفوظ','or set manually':'أو أدخله يدويًا','A$1 equals how many SAR?':'كم ريال يساوي 1 دولار أسترالي؟','Save manual rate':'حفظ السعر اليدوي','Choose language':'اختر اللغة'
+};
+function ui(text){return isArabic()?(AR_UI[text]||text):text;}
+function translateTextValue(text){
+  if(!isArabic()) return text;
+  const trimmed=String(text||'').trim();
+  if(!trimmed) return text;
+  if(AR_UI[trimmed]) return String(text).replace(trimmed,AR_UI[trimmed]);
+  const replacements=[
+    [/^\+ Task$/i,'+ مهمة'],[/^NOW$/i,'الآن'],[/^Next up$/i,'التالي'],
+    [/^(\d+) days?$/i,'$1 يوم'],[/^(\d+) sessions?$/i,'$1 جلسة'],[/^(\d+) entries$/i,'$1 سجل'],[/^(\d+) active$/i,'$1 نشط'],[/^(\d+) items$/i,'$1 عناصر'],
+    [/^(\d+) day(?:s)? until your next salary$/i,'$1 يوم حتى الراتب القادم'],[/^(\d+) min ago$/i,'منذ $1 دقيقة'],[/^(\d+) selected$/i,'تم تحديد $1'],
+    [/^Week (\d+)$/i,'الأسبوع $1'],[/^Due (.+)$/i,'موعد $1'],[/^(\d+) flexible item still open$/i,'$1 مهمة مرنة ما زالت مفتوحة'],[/^(\d+) flexible items still open$/i,'$1 مهام مرنة ما زالت مفتوحة'],[/^(\d+) recurring items$/i,'$1 عناصر متكررة'],[/^(\d+) days until salary$/i,'$1 يوم حتى الراتب'],[/^(\d+) earned$/i,'$1 مكتسب'],[/^(\d+) \/ (\d+) sessions$/i,'$1 / $2 جلسات'],[/^You: week (\d+) · Teaching: week (\d+) · (\d+) weeks behind$/i,'أنت: الأسبوع $1 · التدريس: الأسبوع $2 · متأخر $3 أسابيع'],[/^(.+) spent · (.+) left$/i,'تم صرف $1 · متبقي $2'],[/\boverdue\b/gi,'متأخر'],[/\bnow\b/gi,'الآن'],[/^Log sleep time$/i,'سجل وقت النوم']
+  ];
+  for(const [r,repl] of replacements) if(r.test(trimmed)) return String(text).replace(trimmed,trimmed.replace(r,repl));
+  return text;
+}
+function localizeTree(root=document){
+  if(!isArabic()||!root) return;
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT); const nodes=[]; let n;
+  while(n=walker.nextNode()){if(n.parentElement && !['SCRIPT','STYLE','OPTION'].includes(n.parentElement.tagName))nodes.push(n);}
+  nodes.forEach(node=>{const x=translateTextValue(node.nodeValue);if(x!==node.nodeValue)node.nodeValue=x;});
+  root.querySelectorAll?.('[placeholder]').forEach(el=>{const p=el.getAttribute('placeholder');const q=translateTextValue(p);if(q!==p)el.setAttribute('placeholder',q);});
+  root.querySelectorAll?.('option').forEach(el=>{const x=translateTextValue(el.textContent);if(x!==el.textContent)el.textContent=x;});
+}
+function applyLanguageState(){
+  const ar=isArabic(); document.documentElement.lang=ar?'ar':'en';document.documentElement.dir=ar?'rtl':'ltr';document.body.classList.toggle('rtl',ar);
+  const labels={today:'Today',week:'Week',university:'University',money:'Money',more:'More'};
+  $$('.tab').forEach(b=>{const sm=$('small',b);if(sm)sm.textContent=ui(labels[b.dataset.tab]||'');});
+  const lang=$('#languageLabel'); if(lang)lang.textContent=ar?'🇸🇦 العربية':'🇺🇸 English';
+  const settingsTitle=$('#settingsDialog h2');if(settingsTitle)settingsTitle.textContent=ui('Settings & backup');
+  const pairs=[['#languageBtn','Language'],['#exportBtn','Export backup'],['.file-label','Import backup'],['#installHelpBtn','Add to iPhone Home Screen'],['#storageProtectionBtn','Local data protection'],['#eraseBtn','Erase all app data']];
+  pairs.forEach(([sel,key])=>{const el=$(sel);const span=el&&$('span',el);if(span)span.textContent=ui(key);});
+}
+let languageObserver=null;
+function ensureLanguageObserver(){
+  if(languageObserver)return;
+  languageObserver=new MutationObserver(muts=>{if(!isArabic())return;muts.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)localizeTree(n);else if(n.nodeType===3){const x=translateTextValue(n.nodeValue);if(x!==n.nodeValue)n.nodeValue=x;}}));});
+  languageObserver.observe(document.body,{childList:true,subtree:true});
+}
 
 function todayKey(d = new Date()) {
   const y = d.getFullYear();
@@ -64,10 +143,10 @@ function formatClock(value) {
   if(!value) return '—';
   const [h,m]=value.split(':').map(Number);
   const d=new Date(); d.setHours(h,m,0,0);
-  return d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+  return d.toLocaleTimeString(currentLocale(), {hour:'numeric',minute:'2-digit'});
 }
 function formatDateShort(date) {
-  return date.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+  return date.toLocaleDateString(currentLocale(),{month:'short',day:'numeric'});
 }
 function localDateTimeInput(date=new Date()) {
   const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0');
@@ -188,7 +267,7 @@ function defaultState() {
       ],
       transactions:[],
       planHistory:{},
-      bucketPlanHistory:{}
+      bucketPlanHistory:{},
     },
     projects:[{
       id:'project_life_reset', name:'Life Reset App', status:'Active', archived:false, progress:0,
@@ -200,7 +279,7 @@ function defaultState() {
     health:{weightLogs:[]},
     car:{model:'2007 Honda Accord V6 Luxury',odometer:180000,regoDue:'',serviceDueDate:'',serviceDueKm:0,fuelLogs:[],maintenanceLogs:[]},
     weeklyReviews:[],
-    settings:{activeTab:'today', selectedWeekDate:todayKey(), statsRange:'30', moreView:'home', mode:'normal', modeSetDate:todayKey(), selectedExerciseId:'chest_press', moneyHistoryMonth:monthKey(), moneyHistoryBucket:'all'}
+    settings:{activeTab:'today', selectedWeekDate:todayKey(), statsRange:'30', moreView:'home', mode:'normal', modeSetDate:todayKey(), selectedExerciseId:'chest_press', gymView:'workouts', moneyHistoryMonth:monthKey(), moneyHistoryBucket:'all', moneyView:'home', language:'en'}
   };
 }
 
@@ -237,8 +316,9 @@ function migrateState(parsed) {
     buckets: oldBuckets.map(b => ({id:b.id || uid('bucket'), name:b.name || 'Bucket', target:Number(b.target||0)})),
     transactions: Array.isArray(oldMoney.transactions) ? oldMoney.transactions : [],
     planHistory: oldMoney.planHistory && typeof oldMoney.planHistory==='object' ? {...oldMoney.planHistory} : {},
-    bucketPlanHistory: oldMoney.bucketPlanHistory && typeof oldMoney.bucketPlanHistory==='object' ? {...oldMoney.bucketPlanHistory} : {}
+    bucketPlanHistory: oldMoney.bucketPlanHistory && typeof oldMoney.bucketPlanHistory==='object' ? {...oldMoney.bucketPlanHistory} : {},
   };
+  delete next.money.fx;
   const migratedPlanTotal=next.money.buckets.reduce((a,b)=>a+Number(b.target||0),0);
   if(next.money.planHistory[monthKey()]==null) next.money.planHistory[monthKey()]=migratedPlanTotal;
   if(!next.money.transactions.length) {
@@ -256,6 +336,9 @@ function migrateState(parsed) {
   if(next.settings.moreView==='plan') next.settings.moreView='home';
   if(!next.settings.moneyHistoryMonth) next.settings.moneyHistoryMonth=monthKey();
   if(!next.settings.moneyHistoryBucket) next.settings.moneyHistoryBucket='all';
+  if(!['en','ar'].includes(next.settings.language)) next.settings.language='en';
+  if(!['home','history'].includes(next.settings.moneyView)) next.settings.moneyView='home';
+  if(!['workouts','progress','history'].includes(next.settings.gymView)) next.settings.gymView='workouts';
 
   const oldGym=parsed.gym||{};
   next.gym={
@@ -376,6 +459,7 @@ async function initializeApp() {
   }
   if(state.settings.mode==='bad' && state.settings.modeSetDate!==todayKey()) state.settings.mode='normal';
   appInitialized=true;
+  applyLanguageState();ensureLanguageObserver();
   requestPersistentStorage().then(updateStorageProtectionLabel);
   render();
   durableWrite();
@@ -508,10 +592,11 @@ const modal=$('#modal');
 const modalContent=$('#modalContent');
 
 function setHeader(title, date=new Date()) {
-  pageTitle.textContent=title;
-  dateLabel.textContent=date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}).toUpperCase();
+  pageTitle.textContent=ui(title);
+  dateLabel.textContent=date.toLocaleDateString(currentLocale(),{weekday:'long',month:'short',day:'numeric'}).toUpperCase();
 }
 function render() {
+  applyLanguageState();
   const tab=state.settings.activeTab || 'today';
   $$('.tab').forEach(b=>{const active=b.dataset.tab===tab;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
   if(tab==='today') renderToday();
@@ -519,6 +604,7 @@ function render() {
   if(tab==='university') renderUniversity();
   if(tab==='money') renderMoney();
   if(tab==='more') renderMore();
+  localizeTree(main);
   save();
 }
 
@@ -564,65 +650,39 @@ function countdownText(item,mode) {
 
 function renderToday(preserveScroll=false) {
   const scroll=window.scrollY;
-  const date=new Date(); const key=todayKey(date); const rec=ensureRecord(key);
-  rec.mode=currentMode();
+  const date=new Date(); const key=todayKey(date); const rec=ensureRecord(key);rec.mode=currentMode();
   const allItems=itemsForDate(date); const items=itemsForMode(allItems,currentMode()); const parked=allItems.filter(i=>!itemIncludedForMode(i,currentMode()));
-  const done=items.filter(i=>getStatus(i,key)==='done').length; const total=items.length; const pct=total?Math.round(done/total*100):0;
+  const done=items.filter(i=>getStatus(i,key)==='done').length,total=items.length,pct=total?Math.round(done/total*100):0;
+  const next=nextUsefulItem(items,key); const finish=dayFinishState(date); const lastSleep=previousUnloggedSleep();
   const hour=new Date().getHours(); const greeting=hour<12?'Good morning':hour<18?'Good afternoon':'Good evening';
-  const next=nextUsefulItem(items,key);
-  const missed=items.filter(i=>getStatus(i,key)==='missed').length;
-  const adjusted=items.filter(i=>i.adjusted).length;
-  const finish=dayFinishState(date);
-  const pendingFlexible=items.filter(i=>!itemManualMoveLocked(i) && !isClosedStatus(getStatus(i,key)));
-  const showWrap=hour>=18 && pendingFlexible.length>0;
-  const heroCanComplete=next && (next.mode==='now'||next.mode==='overdue');
-  const lastSleep=previousUnloggedSleep();
+  const open=items.filter(i=>!isClosedStatus(getStatus(i,key))); const hero=next?.item||open[0]||null;
+  const nextAfter=hero?open.find(i=>occurrenceKey(i)!==occurrenceKey(hero) && minutesFromTime(i.start)>=minutesFromTime(hero.start)):null;
+  const heroMode=next?.mode||'next'; const heroCanComplete=hero && (heroMode==='now'||heroMode==='overdue');
+  const classes=items.filter(i=>i.isClass), habits=items.filter(i=>!i.isClass && ['Routine','Food','Fitness','Sleep'].includes(i.category)), other=items.filter(i=>!classes.includes(i)&&!habits.includes(i));
+  const count=(arr)=>[arr.filter(i=>getStatus(i,key)==='done').length,arr.length]; const cc=count(classes),hc=count(habits),oc=count(other);
+  const pendingFlexible=items.filter(i=>!itemManualMoveLocked(i)&&!isClosedStatus(getStatus(i,key))); const showWrap=hour>=18&&pendingFlexible.length>0;
+  const adjusted=items.filter(i=>i.adjusted).length,missed=items.filter(i=>getStatus(i,key)==='missed').length;
   setHeader('Today',date);
   main.innerHTML=`
-    <section class="card hero ${finish?'day-complete':''}">
-      <div class="next-card">
-        <div>
-          <div class="row wrap"><span class="badge">${greeting.toUpperCase()}</span><button class="mode-pill" id="modeBtn">${escapeHTML(modeName())} ▾</button></div>
-          ${next ? `<div class="time-big" style="margin-top:12px">${next.mode==='now'||next.mode==='overdue'?'DO THIS NOW':'NEXT · '+formatClock(next.item.start)}</div><h2>${escapeHTML(next.item.title)}</h2><p class="muted" style="margin-bottom:${heroCanComplete?'12px':'0'}">${escapeHTML(next.item.detail||'Do the next useful thing.')}</p>${heroCanComplete?`<div class="hero-actions"><button class="primary hero-action" id="heroDoneBtn">${svgIcon('check')} Mark done</button>${!itemManualMoveLocked(next.item)?`<button class="secondary hero-action" id="heroMoveBtn">Move</button>`:''}</div>`:''}` : finish ? `<div class="completion-label" style="margin-top:12px">${svgIcon('check')} ${finish.type==='full'?'DAY COMPLETE':'RECOVERY COMPLETE'}</div><h2 style="margin-top:8px">${finish.type==='full'?'You finished the day.':'You finished what was still in your control.'}</h2><p class="muted" style="margin-bottom:0">${finish.type==='full'?'Everything planned for today is checked off.':'A fixed event was missed or something was moved, but every remaining actionable task is done.'}</p>` : `<h2 style="margin-top:14px">You’re clear for now.</h2><p class="muted" style="margin-bottom:0">Use the free time well, or add something useful to today.</p>`}
-        </div>
-        ${next?`<div class="countdown"><b>${countdownText(next.item,next.mode)}</b><small>${next.mode==='now'?'remaining / now':next.mode==='overdue'?'overdue':'until next'}</small></div>`:`<div class="progress-ring" style="--value:${pct*3.6}deg"><b>${pct}%</b></div>`}
-      </div>
+    <section class="now-card ${finish?'complete':''}">
+      <div class="now-topline"><div><span class="now-label">${finish?'Complete':heroMode==='now'||heroMode==='overdue'?'Now':'Next up'}</span><button class="mode-mini" id="modeBtn">${escapeHTML(modeName())}</button></div><div class="mini-ring" style="--value:${pct*3.6}deg"><span>${pct}%</span></div></div>
+      ${hero?`<h2>${escapeHTML(hero.title)}</h2><p class="now-time">${escapeHTML(timeWindow(hero))}${heroMode==='overdue'?' · overdue':''}</p><p class="muted now-detail">${escapeHTML(hero.detail||'Do the next useful thing.')}</p><div class="now-actions"><button class="success-btn" id="heroDoneBtn">${svgIcon('check')} Done</button>${!itemManualMoveLocked(hero)?`<button class="secondary" id="heroMoveBtn">${svgIcon('arrowUpRight')} Move</button>`:''}<div class="now-countdown"><b>${countdownText(hero,heroMode)}</b><small>${heroMode==='now'?'left':heroMode==='overdue'?'':'until'}</small></div></div>`:finish?`<div class="completion-center">${svgIcon('check','completion-icon')}<h2>${finish.type==='full'?'Day complete':'Recovery complete'}</h2><p>You finished what mattered today.</p></div>`:`<h2>You’re clear for now.</h2><p class="muted">Use the free time well, or add something useful.</p>`}
     </section>
-
-    <section class="grid-3">
-      <div class="stat"><small>Done</small><strong>${done}/${total}</strong></div>
-      <div class="stat"><small>Streak</small><strong>${streak()} days</strong></div>
-      <div class="stat"><small>Sleep target</small><strong>${formatClock(state.profile.sleepTarget)}</strong></div>
-    </section>
-
-    ${lastSleep?`<section class="card compact late-sleep-card"><div><span class="badge warn">LAST NIGHT</span><b>Sleep was not logged.</b><small>You can still record it even if you went to sleep after midnight.</small></div><button class="secondary small-btn" id="logLastSleepBtn">Log sleep</button></section>`:''}
-
+    ${nextAfter?`<section class="next-slim-card"><div><span>Next</span><b>${escapeHTML(nextAfter.title)}</b><small>${escapeHTML(timeWindow(nextAfter))}</small></div><span class="next-arrow">${svgIcon('chevronRight')}</span></section>`:''}
+    <section class="today-progress-card"><div class="today-progress-head"><h3>Today’s Progress</h3><span>${done}/${total}</span></div><div class="today-progress-body"><div class="progress-ring compact-ring" style="--value:${pct*3.6}deg"><b>${pct}%</b></div><div class="progress-breakdown"><div><span class="progress-dot uni"></span><b>Classes</b><em>${cc[0]} / ${cc[1]}</em></div><div><span class="progress-dot habit"></span><b>Habits</b><em>${hc[0]} / ${hc[1]}</em></div><div><span class="progress-dot other"></span><b>Other</b><em>${oc[0]} / ${oc[1]}</em></div></div></div></section>
+    ${lastSleep?`<section class="next-slim-card warning-card"><div><span>Last night</span><b>Sleep was not logged</b><small>Record it even if you slept after midnight.</small></div><button class="secondary small-btn" id="logLastSleepBtn">Log sleep</button></section>`:''}
     <div class="section-title"><h2>Today’s timeline</h2><button id="addTodayBtn">+ Task</button></div>
-    <section class="card flat timeline">
-      ${items.length ? items.map(i=>timelineItemHTML(i,date,true)).join('') : '<div class="empty-state">Nothing scheduled in this mode today.</div>'}
-    </section>
-
-    ${showWrap?`<section class="card compact day-wrap-card"><div><b>Wrapping up?</b><small>${pendingFlexible.length} flexible item${pendingFlexible.length===1?'':'s'} still open. Move them to tomorrow, drop them, or keep them today.</small></div><button class="secondary small-btn" id="wrapDayBtn">Wrap up</button></section>`:''}
-    ${parked.length&&currentMode()!=='normal'?`<details class="card flat parked-card"><summary>${parked.length} item${parked.length===1?'':'s'} parked by ${escapeHTML(modeName())} mode</summary><div class="parked-list">${parked.map(i=>`<div><b>${escapeHTML(i.title)}</b><span>${escapeHTML(timeWindow(i))}</span></div>`).join('')}</div></details>`:''}
-    ${adjusted?`<p class="muted tiny" style="text-align:center">Adaptive restart moved ${adjusted} item${adjusted===1?'':'s'} to realistic times for today. Fixed classes stay fixed.</p>`:''}
-    ${missed?`<p class="muted tiny" style="text-align:center">${missed} fixed event${missed===1?' was':'s were'} already past when you restarted. They remain visible as missed instead of disappearing.</p>`:''}
-
-    <section class="card restart">
-      <span class="badge warn">ADAPTIVE RESTART</span>
-      <h3 style="margin-top:12px">The day went off track?</h3>
-      <p class="muted">Rebuild only the remaining useful part of today. Essential morning tasks move forward, fixed classes stay fixed, and nothing is deleted.</p>
-      <button class="primary full" id="restartBtn">Rebuild today from now</button>
-    </section>
-`;
+    <section class="timeline-shell"><div class="timeline">${items.length?items.map(i=>timelineItemHTML(i,date,true)).join(''):'<div class="empty-state">Nothing scheduled today.</div>'}</div></section>
+    ${showWrap?`<section class="next-slim-card"><div><span>End of day</span><b>${pendingFlexible.length} flexible item${pendingFlexible.length===1?'':'s'} still open</b><small>Move, drop or keep them.</small></div><button class="secondary small-btn" id="wrapDayBtn">Review</button></section>`:''}
+    ${parked.length&&currentMode()!=='normal'?`<details class="card flat parked-card"><summary>${parked.length} parked by ${escapeHTML(modeName())} mode</summary><div class="parked-list">${parked.map(i=>`<div><b>${escapeHTML(i.title)}</b><span>${escapeHTML(timeWindow(i))}</span></div>`).join('')}</div></details>`:''}
+    <section class="adaptive-card"><div><span class="adaptive-icon">${svgIcon('spark')}</span><div><b>Rebuild the rest of today</b><small>Keep fixed events safe and rebuild only what is still useful.</small></div></div><button class="secondary" id="restartBtn">Rebuild</button></section>
+    ${adjusted?`<p class="muted tiny center-note">${adjusted} item${adjusted===1?'':'s'} adjusted today.</p>`:''}${missed?`<p class="muted tiny center-note">${missed} fixed event${missed===1?'':'s'} missed.</p>`:''}`;
   bindTimeline(date);
-  $('#addTodayBtn').onclick=()=>openOneOffTaskModal(null,{date:key,start:suggestTimeForNewTask(date)});
-  $('#restartBtn').onclick=openRestartModal;
-  $('#modeBtn').onclick=openModeModal;
-  if($('#logLastSleepBtn')&&lastSleep) $('#logLastSleepBtn').onclick=()=>openSleepLogModal(lastSleep.key);
-  if($('#wrapDayBtn')) $('#wrapDayBtn').onclick=()=>openEndOfDayCleanup(date);
-  if($('#heroDoneBtn')&&next){$('#heroDoneBtn').onclick=()=>{const completed=next.item;setStatus(completed,key,'done');renderToday();toast('Marked done','Undo',()=>{setStatus(completed,key,'pending');renderToday();});requestAnimationFrame(()=>maybeCelebrateDayFinish(date));};}
-  if($('#heroMoveBtn')&&next) $('#heroMoveBtn').onclick=()=>openMoveItemModal(next.item,date);
-  if(preserveScroll) requestAnimationFrame(()=>window.scrollTo(0,scroll));
+  $('#addTodayBtn').onclick=()=>openOneOffTaskModal(null,{date:key,start:suggestTimeForNewTask(date)});$('#restartBtn').onclick=openRestartModal;$('#modeBtn').onclick=openModeModal;
+  if($('#logLastSleepBtn')&&lastSleep)$('#logLastSleepBtn').onclick=()=>openSleepLogModal(lastSleep.key);if($('#wrapDayBtn'))$('#wrapDayBtn').onclick=()=>openEndOfDayCleanup(date);
+  if($('#heroDoneBtn')&&hero){$('#heroDoneBtn').onclick=()=>{const completed=hero;setStatus(completed,key,'done');renderToday();toast('Marked done','Undo',()=>{setStatus(completed,key,'pending');renderToday();});requestAnimationFrame(()=>maybeCelebrateDayFinish(date));};}
+  if($('#heroMoveBtn')&&hero)$('#heroMoveBtn').onclick=()=>openMoveItemModal(hero,date);
+  localizeTree(main);if(preserveScroll)requestAnimationFrame(()=>window.scrollTo(0,scroll));
 }
 
 function timelineItemHTML(item,date,showActions=false) {
@@ -758,52 +818,14 @@ function openEndOfDayCleanup(date=new Date()){
 }
 
 function renderWeek() {
-  let selected=parseDateKey(state.settings.selectedWeekDate || todayKey());
-  const weekStart=startOfWeek(selected); const days=Array.from({length:7},(_,i)=>addDays(weekStart,i));
-  const weekEnd=days[6]; const selectedKey=todayKey(selected);
-  if(!days.some(d=>todayKey(d)===selectedKey)){selected=weekStart;state.settings.selectedWeekDate=todayKey(selected);}
-  setHeader('Week',selected);
-  const oneOffCount=state.oneOffTasks.filter(t=>days.some(d=>todayKey(d)===t.date)).length;
-  const gymCount=days.reduce((n,d)=>n+itemsForDate(d).filter(i=>i.category==='Fitness' && /gym/i.test(i.title)).length,0);
-  const uniCount=days.reduce((n,d)=>n+itemsForDate(d).filter(i=>i.category==='University').length,0);
-  main.innerHTML=`
-    <section class="card flat">
-      <div class="week-nav">
-        <button class="icon-button" id="prevWeekBtn" aria-label="Previous week">${svgIcon('chevronLeft')}</button>
-        <h3>${formatDateShort(weekStart)} – ${formatDateShort(weekEnd)}</h3>
-        <button class="icon-button" id="nextWeekBtn" aria-label="Next week">${svgIcon('chevronRight')}</button>
-      </div>
-      <div class="week-jump"><button class="secondary small-btn" id="todayWeekBtn">Today</button></div>
-      <div class="week-strip">
-        ${days.map(d=>{const k=todayKey(d);const p=dayCompletion(d);return `<button class="week-day ${k===selectedKey?'active':''} ${k===todayKey()?'today':''}" data-day-key="${k}"><small>${DAY_SHORT[d.getDay()]}</small><strong>${d.getDate()}</strong><small>${itemsForDate(d).length} items</small><div class="mini-progress"><span style="width:${p}%"></span></div></button>`}).join('')}
-      </div>
-    </section>
-
-    <section class="week-summary-grid">
-      <div class="week-summary"><small>One-off tasks</small><strong>${oneOffCount}</strong></div>
-      <div class="week-summary"><small>Gym sessions</small><strong>${gymCount}</strong></div>
-      <div class="week-summary"><small>Uni blocks</small><strong>${uniCount}</strong></div>
-      <div class="week-summary"><small>Selected day</small><strong>${dayCompletion(selected)}%</strong></div>
-    </section>
-
-    <div class="section-title"><h2>${DAY_LONG[selected.getDay()]} · ${formatDateShort(selected)}</h2><button id="addWeekTaskBtn">+ Task</button></div>
-    <section class="card flat timeline">
-      ${itemsForDate(selected).length?itemsForDate(selected).map(i=>timelineItemHTML(i,selected,true)).join(''):'<div class="empty-state">Nothing scheduled for this day.</div>'}
-    </section>
-
-    <section class="card flat">
-      <div class="row between center"><div><p class="eyebrow">RECURRING ROUTINE</p><h3 style="margin:0">Weekly schedule</h3></div><span class="badge blue">${state.schedule.filter(s=>s.active!==false).length} active</span></div>
-      <p class="muted tiny" style="margin:10px 0 14px">Use this for classes, gym, sleep and anything that repeats every week.</p>
-      <div class="button-row"><button class="primary" id="addRoutineBtn">+ Recurring item</button><button class="secondary" id="manageRoutineBtn">Manage routine</button></div>
-    </section>`;
-  $('#prevWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey(addDays(selected,-7));save();renderWeek();};
-  $('#nextWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey(addDays(selected,7));save();renderWeek();};
-  $('#todayWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey();save();renderWeek();};
-  $$('[data-day-key]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.dayKey;save();renderWeek();});
-  $('#addWeekTaskBtn').onclick=()=>openOneOffTaskModal(null,{date:selectedKey,start:'12:00'});
-  $('#addRoutineBtn').onclick=()=>openScheduleItemModal(null,{days:[selected.getDay()]});
-  $('#manageRoutineBtn').onclick=openScheduleManager;
-  bindTimeline(selected);
+  let selected=parseDateKey(state.settings.selectedWeekDate||todayKey()); const weekStart=startOfWeek(selected);const days=Array.from({length:7},(_,i)=>addDays(weekStart,i));const weekEnd=days[6];let selectedKey=todayKey(selected);
+  if(!days.some(d=>todayKey(d)===selectedKey)){selected=weekStart;selectedKey=todayKey(selected);state.settings.selectedWeekDate=selectedKey;}
+  setHeader('Week',selected);const selectedItems=itemsForDate(selected);
+  main.innerHTML=`<section class="week-header-card"><div class="week-nav clean"><button class="round-icon" id="prevWeekBtn" aria-label="Previous week">${svgIcon('chevronLeft')}</button><div><b>${formatDateShort(weekStart)} – ${formatDateShort(weekEnd)}</b><button class="today-link" id="todayWeekBtn">Today</button></div><button class="round-icon" id="nextWeekBtn" aria-label="Next week">${svgIcon('chevronRight')}</button></div><div class="week-strip modern">${days.map(d=>{const k=todayKey(d),p=dayCompletion(d);return `<button class="week-day ${k===selectedKey?'active':''} ${k===todayKey()?'today':''}" data-day-key="${k}"><small>${dayShort(d.getDay())}</small><strong>${d.getDate()}</strong><i style="--p:${p}%"></i></button>`}).join('')}</div></section>
+  <div class="section-title"><div><span class="section-kicker">${dayLong(selected.getDay())}</span><h2>${formatDateShort(selected)}</h2></div><button id="addWeekTaskBtn">+ Task</button></div>
+  <section class="week-day-schedule">${selectedItems.length?selectedItems.map(i=>timelineItemHTML(i,selected,true)).join(''):'<div class="empty-state">Nothing scheduled for this day.</div>'}</section>
+  <details class="routine-manager"><summary><span><b>Weekly routine</b><small>${state.schedule.filter(s=>s.active!==false).length} recurring items</small></span>${svgIcon('chevronRight')}</summary><div class="routine-actions"><button class="primary" id="addRoutineBtn">+ Recurring item</button><button class="secondary" id="manageRoutineBtn">Manage routine</button></div></details>`;
+  $('#prevWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey(addDays(selected,-7));save();renderWeek();};$('#nextWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey(addDays(selected,7));save();renderWeek();};$('#todayWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey();save();renderWeek();};$$('[data-day-key]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.dayKey;save();renderWeek();});$('#addWeekTaskBtn').onclick=()=>openOneOffTaskModal(null,{date:selectedKey,start:'12:00'});$('#addRoutineBtn').onclick=()=>openScheduleItemModal(null,{days:[selected.getDay()]});$('#manageRoutineBtn').onclick=openScheduleManager;bindTimeline(selected);localizeTree(main);
 }
 
 function renderUniversity() {
@@ -842,66 +864,27 @@ function uniTaskHTML(t) {
 }
 
 function renderMoney() {
-  setHeader('Money');
-  captureCurrentMoneyPlan();
-  const mk=monthKey();
-  const totalTarget=moneyPlanTotal();
-  const totalSpent=transactionsForMonth(mk).reduce((a,t)=>a+Number(t.amount||0),0);
-  const remaining=totalTarget-totalSpent;
-  const spendPct=totalTarget>0?Math.round(totalSpent/totalTarget*100):0;
-  const daysPay=daysUntilPayday();
-  const historyMonth=state.settings.moneyHistoryMonth||mk;
-  let historyBucket=state.settings.moneyHistoryBucket||'all';
-  if(historyBucket!=='all' && !state.money.buckets.some(b=>b.id===historyBucket)){historyBucket='all';state.settings.moneyHistoryBucket='all';}
-  const filtered=moneyFilteredTransactions(historyMonth,historyBucket);
-  const filteredTotal=filtered.reduce((a,t)=>a+Number(t.amount||0),0);
-  const months=moneyAvailableMonths();
-  main.innerHTML=`
-    <section class="card hero money-payday-hero">
-      <span class="badge blue">NEXT SALARY</span>
-      <div class="money-payday-number">${daysPay===0?'TODAY':daysPay}</div>
-      <p class="muted">${daysPay===0?'Salary day is today.':`day${daysPay===1?'':'s'} until your next salary`}</p>
-    </section>
-    <section class="money-remaining-card ${remaining<0?'over':''}">
-      <div><small>${remaining>=0?'LEFT THIS MONTH':'OVER TOTAL ALLOCATION'}</small><strong>${fmtMoney(Math.abs(remaining))}</strong><span>${remaining>=0?`available before you reach the ${fmtMoney(totalTarget)} total allocation`:`above the ${fmtMoney(totalTarget)} total allocation`}</span></div>
-      <div class="money-remaining-side"><b>${spendPct}%</b><small>${fmtMoney(totalSpent)} logged</small></div>
-      <div class="money-total-track"><i class="${remaining<0?'over':''}" style="width:${Math.min(100,Math.max(0,spendPct))}%"></i></div>
-    </section>
-    <section class="grid-3 money-core-stats">
-      <div class="stat"><small>Income</small><strong>${fmtMoney(state.money.income)}</strong></div>
-      <div class="stat"><small>Allocated</small><strong>${fmtMoney(totalTarget)}</strong></div>
-      <div class="stat"><small>Spent</small><strong>${fmtMoney(totalSpent)}</strong></div>
-    </section>
-
-    <div class="section-title"><h2>Allocations</h2><button id="editMoneyBtn">Edit</button></div>
-    <section class="card flat">${state.money.buckets.map(b=>budgetRowHTML(b,mk)).join('')}</section>
-    <button class="primary full" id="addExpenseBtn">+ Log spending</button>
-
-    <div class="section-title"><h2>Spending trend</h2><span class="muted tiny">last 6 months</span></div>
-    ${moneyTrendHTML(historyBucket)}
-
-    <div class="section-title"><h2>Spending history</h2><button class="secondary small-btn" id="selectTxBtn">${moneySelectMode?'Done':'Select'}</button></div>
-    <section class="card flat history-filter-card">
-      <div class="history-filters">
-        <label><span class="label">Month</span><select id="moneyHistoryMonth"><option value="all" ${historyMonth==='all'?'selected':''}>All months</option>${months.map(x=>`<option value="${x}" ${historyMonth===x?'selected':''}>${escapeHTML(moneyMonthLongLabel(x))}</option>`).join('')}</select></label>
-        <label><span class="label">Allocation</span><select id="moneyHistoryBucket"><option value="all">All allocations</option>${state.money.buckets.map(b=>`<option value="${escapeAttr(b.id)}" ${historyBucket===b.id?'selected':''}>${escapeHTML(b.name)}</option>`).join('')}</select></label>
-      </div>
-      <div class="history-summary"><b>${fmtMoney(filteredTotal)}</b><span>${filtered.length} entr${filtered.length===1?'y':'ies'} shown</span></div>
-      ${historyMonth!=='all'?moneyMonthSummaryHTML(historyMonth):''}
-    </section>
-    ${moneySelectMode?`<section class="selection-toolbar"><span><b id="selectedTxCount">${moneySelectedIds.size}</b> selected</span><button class="danger-btn small-btn" id="deleteSelectedTx" ${moneySelectedIds.size?'':'disabled'}>Delete selected</button></section>`:''}
-    <section class="card flat money-history-list">${filtered.length?moneyHistoryHTML(filtered):'<div class="empty-state">No spending matches these filters.</div>'}</section>`;
-
-  $('#editMoneyBtn').onclick=openMoneyModal;
-  $('#addExpenseBtn').onclick=()=>openExpenseModal();
-  $('#moneyHistoryMonth').onchange=e=>{state.settings.moneyHistoryMonth=e.target.value;moneySelectedIds.clear();save();renderMoney();};
-  $('#moneyHistoryBucket').onchange=e=>{state.settings.moneyHistoryBucket=e.target.value;moneySelectedIds.clear();save();renderMoney();};
-  $('#selectTxBtn').onclick=()=>{moneySelectMode=!moneySelectMode;moneySelectedIds.clear();renderMoney();};
-  $$('[data-edit-tx]').forEach(b=>b.onclick=()=>openExpenseModal(b.dataset.editTx));
-  $$('[data-del-tx]').forEach(b=>b.onclick=()=>deleteMoneyTransactionWithUndo(b.dataset.delTx));
-  $$('[data-select-tx]').forEach(cb=>cb.onchange=()=>{if(cb.checked)moneySelectedIds.add(cb.dataset.selectTx);else moneySelectedIds.delete(cb.dataset.selectTx);const c=$('#selectedTxCount');if(c)c.textContent=moneySelectedIds.size;const d=$('#deleteSelectedTx');if(d)d.disabled=!moneySelectedIds.size;});
-  if($('#deleteSelectedTx')) $('#deleteSelectedTx').onclick=deleteSelectedMoneyTransactions;
+  if((state.settings.moneyView||'home')==='history')return renderMoneyHistoryPage();
+  setHeader('Money');captureCurrentMoneyPlan();const mk=monthKey(),totalTarget=moneyPlanTotal(),tx=transactionsForMonth(mk),totalSpent=tx.reduce((a,t)=>a+Number(t.amount||0),0),remaining=totalTarget-totalSpent,spendPct=totalTarget>0?Math.round(totalSpent/totalTarget*100):0,daysPay=daysUntilPayday();
+  const recent=[...tx].sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.createdAt||0)-Number(a.createdAt||0)).slice(0,5);
+  main.innerHTML=`<section class="money-top-grid"><article class="money-summary-tile salary"><span class="money-tile-icon">${svgIcon('calendar')}</span><div><b>${daysPay===0?'Today':daysPay}</b><small>${daysPay===0?'salary day':'day'+(daysPay===1?'':'s')+' until salary'}</small></div></article><article class="money-summary-tile remaining ${remaining<0?'over':''}"><span class="money-tile-icon">${svgIcon('money')}</span><div><b>${fmtMoney(Math.abs(remaining))}</b><small>${remaining>=0?'left to spend':'over allocation'}</small></div></article></section>
+  <section class="monthly-spending-card"><div class="monthly-spending-title"><div><span>Monthly Spending</span><b>${fmtMoney(totalSpent)} <em>/ ${fmtMoney(totalTarget)}</em></b></div><strong>${spendPct}%</strong></div><div class="budget-track big"><div class="budget-fill ${remaining<0?'over':''}" style="width:${Math.min(100,Math.max(0,spendPct))}%"></div></div>${moneyBarsHTML()}</section>
+  <div class="section-title"><h2>Allocations</h2><button id="editMoneyBtn">Edit</button></div><section class="allocation-list">${state.money.buckets.map(b=>budgetRowHTML(b,mk)).join('')}</section>
+  <button class="primary full money-log-btn" id="addExpenseBtn">+ Log spending</button>
+  <div class="section-title"><h2>Recent Spending</h2><button id="seeAllSpendingBtn">See all</button></div><section class="recent-spending-list">${recent.length?recent.map(t=>transactionHTML(t)).join(''):'<div class="empty-state">No spending logged this month.</div>'}</section>`;
+  $('#editMoneyBtn').onclick=openMoneyModal;$('#addExpenseBtn').onclick=()=>openExpenseModal();$('#seeAllSpendingBtn').onclick=()=>{state.settings.moneyView='history';save();renderMoney();};$$('[data-edit-tx]').forEach(b=>b.onclick=()=>openExpenseModal(b.dataset.editTx));$$('[data-del-tx]').forEach(b=>b.onclick=()=>deleteMoneyTransactionWithUndo(b.dataset.delTx));localizeTree(main);
 }
+function moneyBarsHTML(){
+  const rows=recentMonthKeys(6).map(k=>({k,spent:transactionsForMonth(k).reduce((a,t)=>a+Number(t.amount||0),0)}));const max=Math.max(1,...rows.map(x=>x.spent));
+  return `<div class="money-bars">${rows.map((r,i)=>`<div class="money-bar-col"><b>${r.spent?shortMoney(r.spent):'—'}</b><i><span class="${i===rows.length-1?'current':''}" style="height:${Math.max(r.spent?10:2,Math.round(r.spent/max*100))}%"></span></i><small>${escapeHTML(moneyMonthLabel(r.k))}</small></div>`).join('')}</div>`;
+}
+function shortMoney(n){const x=Number(n||0);return x>=1000?`${(x/1000).toFixed(x>=10000?0:1)}K`:Math.round(x).toString();}
+function renderMoneyHistoryPage(){
+  setHeader('Spending History');captureCurrentMoneyPlan();const mk=monthKey(),historyMonth=state.settings.moneyHistoryMonth||mk;let historyBucket=state.settings.moneyHistoryBucket||'all';if(historyBucket!=='all'&&!state.money.buckets.some(b=>b.id===historyBucket)){historyBucket='all';state.settings.moneyHistoryBucket='all';}const filtered=moneyFilteredTransactions(historyMonth,historyBucket),months=moneyAvailableMonths(),filteredTotal=filtered.reduce((a,t)=>a+Number(t.amount||0),0);
+  main.innerHTML=`<button class="back-link" id="moneyBackBtn">${svgIcon('chevronLeft')}<span>Money</span></button><div class="history-chip-row"><button class="filter-chip ${historyBucket==='all'?'active':''}" data-money-bucket="all">All</button>${state.money.buckets.map(b=>`<button class="filter-chip ${historyBucket===b.id?'active':''}" data-money-bucket="${escapeAttr(b.id)}">${escapeHTML(b.name)}</button>`).join('')}</div><section class="history-month-card"><label><span class="label">Month</span><select id="moneyHistoryMonth"><option value="all" ${historyMonth==='all'?'selected':''}>All months</option>${months.map(x=>`<option value="${x}" ${historyMonth===x?'selected':''}>${escapeHTML(moneyMonthLongLabel(x))}</option>`).join('')}</select></label><div><b>${fmtMoney(filteredTotal)}</b><small>${filtered.length} entries</small></div></section>${historyMonth!=='all'?moneyMonthSummaryHTML(historyMonth):''}<div class="section-title"><h2>Transactions</h2><button class="secondary small-btn" id="selectTxBtn">${moneySelectMode?'Done':'Select'}</button></div>${moneySelectMode?`<section class="selection-toolbar"><span><b id="selectedTxCount">${moneySelectedIds.size}</b> selected</span><button class="danger-btn small-btn" id="deleteSelectedTx" ${moneySelectedIds.size?'':'disabled'}>Delete selected</button></section>`:''}<section class="spending-history-list">${filtered.length?moneyHistoryHTML(filtered):'<div class="empty-state">No spending matches these filters.</div>'}</section><div class="section-title"><h2>Trend</h2></div>${moneyTrendHTML(historyBucket)}`;
+  $('#moneyBackBtn').onclick=()=>{moneySelectMode=false;moneySelectedIds.clear();state.settings.moneyView='home';save();renderMoney();};$('#moneyHistoryMonth').onchange=e=>{state.settings.moneyHistoryMonth=e.target.value;moneySelectedIds.clear();save();renderMoney();};$$('[data-money-bucket]').forEach(b=>b.onclick=()=>{state.settings.moneyHistoryBucket=b.dataset.moneyBucket;moneySelectedIds.clear();save();renderMoney();});$('#selectTxBtn').onclick=()=>{moneySelectMode=!moneySelectMode;moneySelectedIds.clear();renderMoney();};$$('[data-edit-tx]').forEach(b=>b.onclick=()=>openExpenseModal(b.dataset.editTx));$$('[data-del-tx]').forEach(b=>b.onclick=()=>deleteMoneyTransactionWithUndo(b.dataset.delTx));$$('[data-select-tx]').forEach(cb=>cb.onchange=()=>{if(cb.checked)moneySelectedIds.add(cb.dataset.selectTx);else moneySelectedIds.delete(cb.dataset.selectTx);const c=$('#selectedTxCount');if(c)c.textContent=moneySelectedIds.size;const d=$('#deleteSelectedTx');if(d)d.disabled=!moneySelectedIds.size;});if($('#deleteSelectedTx'))$('#deleteSelectedTx').onclick=deleteSelectedMoneyTransactions;localizeTree(main);
+}
+
 function moneyPlanTotal(){return state.money.buckets.reduce((a,b)=>a+Number(b.target||0),0);}
 function captureCurrentMoneyPlan(){
   if(!state.money.planHistory || typeof state.money.planHistory!=='object') state.money.planHistory={};
@@ -916,8 +899,8 @@ function recentMonthKeys(count=6){
   for(let i=count-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1,12,0,0,0);out.push(monthKey(d));}
   return out;
 }
-function moneyMonthLabel(mk){const [y,m]=mk.split('-').map(Number);return new Date(y,m-1,1,12).toLocaleDateString(undefined,{month:'short'});}
-function moneyMonthLongLabel(mk){const [y,m]=mk.split('-').map(Number);return new Date(y,m-1,1,12).toLocaleDateString(undefined,{month:'long',year:'numeric'});}
+function moneyMonthLabel(mk){const [y,m]=mk.split('-').map(Number);return new Date(y,m-1,1,12).toLocaleDateString(currentLocale(),{month:'short'});}
+function moneyMonthLongLabel(mk){const [y,m]=mk.split('-').map(Number);return new Date(y,m-1,1,12).toLocaleDateString(currentLocale(),{month:'long',year:'numeric'});}
 function moneyAvailableMonths(){
   const set=new Set([monthKey(),...state.money.transactions.map(t=>String(t.date||'').slice(0,7)).filter(x=>/^\d{4}-\d{2}$/.test(x)),...Object.keys(state.money.planHistory||{})]);
   return [...set].sort().reverse();
@@ -945,11 +928,11 @@ function budgetRowHTML(b,mk) {
 }
 function transactionHTML(t,{selectable=false}={}) {
   const b=state.money.buckets.find(x=>x.id===t.bucketId);
-  return `<div class="transaction ${selectable?'selectable-history':''}">${selectable?`<input class="check history-check" type="checkbox" data-select-tx="${escapeAttr(t.id)}" ${moneySelectedIds.has(t.id)?'checked':''} aria-label="Select spending entry">`:''}<div><b>${escapeHTML(t.note||b?.name||'Spending')}</b><small>${escapeHTML(b?.name||'Other')} · ${escapeHTML(formatDateShort(parseDateKey(t.date)))}</small></div><div class="transaction-amount"><b>−${fmtMoney(t.amount)}</b>${selectable?'':`<div class="row"><button class="text-button tiny" data-edit-tx="${t.id}">Edit</button><button class="text-button tiny danger-text" data-del-tx="${t.id}">Delete</button></div>`}</div></div>`;
+  return `<div class="transaction ${selectable?'selectable-history':''}">${selectable?`<input class="check history-check" type="checkbox" data-select-tx="${escapeAttr(t.id)}" ${moneySelectedIds.has(t.id)?'checked':''} aria-label="Select spending entry">`:''}<span class="transaction-icon">${svgIcon(t.bucketId==='food'?'fork':t.bucketId==='car'?'car':'wallet')}</span><div class="transaction-copy"><b>${escapeHTML(t.note||b?.name||'Spending')}</b><small>${escapeHTML(b?.name||'Other')} · ${escapeHTML(formatDateShort(parseDateKey(t.date)))}</small></div><div class="transaction-amount"><b>−${fmtMoney(t.amount)}</b>${selectable?'':`<div class="row"><button class="text-button tiny" data-edit-tx="${t.id}">Edit</button><button class="text-button tiny danger-text" data-del-tx="${t.id}">Delete</button></div>`}</div></div>`;
 }
 function moneyHistoryHTML(list){
   let last=''; let out='';
-  list.forEach(t=>{if(t.date!==last){last=t.date;out+=`<div class="history-date"><span>${escapeHTML(parseDateKey(t.date).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric'}))}</span></div>`;}out+=transactionHTML(t,{selectable:moneySelectMode});});
+  list.forEach(t=>{if(t.date!==last){last=t.date;out+=`<div class="history-date"><span>${escapeHTML(parseDateKey(t.date).toLocaleDateString(currentLocale(),{weekday:'short',month:'short',day:'numeric',year:'numeric'}))}</span></div>`;}out+=transactionHTML(t,{selectable:moneySelectMode});});
   return out;
 }
 function moneyMonthSummaryHTML(mk){
@@ -1077,61 +1060,19 @@ function lightweightInsights(){
 }
 function renderMore() {
   const view=state.settings.moreView||'home';
-  if(view==='gym') return renderGym();
-  if(view==='health') return renderHealth();
-  if(view==='car') return renderCar();
-  if(view==='projects') return renderProjects();
-  if(view.startsWith('project:')) return renderProjectDetail(view.slice(8));
-  setHeader('More');
-  const range=state.settings.statsRange||'30'; const metrics=rangeMetrics(range); const ach=achievementData(); const unlocked=ach.filter(a=>a.unlocked).length;
-  const wk=currentWeekMetrics(), pw=previousWeekMetrics(), m30=rangeMetrics('30'), p30=previous30Metrics();
-  main.innerHTML=`
-    <div class="section-title first-section"><h2>Life tools</h2><span class="muted tiny">the things you actually use</span></div>
-    <section class="tool-grid">
-      ${toolCard('gym','Gym','Strength, PRs and workout history.','dumbbell',`${gymSessionDates().size} sessions`)}
-      ${toolCard('health','Health','Body weight and simple progress.','heart',`${state.health.weightLogs.length} entries`)}
-      ${toolCard('car','Car','Fuel, service, rego and maintenance.','car',state.car.model||'Vehicle')}
-      ${toolCard('projects','Projects','Keep meaningful work moving.','folder',`${state.projects.filter(p=>!p.archived).length} active`)}
-    </section>
-
-    <div class="section-title"><h2>This month</h2></div>
-    ${monthInReviewHTML()}
-
-    <div class="section-title"><h2>Progress</h2><span class="muted tiny">choose a range</span></div>
-    <div class="segmented" role="group" aria-label="Statistics range"><button data-range="7" class="${range==='7'?'active':''}">7 days</button><button data-range="30" class="${range==='30'?'active':''}">30 days</button><button data-range="all" class="${range==='all'?'active':''}">All time</button></div>
-    <section class="metric-grid">
-      <div class="metric-card"><small>Gym</small><strong>${metrics.gym}</strong><span>session${metrics.gym===1?'':'s'}</span></div>
-      <div class="metric-card"><small>3 meals</small><strong>${metrics.mealDays}</strong><span>day${metrics.mealDays===1?'':'s'}</span></div>
-      <div class="metric-card"><small>Classes</small><strong>${metrics.classes?metrics.classPct+'%':'—'}</strong><span>${metrics.attended}/${metrics.classes} attended</span></div>
-      <div class="metric-card"><small>Good days</small><strong>${metrics.goodDays}</strong><span>70%+ complete</span></div>
-    </section>
-    <section class="grid-3"><div class="stat"><small>Daily streak</small><strong>${streak()}</strong></div><div class="stat"><small>Class-day streak</small><strong>${classDayStreak()}</strong></div><div class="stat"><small>Achievements</small><strong>${unlocked}/${ach.length}</strong></div></section>
-
-    <div class="section-title"><h2>This week</h2><span class="muted tiny">vs last week</span></div>
-    <section class="card flat weekly-summary-card">
-      <div class="summary-row"><span>Gym sessions</span><b>${wk.gym}</b><small>${signedDelta(wk.gym,pw.gym)}</small></div>
-      <div class="summary-row"><span>3-meal days</span><b>${wk.mealDays}</b><small>${signedDelta(wk.mealDays,pw.mealDays)}</small></div>
-      <div class="summary-row"><span>Class attendance</span><b>${wk.classes?wk.classPct+'%':'—'}</b><small>${pw.classes?signedDelta(wk.classPct,pw.classPct,'%'):'—'}</small></div>
-      <div class="summary-row"><span>Average completion</span><b>${wk.avgCompletion}%</b><small>${signedDelta(wk.avgCompletion,pw.avgCompletion,'%')}</small></div>
-    </section>
-
-    <div class="section-title"><h2>Last 30 days</h2><span class="muted tiny">vs previous 30</span></div>
-    <section class="comparison-grid">
-      <div class="comparison-card"><small>Gym</small><b>${m30.gym}</b><span>${signedDelta(m30.gym,p30.gym)}</span></div>
-      <div class="comparison-card"><small>Meals</small><b>${m30.mealDays}</b><span>${signedDelta(m30.mealDays,p30.mealDays)}</span></div>
-      <div class="comparison-card"><small>Classes</small><b>${m30.classes?m30.classPct+'%':'—'}</b><span>${p30.classes?signedDelta(m30.classPct,p30.classPct,'%'):'—'}</span></div>
-      <div class="comparison-card"><small>Good days</small><b>${m30.goodDays}</b><span>${signedDelta(m30.goodDays,p30.goodDays)}</span></div>
-    </section>
-
-    <div class="section-title"><h2>Insights</h2></div>
-    <section class="card flat insight-list">${lightweightInsights().map((x,i)=>`<div class="insight-row"><span>${i+1}</span><p>${escapeHTML(x)}</p></div>`).join('')}</section>
-
-    <div class="section-title"><h2>Achievements</h2><span class="muted tiny">earned, not handed out</span></div>
-    <section class="achievement-grid">${ach.map(a=>`<article class="achievement ${a.unlocked?'unlocked':''}"><span>${a.unlocked?'✓':'○'}</span><div><b>${escapeHTML(a.title)}</b><small>${escapeHTML(a.desc)}</small><div class="achievement-progress"><i style="width:${Math.round(a.progress/a.target*100)}%"></i></div><em>${a.progress}/${a.target}</em></div></article>`).join('')}</section>`;
-  $$('[data-range]').forEach(b=>b.onclick=()=>{const y=window.scrollY;state.settings.statsRange=b.dataset.range;save();renderMore();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));});
-  $$('[data-more-view]').forEach(b=>b.onclick=()=>{moreHomeScrollY=window.scrollY;state.settings.moreView=b.dataset.moreView;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});
+  if(view==='gym')return renderGym();if(view==='health')return renderHealth();if(view==='car')return renderCar();if(view==='projects')return renderProjects();if(view==='progress')return renderProgress();if(view.startsWith('project:'))return renderProjectDetail(view.slice(8));
+  setHeader('More');const unlocked=achievementData().filter(a=>a.unlocked).length;
+  main.innerHTML=`<div class="section-title first-section"><h2>Life Tools</h2></div><section class="tool-grid mock-tools">${toolCard('gym','Gym','Workout','dumbbell',`${gymSessionDates().size} sessions`)}${toolCard('health','Health','Sleep, weight, habits','heart',`${state.health.weightLogs.length} entries`)}${toolCard('money','Money','Track your spending','money','Open')}${toolCard('car','Car','Fuel & maintenance','car',state.car.model||'Vehicle')}${toolCard('projects','Projects','Track your progress','folder',`${state.projects.filter(p=>!p.archived).length} active`)}</section><div class="section-title"><h2>Progress</h2></div><section class="progress-link-grid"><button class="progress-link" data-more-view="progress"><span class="tool-icon blue">${svgIcon('lightbulb')}</span><span><b>Insights</b><small>See patterns</small></span></button><button class="progress-link" data-more-view="progress"><span class="tool-icon orange">${svgIcon('trophy')}</span><span><b>Achievements</b><small>${unlocked} earned</small></span></button></section>`;
+  $$('[data-more-view]').forEach(b=>b.onclick=()=>{const v=b.dataset.moreView;if(v==='money'){state.settings.activeTab='money';state.settings.moneyView='home';save();return render();}moreHomeScrollY=window.scrollY;state.settings.moreView=v;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});localizeTree(main);
 }
-function toolCard(view,title,desc,icon,meta=''){return `<button class="tool-card" data-more-view="${escapeAttr(view)}"><span class="tool-icon">${svgIcon(icon)}</span><span class="tool-card-copy"><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small>${meta?`<em>${escapeHTML(meta)}</em>`:''}</span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`;}
+function renderProgress(){
+  setHeader('Progress');const range=state.settings.statsRange||'30',metrics=rangeMetrics(range),ach=achievementData(),unlocked=ach.filter(a=>a.unlocked).length,m30=rangeMetrics('30'),p30=previous30Metrics();
+  main.innerHTML=`${moreBack()}<div class="segmented mock-segmented"><button data-range="7" class="${range==='7'?'active':''}">Overview</button><button data-range="30" class="${range==='30'?'active':''}">Month</button><button data-range="all" class="${range==='all'?'active':''}">All time</button></div><section class="progress-month-heading"><button class="round-icon disabled">${svgIcon('chevronLeft')}</button><b>${new Date().toLocaleDateString(currentLocale(),{month:'long',year:'numeric'})}</b><button class="round-icon disabled">${svgIcon('chevronRight')}</button></section><section class="progress-color-grid"><article class="pmetric red"><span>${svgIcon('dumbbell')}</span><small>Gym Sessions</small><b>${metrics.gym}</b></article><article class="pmetric blue"><span>${svgIcon('university')}</span><small>Class Attendance</small><b>${metrics.classes?metrics.classPct+'%':'—'}</b></article><article class="pmetric green"><span>${svgIcon('fork')}</span><small>Three-Meal Days</small><b>${metrics.mealDays}</b></article><article class="pmetric yellow"><span>${svgIcon('money')}</span><small>Money Spent</small><b>${fmtMoney(monthMetrics().spending)}</b></article><article class="pmetric purple"><span>${svgIcon('check')}</span><small>Daily Completion</small><b>${metrics.avgCompletion}%</b></article><article class="pmetric cyan"><span>${svgIcon('heart')}</span><small>Weight</small><b>${latestWeightText()}</b></article></section><div class="section-title"><h2>Insights</h2></div><section class="insight-list mock-insights">${lightweightInsights().map((x,i)=>`<div class="insight-row"><span>${svgIcon(i%2?'wallet':'spark')}</span><p>${escapeHTML(x)}</p></div>`).join('')}</section><div class="section-title"><h2>Achievements</h2><span class="muted tiny">${unlocked}/${ach.length}</span></div><section class="achievement-grid">${ach.map(a=>`<article class="achievement ${a.unlocked?'unlocked':''}"><span>${a.unlocked?svgIcon('trophy'):'○'}</span><div><b>${escapeHTML(a.title)}</b><small>${escapeHTML(a.desc)}</small><div class="achievement-progress"><i style="width:${Math.round(a.progress/a.target*100)}%"></i></div><em>${a.progress}/${a.target}</em></div></article>`).join('')}</section><div class="section-title"><h2>30-day comparison</h2></div><section class="comparison-grid"><div class="comparison-card"><small>Gym</small><b>${m30.gym}</b><span>${signedDelta(m30.gym,p30.gym)}</span></div><div class="comparison-card"><small>Meals</small><b>${m30.mealDays}</b><span>${signedDelta(m30.mealDays,p30.mealDays)}</span></div><div class="comparison-card"><small>Classes</small><b>${m30.classes?m30.classPct+'%':'—'}</b><span>${p30.classes?signedDelta(m30.classPct,p30.classPct,'%'):'—'}</span></div><div class="comparison-card"><small>Good days</small><b>${m30.goodDays}</b><span>${signedDelta(m30.goodDays,p30.goodDays)}</span></div></section>`;
+  bindMoreBack();$$('[data-range]').forEach(b=>b.onclick=()=>{state.settings.statsRange=b.dataset.range;save();renderProgress();});localizeTree(main);
+}
+function latestWeightText(){const x=[...(state.health.weightLogs||[])].sort((a,b)=>String(a.date).localeCompare(String(b.date))).pop();return x?`${Number(x.weight).toFixed(1)} kg`:'—';}
+
+function toolCard(view,title,desc,icon,meta=''){const tone=({gym:'blue',health:'purple',money:'green',car:'orange',projects:'violet'})[view]||'blue';return `<button class="tool-card" data-more-view="${escapeAttr(view)}"><span class="tool-icon ${tone}">${svgIcon(icon)}</span><span class="tool-card-copy"><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small>${meta?`<em>${escapeHTML(meta)}</em>`:''}</span></button>`;}
 function toolLink(view,title,desc){return `<button class="tool-link" data-more-view="${escapeAttr(view)}"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small></span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`;}
 function moreBack(label='More'){return `<button class="back-link" id="moreBackBtn">${svgIcon('chevronLeft')}<span>${escapeHTML(label)}</span></button>`;}
 function bindMoreBack(){const b=$('#moreBackBtn');if(b)b.onclick=()=>{const y=moreHomeScrollY;state.settings.moreView='home';save();renderMore();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));};}
@@ -1297,13 +1238,13 @@ function bindBucketDeleteButtons(){ $$('.bucket-delete').forEach(b=>b.onclick=()
 
 function openExpenseModal(id=null) {
   const existing=id?state.money.transactions.find(t=>t.id===id):null;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SPENDING</p><h2>${existing?'Edit':'Log'} an expense</h2><div class="stack"><label><span class="label">Amount (SAR)</span><input class="input" id="expenseAmount" type="number" min="0" step="1" placeholder="0" value="${existing?Number(existing.amount):''}"></label><label><span class="label">Allocation</span><select id="expenseBucket">${state.money.buckets.map(b=>`<option value="${b.id}" ${existing?.bucketId===b.id?'selected':''}>${escapeHTML(b.name)}</option>`).join('')}</select></label><label><span class="label">Date</span><input class="input" id="expenseDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Note</span><input class="input" id="expenseNote" value="${escapeAttr(existing?.note||'')}" placeholder="e.g. takeaway, fuel, haircut"></label></div><button class="primary full" id="saveExpense" style="margin-top:14px">Save spending</button>${existing?'<button class="danger-btn full" id="deleteExpense" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SPENDING</p><h2>${existing?'Edit':'Log'} an expense</h2><div class="stack"><label><span class="label">Amount (SAR)</span><input class="input" id="expenseAmount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0" value="${existing?.amount??''}"></label><label><span class="label">Allocation</span><select id="expenseBucket">${state.money.buckets.map(b=>`<option value="${b.id}" ${existing?.bucketId===b.id?'selected':''}>${escapeHTML(b.name)}</option>`).join('')}</select></label><label><span class="label">Date</span><input class="input" id="expenseDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Note</span><input class="input" id="expenseNote" value="${escapeAttr(existing?.note||'')}" placeholder="e.g. takeaway, fuel, haircut"></label></div><button class="primary full" id="saveExpense" style="margin-top:14px">Save spending</button>${existing?'<button class="danger-btn full" id="deleteExpense" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
   $('#saveExpense').onclick=()=>{const amount=Number($('#expenseAmount').value||0);if(amount<=0)return toast('Enter an amount');const data={amount,bucketId:$('#expenseBucket').value,date:$('#expenseDate').value||todayKey(),note:$('#expenseNote').value.trim(),createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.money.transactions.push({id:uid('tx'),...data});save();modal.close();toast(existing?'Spending updated':'Spending logged');renderMoney();};
   if(existing)$('#deleteExpense').onclick=()=>{const idx=state.money.transactions.findIndex(t=>t.id===existing.id);if(idx<0)return;const removed=state.money.transactions[idx];state.money.transactions.splice(idx,1);save();modal.close();renderMoney();toast('Spending entry deleted','Undo',()=>{state.money.transactions.splice(Math.min(idx,state.money.transactions.length),0,removed);save();renderMoney();});};
   $('#cancelModal').onclick=()=>modal.close();
+  localizeTree(modalContent);
 }
-
 
 function weightChartHTML(logs){
   if(logs.length<2)return `<div class="chart-empty">Log your weight at least twice to see the trend.</div>`;
@@ -1340,33 +1281,34 @@ function openWeightModal(id=null){
 
 function exercisePR(exerciseId,excludeId=null){const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===exerciseId && l.id!==excludeId);return logs.length?Math.max(...logs.map(l=>Number(l.weight||0))):0;}
 function renderGym(){
-  setHeader('Gym'); const sessions=gymSessionDates(); const exercise=state.gym.exercises.find(x=>x.id===state.settings.selectedExerciseId)||state.gym.exercises[0];
+  setHeader('Gym');
+  const sessions=gymSessionDates(), view=state.settings.gymView||'workouts';
+  const exercise=state.gym.exercises.find(x=>x.id===state.settings.selectedExerciseId)||state.gym.exercises[0];
   if(exercise)state.settings.selectedExerciseId=exercise.id;
   const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===exercise?.id).sort((a,b)=>String(a.date).localeCompare(String(b.date))||Number(a.createdAt||0)-Number(b.createdAt||0));
   const first=logs[0],last=logs[logs.length-1],change=first&&last?Number(last.weight)-Number(first.weight):0,pr=exercise?exercisePR(exercise.id):0;
-  const last30=dateRange('30'); const keys30=new Set(last30.map(todayKey)); const sessions30=[...sessions].filter(k=>keys30.has(k)).length;
-  const prRows=state.gym.exercises.map(ex=>({ex,pr:exercisePR(ex.id)})).filter(x=>x.pr>0).sort((a,b)=>b.pr-a.pr);
+  const weekStart=startOfWeek(new Date()),weekKeys=new Set(Array.from({length:7},(_,i)=>todayKey(addDays(weekStart,i)))),weekSessions=[...sessions].filter(k=>weekKeys.has(k)).sort();
   const recentSessions=[...sessions].sort().reverse();
-  main.innerHTML=`${moreBack()}<section class="card hero"><span class="badge purple">GYM</span><h2 style="margin-top:14px">Track progress, not perfection.</h2><p class="muted" style="margin-bottom:0">Log the working weight you actually used. Reset keeps your PRs and long-term progress visible.</p></section>
-    <section class="grid-3"><div class="stat"><small>Last 30 days</small><strong>${sessions30}</strong></div><div class="stat"><small>All sessions</small><strong>${sessions.size}</strong></div><div class="stat"><small>Exercises</small><strong>${state.gym.exercises.length}</strong></div></section>
-    <div class="button-row"><button class="primary" id="logGymBtn">+ Log exercise</button><button class="secondary" id="logGymSessionBtn">${sessions.has(todayKey())?'Today logged':'Log workout day'}</button></div>
-    <div class="section-title"><h2>Strength progress</h2><button id="addExerciseBtn">+ Exercise</button></div>
-    <section class="card flat"><label><span class="label">Exercise</span><select id="gymExerciseSelect">${state.gym.exercises.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===exercise?.id?'selected':''}>${escapeHTML(x.name)} · ${escapeHTML(x.group||'')}</option>`).join('')}</select></label>
-      ${exercise?`<div class="metric-grid compact-metrics"><div class="metric-card"><small>First</small><strong>${first?Number(first.weight):'—'}</strong><span>${first?'kg':'no log'}</span></div><div class="metric-card"><small>Current</small><strong>${last?Number(last.weight):'—'}</strong><span>${last?'kg':'no log'}</span></div><div class="metric-card pr-card"><small>Personal best</small><strong>${pr||'—'}</strong><span>${pr?'kg':'no PR yet'}</span></div><div class="metric-card"><small>Change</small><strong class="${change>0?'accent':''}">${logs.length>1?(change>0?'+':'')+change:'—'}</strong><span>${logs.length>1?'kg since first':'need 2 logs'}</span></div></div>${gymChartHTML(logs)}`:'<div class="empty-state">Add an exercise to start tracking.</div>'}
-    </section>
-    <div class="section-title"><h2>Personal bests</h2></div><section class="card flat">${prRows.length?prRows.map(({ex,pr})=>`<div class="pr-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'')}</small></div><strong>${Number(pr)} kg</strong></div>`).join(''):'<div class="empty-state">Your PRs will appear after you log exercises.</div>'}</section>
-    <div class="section-title"><h2>Exercise history</h2><button class="secondary small-btn" id="selectGymBtn">${historySelectMode.gym?'Done':'Select'}</button></div>${historySelectToolbar('gym')}<section class="card flat">${logs.length?logs.slice().reverse().map(l=>`<div class="gym-log">${historySelectMode.gym?historySelectCheckbox('gym',l.id):''}<div><b>${Number(l.weight)} kg</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))} · ${Number(l.sets||0)||'—'} sets × ${Number(l.reps||0)||'—'} reps</small></div>${historySelectMode.gym?'':`<div class="row"><button class="text-button tiny" data-edit-gym="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-gym="${l.id}">Delete</button></div>`}</div>`).join(''):'<div class="empty-state">No weight logs for this exercise yet.</div>'}</section>
-    <div class="section-title"><h2>Workout days</h2><button class="secondary small-btn" id="selectWorkoutBtn">${historySelectMode.workout?'Done':'Select'}</button></div>${historySelectToolbar('workout')}<section class="card flat">${recentSessions.length?recentSessions.map(k=>`<div class="gym-log">${historySelectMode.workout?historySelectCheckbox('workout',k):''}<div><b>${escapeHTML(formatDateShort(parseDateKey(k)))}</b><small>Workout session</small></div>${historySelectMode.workout?'':`<button class="text-button tiny danger-text" data-del-session="${k}">Remove</button>`}</div>`).join(''):'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
+  const prRows=state.gym.exercises.map(ex=>({ex,pr:exercisePR(ex.id)})).filter(x=>x.pr>0).sort((a,b)=>b.pr-a.pr);
+  let body='';
+  if(view==='workouts') body=`<section class="gym-week-card"><div class="row between center"><div><span>This Week</span><b>${weekSessions.length} / 4 sessions</b></div><span>${weekSessions.length>=4?'✓':'⌄'}</span></div><div class="weekbar"><span style="width:${Math.min(100,weekSessions.length/4*100)}%"></span></div></section><section class="workout-type-list">${[['Push','Chest, Shoulders, Triceps'],['Pull','Back, Biceps'],['Legs','Legs'],['Upper Body','Chest, Back, Shoulders']].map((x,i)=>`<div class="workout-type ${i<weekSessions.length?'done':''}"><span class="workout-icon">${svgIcon('dumbbell')}</span><div><b>${x[0]}</b><small>${x[1]}</small></div><em>${weekSessions[i]?formatDateShort(parseDateKey(weekSessions[i])):'Not logged'}</em></div>`).join('')}</section><button class="primary full" id="logGymSessionBtn">${sessions.has(todayKey())?'Today logged':'Start Workout'}</button><div class="section-title"><h2>Recent Sessions</h2><button data-gym-view="history">See all</button></div><section class="recent-session-list">${recentSessions.slice(0,5).map(k=>`<div class="workout-type done"><span class="workout-icon">${svgIcon('dumbbell')}</span><div><b>Workout</b><small>${formatDateShort(parseDateKey(k))}</small></div></div>`).join('')||'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
+  if(view==='progress') body=`<div class="section-title first-section"><h2>Strength Progress</h2><button id="addExerciseBtn">+ Exercise</button></div><section class="card flat"><label><span class="label">Exercise</span><select id="gymExerciseSelect">${state.gym.exercises.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===exercise?.id?'selected':''}>${escapeHTML(x.name)} · ${escapeHTML(x.group||'')}</option>`).join('')}</select></label>${exercise?`<section class="progress-color-grid gym-metrics"><article class="pmetric blue"><small>First</small><b>${first?Number(first.weight):'—'}</b><em>kg</em></article><article class="pmetric green"><small>Current</small><b>${last?Number(last.weight):'—'}</b><em>kg</em></article><article class="pmetric yellow"><small>PR</small><b>${pr||'—'}</b><em>kg</em></article><article class="pmetric purple"><small>Change</small><b>${logs.length>1?(change>0?'+':'')+change:'—'}</b><em>kg</em></article></section>${gymChartHTML(logs)}`:'<div class="empty-state">Add an exercise to start tracking.</div>'}</section><button class="primary full" id="logGymBtn">+ Log exercise</button><div class="section-title"><h2>Personal Bests</h2></div><section class="card flat">${prRows.length?prRows.map(({ex,pr})=>`<div class="pr-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'')}</small></div><strong>${Number(pr)} kg</strong></div>`).join(''):'<div class="empty-state">Your PRs will appear after you log exercises.</div>'}</section>`;
+  if(view==='history') body=`<div class="section-title first-section"><h2>Exercise History</h2><button class="secondary small-btn" id="selectGymBtn">${historySelectMode.gym?'Done':'Select'}</button></div>${historySelectToolbar('gym')}<section class="card flat">${logs.length?logs.slice().reverse().map(l=>`<div class="gym-log">${historySelectMode.gym?historySelectCheckbox('gym',l.id):''}<div><b>${Number(l.weight)} kg</b><small>${escapeHTML(exercise?.name||'Exercise')} · ${escapeHTML(formatDateShort(parseDateKey(l.date)))} · ${Number(l.sets||0)||'—'} × ${Number(l.reps||0)||'—'}</small></div>${historySelectMode.gym?'':`<div class="row"><button class="text-button tiny" data-edit-gym="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-gym="${l.id}">Delete</button></div>`}</div>`).join(''):'<div class="empty-state">No weight logs for this exercise yet.</div>'}</section><div class="section-title"><h2>Workout Days</h2><button class="secondary small-btn" id="selectWorkoutBtn">${historySelectMode.workout?'Done':'Select'}</button></div>${historySelectToolbar('workout')}<section class="card flat">${recentSessions.length?recentSessions.map(k=>`<div class="gym-log">${historySelectMode.workout?historySelectCheckbox('workout',k):''}<div><b>${escapeHTML(formatDateShort(parseDateKey(k)))}</b><small>Workout session</small></div>${historySelectMode.workout?'':`<button class="text-button tiny danger-text" data-del-session="${k}">Remove</button>`}</div>`).join(''):'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
+  main.innerHTML=`${moreBack()}<div class="segmented gym-tabs"><button data-gym-view="workouts" class="${view==='workouts'?'active':''}">Workouts</button><button data-gym-view="progress" class="${view==='progress'?'active':''}">Progress</button><button data-gym-view="history" class="${view==='history'?'active':''}">History</button></div>${body}`;
   bindMoreBack();
-  $('#gymExerciseSelect')?.addEventListener('change',e=>{state.settings.selectedExerciseId=e.target.value;historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();});
-  $('#logGymBtn').onclick=()=>openGymLogModal(); $('#addExerciseBtn').onclick=()=>openExerciseModal();
-  $('#logGymSessionBtn').onclick=()=>{const k=todayKey();state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k)){state.gym.sessions.push(k);save();toast('Workout day logged');renderGym();}else toast('Today is already logged');};
-  $('#selectGymBtn').onclick=()=>historySelectToggle('gym',renderGym); $('#selectWorkoutBtn').onclick=()=>historySelectToggle('workout',renderGym);
+  $$('[data-gym-view]').forEach(b=>b.onclick=()=>{state.settings.gymView=b.dataset.gymView;save();renderGym();});
+  if($('#gymExerciseSelect'))$('#gymExerciseSelect').onchange=e=>{state.settings.selectedExerciseId=e.target.value;historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();};
+  if($('#logGymBtn'))$('#logGymBtn').onclick=()=>openGymLogModal();
+  if($('#logGymSessionBtn'))$('#logGymSessionBtn').onclick=()=>{const k=todayKey();state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k)){state.gym.sessions.push(k);save();toast('Workout day logged');renderGym();}else toast('Today is already logged');};
+  if($('#addExerciseBtn'))$('#addExerciseBtn').onclick=()=>openExerciseModal();
+  if($('#selectGymBtn'))$('#selectGymBtn').onclick=()=>historySelectToggle('gym',renderGym);
+  if($('#selectWorkoutBtn'))$('#selectWorkoutBtn').onclick=()=>historySelectToggle('workout',renderGym);
   $$('[data-edit-gym]').forEach(b=>b.onclick=()=>openGymLogModal(b.dataset.editGym));
   $$('[data-del-gym]').forEach(b=>b.onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===b.dataset.delGym);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});});
   $$('[data-del-session]').forEach(b=>b.onclick=()=>{const k=b.dataset.delSession;const existed=state.gym.sessions.includes(k);state.gym.sessions=state.gym.sessions.filter(x=>x!==k);if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);save();renderGym();toast('Workout day removed','Undo',()=>{state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(existed&&!state.gym.sessions.includes(k))state.gym.sessions.push(k);save();renderGym();});});
-  bindHistorySelection('gym',renderGym,ids=>{const set=new Set(ids),removed=state.gym.logs.map((item,index)=>({item,index})).filter(x=>set.has(x.item.id));state.gym.logs=state.gym.logs.filter(x=>!set.has(x.id));historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();toast(`${removed.length} exercise log${removed.length===1?'':'s'} deleted`,'Undo',()=>{restoreDeletedObjects(state.gym.logs,removed);save();renderGym();});});
-  bindHistorySelection('workout',renderGym,ids=>{const set=new Set(ids);const removed=state.gym.sessions.filter(k=>set.has(k));state.gym.sessions=state.gym.sessions.filter(k=>!set.has(k));removed.forEach(k=>{if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);});historySelected.workout.clear();historySelectMode.workout=false;save();renderGym();toast(`${removed.length} workout day${removed.length===1?'':'s'} removed`,'Undo',()=>{removed.forEach(k=>{state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k))state.gym.sessions.push(k);});save();renderGym();});});
+  bindHistorySelection('gym',renderGym,ids=>{const set=new Set(ids),removed=state.gym.logs.map((item,index)=>({item,index})).filter(x=>set.has(x.item.id));state.gym.logs=state.gym.logs.filter(x=>!set.has(x.id));historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();toast(`${removed.length} exercise logs deleted`,'Undo',()=>{restoreDeletedObjects(state.gym.logs,removed);save();renderGym();});});
+  bindHistorySelection('workout',renderGym,ids=>{const set=new Set(ids),removed=state.gym.sessions.filter(k=>set.has(k));state.gym.sessions=state.gym.sessions.filter(k=>!set.has(k));removed.forEach(k=>{if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);});historySelected.workout.clear();historySelectMode.workout=false;save();renderGym();toast(`${removed.length} workout days removed`,'Undo',()=>{removed.forEach(k=>{state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k))state.gym.sessions.push(k);});save();renderGym();});});
+  localizeTree(main);
 }
 function gymChartHTML(logs){
   if(logs.length<2)return `<div class="chart-empty">Log this exercise at least twice to see a progress chart.</div>`;
@@ -1431,14 +1373,20 @@ function openProjectModal(id=null){
 function openProjectSessionModal(id,logId=null){const p=state.projects.find(x=>x.id===id);if(!p)return;const existing=logId?(p.logs||[]).find(x=>x.id===logId):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT SESSION</p><h2>${escapeHTML(p.name)}</h2><div class="stack"><label><span class="label">What did you move forward?</span><textarea id="projectSessionNote" placeholder="A short note is enough.">${escapeHTML(existing?.note||'')}</textarea></label><label><span class="label">Date</span><input class="input" id="projectSessionDate" type="date" value="${existing?.date||todayKey()}"></label></div><button class="primary full" id="saveProjectSession" style="margin-top:14px">Save session</button>${existing?'<button class="danger-btn full" id="deleteProjectSession" style="margin-top:8px">Delete session</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveProjectSession').onclick=()=>{const data={date:$('#projectSessionDate').value||todayKey(),note:$('#projectSessionNote').value.trim()||'Focused project session'};if(existing)Object.assign(existing,data);else{p.sessions=Number(p.sessions||0)+1;if(!Array.isArray(p.logs))p.logs=[];p.logs.push({id:uid('projectlog'),...data});}save();modal.close();renderProjectDetail(p.id);toast(existing?'Project session updated':'Project session logged');};if(existing)$('#deleteProjectSession').onclick=()=>{const idx=p.logs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=p.logs[idx];p.logs.splice(idx,1);p.sessions=Math.max(0,Number(p.sessions||0)-1);save();modal.close();renderProjectDetail(p.id);toast('Project session deleted','Undo',()=>{p.logs.splice(Math.min(idx,p.logs.length),0,removed);p.sessions=Number(p.sessions||0)+1;save();renderProjectDetail(p.id);});};$('#cancelModal').onclick=()=>modal.close();}
 function openModeModal(){const cur=currentMode();const modes=[['normal','Normal','Full routine and normal weekly plan.'],['bad','Bad day','Today only: keep essentials, classes, meals, outside and sleep. It resets tomorrow.'],['exam','Exam','Temporarily park projects and nonessential life admin. Keep uni, sleep, food and training.'],['holiday','Holiday','Pause university items without deleting the timetable. Keep life, gym, projects and sleep.']];modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DAY MODE</p><h2>How should Reset treat your schedule?</h2><div class="mode-list">${modes.map(([id,name,desc])=>`<button class="mode-option ${id===cur?'active':''}" data-mode="${id}"><span><b>${name}</b><small>${desc}</small></span><strong>${id===cur?'✓':''}</strong></button>`).join('')}</div><button class="secondary full" id="cancelModal" style="margin-top:10px">Cancel</button>`;modal.showModal();$$('[data-mode]').forEach(b=>b.onclick=()=>{state.settings.mode=b.dataset.mode;state.settings.modeSetDate=todayKey();ensureRecord(todayKey()).mode=b.dataset.mode;save();modal.close();renderToday();toast(`${modeName()} mode active`);});$('#cancelModal').onclick=()=>modal.close();}
 
-$$('.tab').forEach(btn=>btn.addEventListener('click',()=>{state.settings.activeTab=btn.dataset.tab;if(btn.dataset.tab==='more')state.settings.moreView='home';save();render();window.scrollTo({top:0,behavior:'auto'});}));
+$$('.tab').forEach(btn=>btn.addEventListener('click',()=>{state.settings.activeTab=btn.dataset.tab;if(btn.dataset.tab==='more')state.settings.moreView='home';if(btn.dataset.tab==='money')state.settings.moneyView='home';save();render();window.scrollTo({top:0,behavior:'auto'});}));
+
+function openLanguageModal(){
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">LANGUAGE</p><h2>Choose language</h2><div class="language-list"><button class="language-option ${state.settings.language==='en'?'active':''}" data-lang="en"><span class="flag">🇺🇸</span><b>English</b><span>${state.settings.language==='en'?'✓':''}</span></button><button class="language-option ${state.settings.language==='ar'?'active':''}" data-lang="ar"><span class="flag">🇸🇦</span><b>العربية</b><span>${state.settings.language==='ar'?'✓':''}</span></button></div><button class="secondary full" id="cancelModal" style="margin-top:12px">Cancel</button>`;modal.showModal();$$('[data-lang]').forEach(b=>b.onclick=()=>{state.settings.language=b.dataset.lang;save();modal.close();applyLanguageState();render();toast(b.dataset.lang==='ar'?'تم تغيير اللغة':'Language changed');});$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
+}
+
 
 const settingsDialog=$('#settingsDialog');
-$('#settingsBtn').onclick=()=>{const v=$('#versionLabel');if(v)v.textContent='v'+APP_DISPLAY_VERSION;requestPersistentStorage().then(updateStorageProtectionLabel);updateBackupConfidenceLabel();settingsDialog.showModal();};
+$('#settingsBtn').onclick=()=>{const v=$('#versionLabel');if(v)v.textContent='v'+APP_DISPLAY_VERSION;applyLanguageState();requestPersistentStorage().then(updateStorageProtectionLabel);updateBackupConfidenceLabel();settingsDialog.showModal();localizeTree(settingsDialog);};
 $('#exportBtn').onclick=()=>{
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`reset-backup-${todayKey()}.json`;a.click();URL.revokeObjectURL(url);toast('Backup exported');
 };
 $('#importInput').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const data=JSON.parse(await f.text());if(!data.money||!data.records)throw new Error('Invalid');state=migrateState(data);save();settingsDialog.close();toast('Backup imported');render();}catch(err){toast('That backup file is not valid');}e.target.value='';});
+$('#languageBtn').onclick=()=>{settingsDialog.close();openLanguageModal();};
 $('#installHelpBtn').onclick=()=>{settingsDialog.close();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">IPHONE</p><h2>Add Reset to your Home Screen</h2><ol class="muted" style="padding-left:20px;line-height:1.8"><li>Open the app link in <b>Safari</b>.</li><li>Tap <b>Share</b>.</li><li>Choose <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b>.</li></ol><p class="muted tiny">When an update is uploaded to GitHub Pages, fully close and reopen the app. If an old version remains, refresh the Safari page once.</p><button class="primary full" id="cancelModal">Got it</button>`;modal.showModal();$('#cancelModal').onclick=()=>modal.close();};
 $('#storageProtectionBtn').onclick=async()=>{const r=await requestPersistentStorage();updateStorageProtectionLabel(r);toast(r.persisted?'Local data protection enabled':'iPhone is using best-effort local storage');};
 $('#eraseBtn').onclick=async()=>{if(confirm('Erase all Reset app data on this device?')){try{localStorage.removeItem(APP_KEY);}catch(e){}await durableClear();state=defaultState();settingsDialog.close();save();render();toast('App reset');}};

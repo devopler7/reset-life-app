@@ -1,6 +1,6 @@
-const CACHE = 'reset-life-v2.6.0';
+const CACHE = 'reset-life-v3.0.0';
 const ASSETS = [
-  './', './index.html', './styles.css?v=2.6.0', './app.js?v=2.6.0', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=3.0.0', './app.js?v=3.0.0', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', event => {
@@ -13,10 +13,14 @@ self.addEventListener('activate', event => {
 });
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
   event.respondWith(
     fetch(event.request).then(response => {
-      const copy = response.clone();
-      caches.open(CACHE).then(cache => cache.put(event.request, copy));
+      if (response && response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE).then(cache => cache.put(event.request, copy));
+      }
       return response;
     }).catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
   );
