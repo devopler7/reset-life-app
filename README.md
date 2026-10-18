@@ -1,4 +1,4 @@
-# Reset v3.1.0 — Personal Edition
+# Reset v3.1.1 — Personal Edition
 
 A local-first personal dashboard for Today, Week, University, Money, Gym, Health, Car, Projects and Progress.
 

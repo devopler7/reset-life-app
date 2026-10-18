@@ -1,6 +1,6 @@
 const APP_KEY = 'reset-life-dashboard-v1';
 const APP_VERSION = 10;
-const APP_DISPLAY_VERSION = '3.1.0';
+const APP_DISPLAY_VERSION = '3.1.1';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -1431,6 +1431,45 @@ $('#eraseBtn').onclick=async()=>{if(confirm('Erase all Reset app data on this de
 modal.addEventListener('click',e=>{if(e.target===modal)modal.close();});
 settingsDialog.addEventListener('click',e=>{if(e.target===settingsDialog)settingsDialog.close();});
 
-if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));}
+if('serviceWorker' in navigator){
+  window.addEventListener('load',async()=>{
+    try{
+      let reloading=false;
+      navigator.serviceWorker.addEventListener('controllerchange',()=>{
+        if(reloading)return;
+        reloading=true;
+        window.location.reload();
+      });
+      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.1.1',{updateViaCache:'none'});
+      if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});
+      reg.addEventListener('updatefound',()=>{
+        const worker=reg.installing;
+        if(!worker)return;
+        worker.addEventListener('statechange',()=>{
+          if(worker.state==='installed'&&navigator.serviceWorker.controller){
+            worker.postMessage({type:'SKIP_WAITING'});
+          }
+        });
+      });
+      reg.update().catch(()=>{});
+    }catch(e){}
+  });
+}
+
+// iPhone standalone Safari can still zoom on rapid double taps even when
+// touch-action is set. Reset is an app-like UI, so suppress that gesture.
+let resetLastTouch={time:0,target:null,x:0,y:0};
+document.addEventListener('touchend',event=>{
+  if(event.touches&&event.touches.length>0)return;
+  const touch=event.changedTouches&&event.changedTouches[0];
+  const now=Date.now();
+  const x=touch?touch.clientX:0;
+  const y=touch?touch.clientY:0;
+  const sameTarget=event.target===resetLastTouch.target;
+  const closeEnough=Math.hypot(x-resetLastTouch.x,y-resetLastTouch.y)<28;
+  if(now-resetLastTouch.time<320&&sameTarget&&closeEnough)event.preventDefault();
+  resetLastTouch={time:now,target:event.target,x,y};
+},{passive:false});
+document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
 setInterval(()=>{if(state.settings.activeTab==='today')renderToday(true);},60000);
 initializeApp();

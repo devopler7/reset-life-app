@@ -1,4 +1,4 @@
-RESET v3.1.0 TEST REPORT
+RESET v3.1.1 TEST REPORT
 
 Static checks
 - JavaScript syntax: PASS
@@ -25,3 +25,15 @@ Verified flows include:
 - Existing navigation and local persistence
 
 Final real-device visual/touch verification should still be done on the iPhone Home Screen build after GitHub Pages deployment.
+
+v3.1.1 HOTFIX CHECKS
+- JavaScript syntax: PASS
+- Service worker syntax: PASS
+- Versioned CSS/JS asset URLs: PASS
+- Service-worker cache version bumped: PASS
+- updateViaCache disabled for service-worker update checks: PASS
+- waiting worker activates immediately: PASS
+- active clients are refreshed after worker activation: PASS
+- navigation/assets use network-first no-store with offline cache fallback: PASS
+- iPhone viewport explicitly disables page zoom: PASS
+- double-tap gesture guard only suppresses rapid repeat taps on the same nearby target: PASS

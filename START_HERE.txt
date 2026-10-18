@@ -1,4 +1,4 @@
-RESET v3.1.0 — PERSONAL EDITION
+RESET v3.1.1 — PERSONAL EDITION
 
 This is the local-only personal Reset app.
 
@@ -6,7 +6,7 @@ UPDATE
 1. Export one JSON backup from your current app.
 2. Upload all files in this life-reset-app folder to the existing GitHub Pages repository.
 3. Wait for deployment, fully close the Home Screen app and reopen it.
-4. Settings should show v3.1.0.
+4. Settings should show v3.1.1.
 
 DATA
 There are no accounts, cloud database, AI, ads, analytics, or online currency/exchange-rate services. App data stays local in browser storage, with the existing local IndexedDB backup copy and manual JSON export.

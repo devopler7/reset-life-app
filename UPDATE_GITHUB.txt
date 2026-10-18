@@ -1,4 +1,4 @@
-RESET v3.1.0 UPDATE
+RESET v3.1.1 UPDATE
 
 1. Export one backup from your current Reset app.
 2. Unzip Reset_Life_Dashboard_v3.1_FINAL.zip.
@@ -8,6 +8,6 @@ RESET v3.1.0 UPDATE
 6. Commit directly to main.
 7. Wait for GitHub Pages to deploy.
 8. Fully close Reset on iPhone and reopen it.
-9. Open Settings and confirm v3.1.0.
+9. Open Settings and confirm v3.1.1.
 
 If the old build is cached, open the Pages URL once in Safari, refresh, then reopen the Home Screen app.
