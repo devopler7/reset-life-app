@@ -1,39 +1,46 @@
-RESET v3.1.1 TEST REPORT
+RESET v3.2.0 TEST REPORT
 
-Static checks
+Core validation
 - JavaScript syntax: PASS
-- Version/cache references updated: PASS
-- No external currency/exchange-rate functionality: PASS
-- Offline/local data architecture retained: PASS
+- Service-worker syntax: PASS
+- Manifest JSON: PASS
+- 390 px mobile overflow smoke: PASS
+- 320 px mobile overflow smoke: PASS
+- Arabic RTL smoke: PASS
+- Uncaught browser errors during targeted tests: 0
 
-Browser regression suite
-- 59/59 checks passed in headless Chromium using 390px and 320px iPhone-sized viewports.
-- No uncaught JavaScript errors in tested flows.
-- No horizontal overflow in tested main screens.
+Targeted regression suite: 42 / 42 PASS
+Covered:
+- v3.1.1 -> v3.2 gym migration
+- existing gym exercise IDs and logs preserved
+- five new default exercises added once only
+- deleted new exercises do not reappear after migration
+- complete exercise history across multiple exercises
+- exercise history filtering
+- muscle-group filters
+- Full Body workout generation
+- active-workout exercise completion
+- workout-session completion
+- adjustable weekly gym goal retained
+- Other one-off task category
+- fixed one-off meeting/appointment flag
+- Today Move button alignment
+- future one-day wake override
+- recurring wake time remains unchanged
+- future day rebuild after wake-time override
+- future one-off tasks retained during rebuild
+- manual future-day ordering retained when requested
+- Perfect Week achievement
+- Progress range cleanup
+- insight layout overflow
+- local-only behavior / no app-side network requests
 
-Verified flows include:
-- Today mode pill visibility and styling
-- More tools and combined Progress entry
-- Health simplification
-- Gym weekly goal changes (1-7)
-- Add/edit/delete exercise flow
-- Car odometer stepper and status cards
-- Rego/service day countdown and service-km remaining
-- Fuel history before maintenance history
-- Progress/insight layout spacing
-- Arabic RTL smoke test
-- Existing navigation and local persistence
+Stress simulation
+- 150 randomized simulated user states
+- each state included large spending histories, gym logs, workout days, future one-off tasks, manual time overrides, future-day rebuilds and every major screen render
+- 150 / 150 simulations PASS
+- failures: 0
+- uncaught page errors: 0
 
-Final real-device visual/touch verification should still be done on the iPhone Home Screen build after GitHub Pages deployment.
-
-v3.1.1 HOTFIX CHECKS
-- JavaScript syntax: PASS
-- Service worker syntax: PASS
-- Versioned CSS/JS asset URLs: PASS
-- Service-worker cache version bumped: PASS
-- updateViaCache disabled for service-worker update checks: PASS
-- waiting worker activates immediately: PASS
-- active clients are refreshed after worker activation: PASS
-- navigation/assets use network-first no-store with offline cache fallback: PASS
-- iPhone viewport explicitly disables page zoom: PASS
-- double-tap gesture guard only suppresses rapid repeat taps on the same nearby target: PASS
+Note
+A real iPhone Home Screen PWA remains the final device-specific touch/visual check because this environment cannot run iOS Safari itself.

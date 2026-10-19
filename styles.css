@@ -722,3 +722,92 @@ html[dir="rtl"] .transaction-amount,html[dir="rtl"] .history-month-card>div{text
 .mock-insights .insight-row{grid-template-columns:34px minmax(0,1fr);gap:12px;padding:13px 0;align-items:start}.mock-insights .insight-row>span{width:30px;height:30px;flex:0 0 auto}.mock-insights .insight-row p{min-width:0;margin:2px 0 0;line-height:1.42;overflow-wrap:anywhere}
 .single-progress-link{grid-template-columns:1fr}.single-progress-link .progress-link{grid-template-columns:auto minmax(0,1fr) auto;text-align:left}.single-progress-link .progress-link em{color:var(--muted);font-size:10px;font-style:normal;white-space:nowrap}.achievement-title-row{display:flex;align-items:center;justify-content:space-between;gap:8px}.achievement-title-row i{font-style:normal;font-size:8px;font-weight:850;color:#ffcc00;background:#32260a;border:1px solid #584413;padding:3px 6px;border-radius:999px;white-space:nowrap}
 @media(max-width:390px){.car-title-row{align-items:center}.car-title-row h2{font-size:19px}.car-action-row{grid-template-columns:1fr 1fr}.car-action-row #quickOdoBtn2{grid-column:1/-1}.goal-picker{grid-template-columns:repeat(4,1fr)}.single-progress-link .progress-link{grid-template-columns:auto minmax(0,1fr)}.single-progress-link .progress-link em{grid-column:2}}
+
+/* =========================================================
+   Reset 3.2 — gym planning, future-day planning, polish
+   ========================================================= */
+#heroMoveBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  line-height:1;
+  white-space:nowrap;
+}
+#heroMoveBtn .ui-icon{width:17px;height:17px;flex:0 0 17px;display:block;}
+
+.week-day-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap;}
+.week-day-actions .small-btn{min-height:38px;padding:0 12px;}
+
+.progress-range-title{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  margin:4px 1px 12px;padding:0 2px;
+}
+.progress-range-title small{color:#6e6e73;font-size:9px;letter-spacing:.08em;font-weight:800;}
+.progress-range-title b{font-size:12px;color:#d1d1d6;text-align:right;}
+.mock-insights .insight-row{grid-template-columns:32px minmax(0,1fr)!important;gap:11px!important;}
+.mock-insights .insight-row>span{width:30px!important;height:30px!important;flex:0 0 30px;}
+.mock-insights .insight-row p{min-width:0;padding-right:2px;overflow-wrap:anywhere;line-height:1.4;}
+
+.muscle-filter-strip,.focus-chip-wrap{
+  display:flex;gap:7px;overflow-x:auto;padding:1px 1px 10px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+}
+.muscle-filter-strip::-webkit-scrollbar,.focus-chip-wrap::-webkit-scrollbar{display:none;}
+.focus-chip{
+  flex:0 0 auto;min-height:34px;border:1px solid #343438;background:#151517;color:#b8b8be;
+  border-radius:999px;padding:0 12px;font-size:10px;font-weight:760;
+}
+.focus-chip.active{background:#0a84ff;border-color:#0a84ff;color:#fff;}
+.history-exercise-filter{display:block;margin-bottom:10px;}
+
+.active-workout-card{
+  background:linear-gradient(180deg,#101b15,#111214 55%);border:1px solid #245735;
+  border-radius:16px;padding:14px;margin-bottom:12px;
+}
+.active-workout-card>div:first-child span{display:block;color:#30d158;font-size:9px;font-weight:800;letter-spacing:.08em;}
+.active-workout-card h3{margin:2px 0 0;font-size:18px;}
+.active-workout-card>div:first-child>b{font-size:13px;color:#d1d1d6;}
+.active-workout-card .weekbar{height:6px;margin:11px 0;background:#242629;border-radius:99px;overflow:hidden;}
+.active-workout-card .weekbar span{display:block;height:100%;background:#30d158;border-radius:inherit;}
+.active-workout-list{border-top:1px solid #243128;margin:4px 0 12px;}
+.active-workout-row{
+  display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:9px;align-items:center;
+  padding:10px 0;border-bottom:1px solid #202824;
+}
+.active-workout-row:last-child{border-bottom:0;}
+.active-workout-row b,.active-workout-row small{display:block;}
+.active-workout-row b{font-size:12px;}
+.active-workout-row small{font-size:9px;color:#8e8e93;margin-top:2px;}
+.active-workout-row.done b{color:#8e8e93;text-decoration:line-through;text-decoration-color:#4b4b50;}
+.workout-check{width:26px;height:26px;border-radius:50%;border:1px solid #3a3a3e;display:grid;place-items:center;color:#061207;}
+.active-workout-row.done .workout-check{background:#30d158;border-color:#30d158;}
+.workout-check .ui-icon{width:15px;height:15px;}
+.tiny-workout-btn{min-height:34px!important;padding:0 10px!important;font-size:10px!important;}
+.gym-focus-guide{margin-top:9px;}
+
+.workout-plan-preview{
+  margin:12px 0;background:#0d0e10;border:1px solid #2c2c2f;border-radius:15px;padding:12px;
+}
+.workout-plan-preview .row small,.workout-plan-preview .row b{display:block;}
+.workout-plan-preview .row small{font-size:8px;color:#6e6e73;letter-spacing:.08em;font-weight:800;}
+.workout-plan-preview .row b{font-size:15px;margin-top:2px;}
+.workout-plan-preview .row em{font-size:9px;color:#8e8e93;font-style:normal;}
+.plan-exercise-row{display:grid;grid-template-columns:24px 1fr;gap:9px;align-items:center;padding:9px 0;border-top:1px solid #222225;}
+.plan-exercise-row:first-of-type{margin-top:9px;}
+.plan-exercise-row>span{width:22px;height:22px;border-radius:50%;background:#18273a;color:#64d2ff;display:grid;place-items:center;font-size:9px;font-weight:800;}
+.plan-exercise-row b,.plan-exercise-row small{display:block;}
+.plan-exercise-row b{font-size:11px;}.plan-exercise-row small{font-size:9px;color:#8e8e93;margin-top:2px;}
+
+@media(max-width:420px){
+  .week-day-title{align-items:flex-end;}
+  .week-day-actions{gap:4px;}
+  .week-day-actions .small-btn,.week-day-actions>button{min-height:36px;padding-left:9px;padding-right:9px;font-size:10px;}
+  .active-workout-row{grid-template-columns:28px minmax(0,1fr) auto;gap:7px;}
+  .tiny-workout-btn{padding:0 8px!important;}
+}
+.section-title .week-day-actions .secondary{
+  background:#1c1c1e;
+  color:#f5f5f7;
+  border:1px solid #343438;
+}

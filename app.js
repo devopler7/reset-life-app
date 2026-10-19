@@ -1,6 +1,6 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 10;
-const APP_DISPLAY_VERSION = '3.1.1';
+const APP_VERSION = 11;
+const APP_DISPLAY_VERSION = '3.2.0';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -17,7 +17,8 @@ const DAY_PICK = ['Su','M','Tu','W','Th','F','Sa'];
 function dayShort(i){return isArabic()?DAY_SHORT_AR[i]:DAY_SHORT_EN[i];}
 function dayLong(i){return isArabic()?DAY_LONG_AR[i]:DAY_LONG_EN[i];}
 const DAY_SHORT=DAY_SHORT_EN, DAY_LONG=DAY_LONG_EN;
-const CATEGORIES = ['Routine','University','Fitness','Food','Life','Project','Sleep'];
+const CATEGORIES = ['Routine','University','Fitness','Food','Life','Project','Sleep','Other'];
+const GYM_GROUPS = ['Chest','Back','Shoulders','Rear Delts','Biceps','Triceps','Quads','Hamstrings','Glutes','Calves','Core','Legs','Arms','Other'];
 const ICON_PATHS = {
   chevronLeft:'<path d="M15 18l-6-6 6-6"/>',
   chevronRight:'<path d="M9 6l6 6-6 6"/>',
@@ -47,7 +48,7 @@ const AR_UI = {
   'Settings & backup':'الإعدادات والنسخ الاحتياطي','Export backup':'تصدير نسخة احتياطية','Import backup':'استيراد نسخة احتياطية','Add to iPhone Home Screen':'إضافة إلى شاشة الآيفون الرئيسية','Local data protection':'حماية البيانات المحلية','Automatic backup copy':'نسخة احتياطية تلقائية','App version':'إصدار التطبيق','Erase all app data':'مسح جميع بيانات التطبيق','Language':'اللغة',
   'English':'English','Arabic':'العربية','Close':'إغلاق','Cancel':'إلغاء','Save':'حفظ','Edit':'تعديل','Delete':'حذف','Remove':'إزالة','Done':'تم','Select':'تحديد','Selected':'محدد','Back':'رجوع','Today’s timeline':'جدول اليوم','Today\'s timeline':'جدول اليوم','Today’s Progress':'تقدم اليوم',
   'Now':'الآن','Next':'التالي','NEXT':'التالي','DO THIS NOW':'افعل هذا الآن','Mark done':'تم','Move':'نقل','Add task':'إضافة مهمة','Task':'مهمة','Routine':'روتين','Fitness':'لياقة','Food':'طعام','Life':'حياة','Project':'مشروع','Sleep':'نوم',
-  'Classes':'المحاضرات','Habits':'العادات','Other':'أخرى','Done today':'تم اليوم','Streak':'السلسلة','Sleep target':'هدف النوم','Rebuild today from now':'إعادة بناء اليوم من الآن','ADAPTIVE RESTART':'إعادة ضبط ذكية','Normal':'عادي','Bad day':'يوم صعب','Exam':'اختبارات','Holiday':'إجازة',
+  'Classes':'المحاضرات','Habits':'العادات','Other':'أخرى','Plan day':'خطط لليوم','Rebuild day':'أعد بناء اليوم','Wake time for this day':'وقت الاستيقاظ لهذا اليوم','This changes only this date. Your recurring routine stays untouched.':'هذا التغيير لهذا التاريخ فقط. الروتين المتكرر لن يتغير.','Keep my moves':'احتفظ بتعديلاتي','Reset day to routine':'أعد اليوم للروتين','Full Body':'جسم كامل','Upper Body':'الجزء العلوي','Lower Body':'الجزء السفلي','Core':'البطن والجذع','Chest':'الصدر','Back':'الظهر','Shoulders':'الأكتاف','Arms':'الذراعان','Legs':'الأرجل','Glutes':'الأرداف','Calves':'السمانة','Rear Delts':'الكتف الخلفي','Biceps':'البايسبس','Triceps':'الترايسبس','Quads':'العضلات الأمامية للفخذ','Hamstrings':'أوتار الركبة','Perfect Week':'أسبوع مثالي','Finish every scheduled item Monday through Sunday.':'أكمل كل المهام المجدولة من الاثنين إلى الأحد.','Done today':'تم اليوم','Streak':'السلسلة','Sleep target':'هدف النوم','Rebuild today from now':'إعادة بناء اليوم من الآن','ADAPTIVE RESTART':'إعادة ضبط ذكية','Normal':'عادي','Bad day':'يوم صعب','Exam':'اختبارات','Holiday':'إجازة',
   'Previous week':'الأسبوع السابق','Next week':'الأسبوع التالي','Recurring routine':'الروتين المتكرر','Weekly schedule':'الجدول الأسبوعي','Manage routine':'إدارة الروتين','Recurring item':'مهمة متكررة','Nothing scheduled for this day.':'لا يوجد شيء مجدول لهذا اليوم.',
   'Courses':'المقررات','Open tasks':'المهام المفتوحة','Urgent':'عاجل','Catch-up queue':'قائمة اللحاق','Schedule it':'جدولها','Important':'مهم','Later':'لاحقاً','General':'عام',
   'Next salary':'الراتب القادم','days until salary':'أيام حتى الراتب','+ Log spending':'+ تسجيل مصروف','NEXT SALARY':'الراتب القادم','left to spend':'متبقي للصرف','LEFT TO SPEND':'متبقي للصرف','Monthly Spending':'مصروفات الشهر','Monthly spending':'مصروفات الشهر','Allocations':'التخصيصات','Log spending':'تسجيل مصروف','Recent Spending':'آخر المصروفات','Recent spending':'آخر المصروفات','See all':'عرض الكل','Spending History':'سجل المصروفات','Spending history':'سجل المصروفات','All':'الكل','All months':'كل الأشهر','All allocations':'كل التخصيصات','Allocation':'التخصيص','Month':'الشهر','Spending trend':'اتجاه المصروفات','Income':'الدخل','Allocated':'المخصص','Spent':'المصروف','Save money plan':'حفظ خطة المال','Edit monthly allocation':'تعديل التخصيص الشهري','Monthly income (SAR)':'الدخل الشهري (ر.س)','Payday day of month':'يوم نزول الراتب','Add allocation bucket':'إضافة تخصيص','Bucket':'التخصيص','Monthly SAR':'شهرياً (ر.س)','Log an expense':'تسجيل مصروف','Edit an expense':'تعديل مصروف','Amount':'المبلغ','Date':'التاريخ','Note':'ملاحظة','Save spending':'حفظ المصروف','Delete entry':'حذف السجل',
@@ -67,7 +68,7 @@ const AR_UI = {
   'Current saved rate':'السعر المحفوظ الحالي','AUD → SAR conversion':'تحويل الدولار الأسترالي إلى الريال','Currency':'العملة','Refresh':'تحديث','Saved directly in SAR':'سيتم الحفظ مباشرة بالريال','No rate saved':'لا يوجد سعر محفوظ','or set manually':'أو أدخله يدويًا','A$1 equals how many SAR?':'كم ريال يساوي 1 دولار أسترالي؟','Save manual rate':'حفظ السعر اليدوي','Choose language':'اختر اللغة'
 };
 Object.assign(AR_UI,{
-  'Manage':'إدارة','Edit details':'تعديل التفاصيل','Fuel, service & rego':'الوقود والصيانة والتسجيل','Body weight and simple progress':'وزن الجسم والتقدم البسيط','Progress & achievements':'التقدم والإنجازات','Insights, trends and long-term goals':'الملاحظات والاتجاهات والأهداف طويلة المدى','No workouts logged this week yet.':'لم يتم تسجيل تمارين هذا الأسبوع بعد.','Weekly goal reached':'تم تحقيق الهدف الأسبوعي','No exercises yet. Add one to start tracking strength.':'لا توجد تمارين بعد. أضف تمريناً لبدء تتبع القوة.','No fuel fill logged yet':'لم يتم تسجيل تعبئة وقود بعد','Due today':'مستحق اليوم','Current reading':'القراءة الحالية','Edit exercise':'تعديل التمرين','Exercise updated':'تم تحديث التمرين','Exercise added':'تمت إضافة التمرين','Exercise deleted':'تم حذف التمرين','Workout session':'جلسة تمرين','Logged session':'جلسة مسجلة','Goal':'الهدف','Weekly goal':'الهدف الأسبوعي','Choose how many workout days you want in a normal week. This is a target, not a fixed program.':'اختر عدد أيام التمرين التي تريدها في أسبوع عادي. هذا هدف وليس برنامجاً ثابتاً.'
+  'Manage':'إدارة','Edit details':'تعديل التفاصيل','Fuel, service & rego':'الوقود والصيانة والتسجيل','Body weight and simple progress':'وزن الجسم والتقدم البسيط','Progress & achievements':'التقدم والإنجازات','Insights, trends and long-term goals':'الملاحظات والاتجاهات والأهداف طويلة المدى','No workouts logged this week yet.':'لم يتم تسجيل تمارين هذا الأسبوع بعد.','Weekly goal reached':'تم تحقيق الهدف الأسبوعي','No exercises yet. Add one to start tracking strength.':'لا توجد تمارين بعد. أضف تمريناً لبدء تتبع القوة.','No fuel fill logged yet':'لم يتم تسجيل تعبئة وقود بعد','Due today':'مستحق اليوم','Current reading':'القراءة الحالية','Edit exercise':'تعديل التمرين','Exercise updated':'تم تحديث التمرين','Exercise added':'تمت إضافة التمرين','Exercise deleted':'تم حذف التمرين','Workout session':'جلسة تمرين','Logged session':'جلسة مسجلة','Goal':'الهدف','Weekly goal':'الهدف الأسبوعي','Choose how many workout days you want in a normal week. This is a target, not a fixed program.':'اختر عدد أيام التمرين التي تريدها في أسبوع عادي. هذا هدف وليس برنامجاً ثابتاً.','What are you training?':'ماذا ستتمرن اليوم؟','Choose what you are training':'اختر ما ستتمرن عليه','Full body or a muscle focus. Reset builds a simple exercise list from your own library.':'جسم كامل أو مجموعة عضلية محددة. يبني Reset قائمة بسيطة من تمارينك.','Start Workout':'ابدأ التمرين','IN PROGRESS':'قيد التنفيذ','PLAN':'الخطة','Log':'سجل','Log again':'سجل مرة أخرى','Finish workout':'إنهاء التمرين','Cancel workout':'إلغاء التمرين','All exercises':'كل التمارين','Show':'عرض','Strength Progress':'تقدم القوة','Personal Bests':'الأرقام الشخصية','7 days':'7 أيام','30 days':'30 يوماً','All time':'كل الوقت','Last 7 days':'آخر 7 أيام','Last 30 days':'آخر 30 يوماً','VIEWING':'عرض','Fixed time / appointment':'وقت ثابت / موعد','Use for meetings or anything Reset should never move.':'استخدمه للاجتماعات أو أي شيء لا يجب على Reset تحريكه.','ONE-DAY PLAN':'خطة يوم واحد','Rebuild day':'أعد بناء اليوم','Reset day to routine':'أعد اليوم للروتين','Keep swaps and time changes you already made for this day while rebuilding around them.':'احتفظ بالتبديلات وتغييرات الوقت التي أجريتها لهذا اليوم أثناء إعادة البناء.'
 });
 function ui(text){return isArabic()?(AR_UI[text]||text):text;}
 function translateTextValue(text){
@@ -77,7 +78,7 @@ function translateTextValue(text){
   if(AR_UI[trimmed]) return String(text).replace(trimmed,AR_UI[trimmed]);
   const replacements=[
     [/^\+ Task$/i,'+ مهمة'],[/^NOW$/i,'الآن'],[/^Next up$/i,'التالي'],
-    [/^(\d+) days?$/i,'$1 يوم'],[/^(\d+) days? left$/i,'$1 يوم متبقٍ'],[/^(\d+) days? overdue$/i,'متأخر $1 يوم'],[/^(\d+) sessions?$/i,'$1 جلسة'],[/^(\d+) entries$/i,'$1 سجل'],[/^(\d+) active$/i,'$1 نشط'],[/^(\d+) items$/i,'$1 عناصر'],[/^Goal (\d+)$/i,'الهدف $1'],[/^(\d+) to go$/i,'متبقي $1'],[/^Workout (\d+)$/i,'تمرين $1'],[/^Level (\d+)$/i,'المستوى $1'],
+    [/^(\d+) days?$/i,'$1 يوم'],[/^Start (.+) workout$/i,'ابدأ تمرين $1'],[/^(\d+) exercises$/i,'$1 تمارين'],[/^(\d+) days? left$/i,'$1 يوم متبقٍ'],[/^(\d+) days? overdue$/i,'متأخر $1 يوم'],[/^(\d+) sessions?$/i,'$1 جلسة'],[/^(\d+) entries$/i,'$1 سجل'],[/^(\d+) active$/i,'$1 نشط'],[/^(\d+) items$/i,'$1 عناصر'],[/^Goal (\d+)$/i,'الهدف $1'],[/^(\d+) to go$/i,'متبقي $1'],[/^Workout (\d+)$/i,'تمرين $1'],[/^Level (\d+)$/i,'المستوى $1'],
     [/^(\d+) day(?:s)? until your next salary$/i,'$1 يوم حتى الراتب القادم'],[/^(\d+) min ago$/i,'منذ $1 دقيقة'],[/^(\d+) selected$/i,'تم تحديد $1'],
     [/^Week (\d+)$/i,'الأسبوع $1'],[/^Due (.+)$/i,'موعد $1'],[/^(\d+) flexible item still open$/i,'$1 مهمة مرنة ما زالت مفتوحة'],[/^(\d+) flexible items still open$/i,'$1 مهام مرنة ما زالت مفتوحة'],[/^(\d+) recurring items$/i,'$1 عناصر متكررة'],[/^(\d+) days until salary$/i,'$1 يوم حتى الراتب'],[/^(\d+) earned$/i,'$1 مكتسب'],[/^(\d+) \/ (\d+) sessions$/i,'$1 / $2 جلسات'],[/^You: week (\d+) · Teaching: week (\d+) · (\d+) weeks behind$/i,'أنت: الأسبوع $1 · التدريس: الأسبوع $2 · متأخر $3 أسابيع'],[/^(.+) spent · (.+) left$/i,'تم صرف $1 · متبقي $2'],[/\boverdue\b/gi,'متأخر'],[/\bnow\b/gi,'الآن'],[/^Log sleep time$/i,'سجل وقت النوم']
   ];
@@ -231,14 +232,19 @@ function defaultSchedule() {
 }
 function defaultGymExercises() {
   return [
-    {id:'chest_press',name:'Chest Press',group:'Chest'},
-    {id:'lat_pulldown',name:'Lat Pulldown',group:'Back'},
-    {id:'seated_row',name:'Seated Row',group:'Back'},
-    {id:'shoulder_press',name:'Shoulder Press',group:'Shoulders'},
-    {id:'leg_press',name:'Leg Press',group:'Legs'},
-    {id:'leg_curl',name:'Leg Curl',group:'Hamstrings'},
-    {id:'biceps_curl',name:'Biceps Curl',group:'Arms'},
-    {id:'triceps_pushdown',name:'Triceps Pushdown',group:'Arms'}
+    {id:'chest_press',name:'Chest Press',group:'Chest',targets:['Chest','Triceps']},
+    {id:'lat_pulldown',name:'Lat Pulldown',group:'Back',targets:['Back','Biceps']},
+    {id:'seated_row',name:'Seated Row',group:'Back',targets:['Back','Rear Delts','Biceps']},
+    {id:'shoulder_press',name:'Shoulder Press',group:'Shoulders',targets:['Shoulders','Triceps']},
+    {id:'leg_press',name:'Leg Press',group:'Legs',targets:['Quads','Glutes']},
+    {id:'leg_curl',name:'Leg Curl',group:'Hamstrings',targets:['Hamstrings']},
+    {id:'biceps_curl',name:'Biceps Curl',group:'Arms',targets:['Biceps']},
+    {id:'triceps_pushdown',name:'Triceps Pushdown',group:'Arms',targets:['Triceps']},
+    {id:'standing_calf_raise',name:'Standing Calf Raise',group:'Calves',targets:['Calves']},
+    {id:'ab_crunch_machine',name:'Ab Crunch Machine',group:'Core',targets:['Core']},
+    {id:'glute_kickback',name:'Glute Kickback',group:'Glutes',targets:['Glutes']},
+    {id:'rear_delt_fly',name:'Rear Delt Fly',group:'Rear Delts',targets:['Rear Delts','Shoulders']},
+    {id:'hanging_knee_raise',name:'Hanging Knee Raise',group:'Core',targets:['Core']}
   ];
 }
 function defaultState() {
@@ -279,11 +285,11 @@ function defaultState() {
       nextTask:'Use the app consistently and improve only what is genuinely useful.',
       plan:'Keep it simple, reliable and useful on iPhone.', sessions:0, logs:[]
     }],
-    gym:{exercises:defaultGymExercises(),logs:[],sessions:[],sessionExcluded:[],weeklyGoal:3},
+    gym:{exercises:defaultGymExercises(),logs:[],sessions:[],sessionExcluded:[],weeklyGoal:3,activeWorkout:null},
     health:{weightLogs:[]},
     car:{model:'2007 Honda Accord V6 Luxury',odometer:180000,regoDue:'',serviceDueDate:'',serviceDueKm:0,fuelLogs:[],maintenanceLogs:[]},
     weeklyReviews:[],
-    settings:{activeTab:'today', selectedWeekDate:todayKey(), statsRange:'30', moreView:'home', mode:'normal', modeSetDate:todayKey(), selectedExerciseId:'chest_press', gymView:'workouts', moneyHistoryMonth:monthKey(), moneyHistoryBucket:'all', moneyView:'home', language:'en'}
+    settings:{activeTab:'today', selectedWeekDate:todayKey(), statsRange:'30', moreView:'home', mode:'normal', modeSetDate:todayKey(), selectedExerciseId:'chest_press', gymView:'workouts', gymGroupFilter:'All', gymHistoryExercise:'all', moneyHistoryMonth:monthKey(), moneyHistoryBucket:'all', moneyView:'home', language:'en'}
   };
 }
 
@@ -345,13 +351,25 @@ function migrateState(parsed) {
   if(!['workouts','progress','history'].includes(next.settings.gymView)) next.settings.gymView='workouts';
 
   const oldGym=parsed.gym||{};
+  const defaultGymById=new Map(base.gym.exercises.map(x=>[x.id,x]));
+  let migratedExercises=Array.isArray(oldGym.exercises)&&oldGym.exercises.length?oldGym.exercises.map(ex=>{
+    const meta=defaultGymById.get(ex.id)||{};
+    return {...meta,...ex,targets:Array.isArray(ex.targets)&&ex.targets.length?ex.targets:(meta.targets||[ex.group||'Other'])};
+  }):base.gym.exercises.map(x=>({...x}));
+  if(Number(parsed.version||0)<11){
+    const existingIds=new Set(migratedExercises.map(x=>x.id));
+    ['standing_calf_raise','ab_crunch_machine','glute_kickback','rear_delt_fly','hanging_knee_raise'].forEach(id=>{const ex=defaultGymById.get(id);if(ex&&!existingIds.has(id))migratedExercises.push({...ex});});
+  }
   next.gym={
-    exercises:Array.isArray(oldGym.exercises)&&oldGym.exercises.length?oldGym.exercises:base.gym.exercises,
+    exercises:migratedExercises,
     logs:Array.isArray(oldGym.logs)?oldGym.logs:[],
     sessions:Array.isArray(oldGym.sessions)?[...new Set(oldGym.sessions)]:[],
     sessionExcluded:Array.isArray(oldGym.sessionExcluded)?[...new Set(oldGym.sessionExcluded)]:[],
-    weeklyGoal:clamp(Number(oldGym.weeklyGoal||base.gym.weeklyGoal||3),1,7)
+    weeklyGoal:clamp(Number(oldGym.weeklyGoal||base.gym.weeklyGoal||3),1,7),
+    activeWorkout:oldGym.activeWorkout&&typeof oldGym.activeWorkout==='object'?{...oldGym.activeWorkout,exerciseIds:Array.isArray(oldGym.activeWorkout.exerciseIds)?oldGym.activeWorkout.exerciseIds:[],completedExerciseIds:Array.isArray(oldGym.activeWorkout.completedExerciseIds)?oldGym.activeWorkout.completedExerciseIds:[]}:null
   };
+  if(!['All',...GYM_GROUPS].includes(next.settings.gymGroupFilter))next.settings.gymGroupFilter='All';
+  if(!next.settings.gymHistoryExercise)next.settings.gymHistoryExercise='all';
   next.health={...base.health,...(parsed.health||{})};
   next.health.weightLogs=Array.isArray(parsed.health?.weightLogs)?parsed.health.weightLogs:[];
   next.car={...base.car,...(parsed.car||{})};
@@ -827,10 +845,10 @@ function renderWeek() {
   if(!days.some(d=>todayKey(d)===selectedKey)){selected=weekStart;selectedKey=todayKey(selected);state.settings.selectedWeekDate=selectedKey;}
   setHeader('Week',selected);const selectedItems=itemsForDate(selected);
   main.innerHTML=`<section class="week-header-card"><div class="week-nav clean"><button class="round-icon" id="prevWeekBtn" aria-label="Previous week">${svgIcon('chevronLeft')}</button><div><b>${formatDateShort(weekStart)} – ${formatDateShort(weekEnd)}</b><button class="today-link" id="todayWeekBtn">Today</button></div><button class="round-icon" id="nextWeekBtn" aria-label="Next week">${svgIcon('chevronRight')}</button></div><div class="week-strip modern">${days.map(d=>{const k=todayKey(d),p=dayCompletion(d);return `<button class="week-day ${k===selectedKey?'active':''} ${k===todayKey()?'today':''}" data-day-key="${k}"><small>${dayShort(d.getDay())}</small><strong>${d.getDate()}</strong><i style="--p:${p}%"></i></button>`}).join('')}</div></section>
-  <div class="section-title"><div><span class="section-kicker">${dayLong(selected.getDay())}</span><h2>${formatDateShort(selected)}</h2></div><button id="addWeekTaskBtn">+ Task</button></div>
+  <div class="section-title week-day-title"><div><span class="section-kicker">${dayLong(selected.getDay())}</span><h2>${formatDateShort(selected)}</h2></div><div class="week-day-actions">${selectedKey>todayKey()?'<button class="secondary small-btn" id="planDayBtn">Plan day</button>':''}<button id="addWeekTaskBtn">+ Task</button></div></div>
   <section class="week-day-schedule">${selectedItems.length?selectedItems.map(i=>timelineItemHTML(i,selected,true)).join(''):'<div class="empty-state">Nothing scheduled for this day.</div>'}</section>
   <details class="routine-manager"><summary><span><b>Weekly routine</b><small>${state.schedule.filter(s=>s.active!==false).length} recurring items</small></span>${svgIcon('chevronRight')}</summary><div class="routine-actions"><button class="primary" id="addRoutineBtn">+ Recurring item</button><button class="secondary" id="manageRoutineBtn">Manage routine</button></div></details>`;
-  $('#prevWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey(addDays(selected,-7));save();renderWeek();};$('#nextWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey(addDays(selected,7));save();renderWeek();};$('#todayWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey();save();renderWeek();};$$('[data-day-key]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.dayKey;save();renderWeek();});$('#addWeekTaskBtn').onclick=()=>openOneOffTaskModal(null,{date:selectedKey,start:'12:00'});$('#addRoutineBtn').onclick=()=>openScheduleItemModal(null,{days:[selected.getDay()]});$('#manageRoutineBtn').onclick=openScheduleManager;bindTimeline(selected);localizeTree(main);
+  $('#prevWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey(addDays(selected,-7));save();renderWeek();};$('#nextWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey(addDays(selected,7));save();renderWeek();};$('#todayWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey();save();renderWeek();};$$('[data-day-key]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.dayKey;save();renderWeek();});$('#addWeekTaskBtn').onclick=()=>openOneOffTaskModal(null,{date:selectedKey,start:'12:00'});if($('#planDayBtn'))$('#planDayBtn').onclick=()=>openFutureDayPlanner(selected);$('#addRoutineBtn').onclick=()=>openScheduleItemModal(null,{days:[selected.getDay()]});$('#manageRoutineBtn').onclick=openScheduleManager;bindTimeline(selected);localizeTree(main);
 }
 
 function renderUniversity() {
@@ -1026,13 +1044,29 @@ function totalProjectSessions(){return (state.projects||[]).reduce((a,p)=>a+Numb
 function perfectClassDaysCount(){
   return dateRange('all').filter(d=>{const items=itemsForDate(d,{ignoreOverrides:true}).filter(i=>i.isClass);if(!items.length)return false;const key=todayKey(d);const ended=key<todayKey()||items.every(i=>minutesFromTime(i.end||i.start)<currentMinutes());return ended&&items.every(i=>getStatus(i,key)==='done');}).length;
 }
+function perfectWeeksCount(){
+  const appStart=startOfWeek(appStartDate()), currentStart=startOfWeek(new Date()); let count=0;
+  for(let ws=new Date(appStart); ws<=currentStart; ws=addDays(ws,7)){
+    const days=Array.from({length:7},(_,i)=>addDays(ws,i));
+    if(days[6]>new Date() && todayKey(days[6])!==todayKey()) break;
+    if(days.some(d=>todayKey(d)>todayKey())) continue;
+    const valid=days.every(d=>{const items=itemsForMode(itemsForDate(d),modeForDate(todayKey(d)));return items.length>0&&dayCompletion(d)===100;});
+    if(valid)count++;
+  }
+  return count;
+}
+function spendingForRange(range){
+  if(range==='all')return (state.money.transactions||[]).reduce((a,t)=>a+Number(t.amount||0),0);
+  const keys=new Set(dateRange(range).map(todayKey));
+  return (state.money.transactions||[]).filter(t=>keys.has(t.date)).reduce((a,t)=>a+Number(t.amount||0),0);
+}
 function maxStrengthGainPct(){
   let best=0;
   (state.gym.exercises||[]).forEach(ex=>{const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===ex.id).sort((a,b)=>String(a.date).localeCompare(String(b.date))||Number(a.createdAt||0)-Number(b.createdAt||0));if(logs.length>=2){const first=Number(logs[0].weight||0), max=Math.max(...logs.map(x=>Number(x.weight||0)));if(first>0)best=Math.max(best,Math.round((max-first)/first*100));}});
   return best;
 }
 function achievementData(){
-  const all=rangeMetrics('all'), gymAll=gymSessionDates().size, meals=all.mealDays, projects=totalProjectSessions(), perfectClasses=perfectClassDaysCount(), strength=maxStrengthGainPct();
+  const all=rangeMetrics('all'), gymAll=gymSessionDates().size, meals=all.mealDays, projects=totalProjectSessions(), perfectClasses=perfectClassDaysCount(), perfectWeeks=perfectWeeksCount(), strength=maxStrengthGainPct();
   const specs=[
     ['consistent_14','Two solid weeks','Finish 14 days at 70% or better.',all.goodDays,14],
     ['gym_12','Gym routine','Complete 12 gym sessions.',gymAll,12],
@@ -1042,7 +1076,8 @@ function achievementData(){
     ['class_days_10','Reliable student','Complete every class on 10 class days.',perfectClasses,10],
     ['project_15','Builder','Log 15 focused project sessions.',projects,15],
     ['strength_20','Stronger','Improve one tracked lift by at least 20%.',strength,20],
-    ['good_50','Reset 50','Finish 50 good days at 70% or better.',all.goodDays,50]
+    ['good_50','Reset 50','Finish 50 good days at 70% or better.',all.goodDays,50],
+    ['perfect_week','Perfect Week','Finish every scheduled item Monday through Sunday.',perfectWeeks,1]
   ];
   return specs.map(([id,title,desc,value,baseTarget])=>{
     const tiers=[baseTarget,baseTarget*2,baseTarget*4,baseTarget*8];
@@ -1069,6 +1104,7 @@ function lightweightInsights(){
   const currentSpend=transactionsForMonth(monthKey()).reduce((a,t)=>a+Number(t.amount||0),0); const prevDate=new Date();prevDate.setMonth(prevDate.getMonth()-1);const prevSpend=transactionsForMonth(monthKey(prevDate)).reduce((a,t)=>a+Number(t.amount||0),0);if(currentSpend||prevSpend)out.push(`Spending this month is ${fmtMoney(currentSpend)}${prevSpend?` versus ${fmtMoney(prevSpend)} last month`:''}.`);
   const tracked=Object.keys(state.records).filter(k=>state.records[k]?.itemStatus&&Object.keys(state.records[k].itemStatus).length).length;
   if(tracked>=7){const byDay=Array.from({length:7},()=>[]);Object.keys(state.records).forEach(k=>{const d=parseDateKey(k);byDay[d.getDay()].push(dayCompletion(d));});const avgs=byDay.map(a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):-1);const best=Math.max(...avgs);if(best>=0)out.push(`${DAY_LONG[avgs.indexOf(best)]} is your strongest tracked day at about ${best}% completion.`);}
+  const perfectWeeks=perfectWeeksCount();if(perfectWeeks)out.push(`You have completed ${perfectWeeks} perfect week${perfectWeeks===1?'':'s'} with every scheduled item finished.`);
   if(!out.length)out.push('Keep using Reset and useful patterns will appear here automatically.');
   return out.slice(0,4);
 }
@@ -1080,8 +1116,10 @@ function renderMore() {
   $$('[data-more-view]').forEach(b=>b.onclick=()=>{const v=b.dataset.moreView;moreHomeScrollY=window.scrollY;state.settings.moreView=v;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});localizeTree(main);
 }
 function renderProgress(){
-  setHeader('Progress');const range=state.settings.statsRange||'30',metrics=rangeMetrics(range),ach=achievementData(),unlocked=ach.filter(a=>a.unlocked).length,m30=rangeMetrics('30'),p30=previous30Metrics();
-  main.innerHTML=`${moreBack()}<div class="segmented mock-segmented"><button data-range="7" class="${range==='7'?'active':''}">Overview</button><button data-range="30" class="${range==='30'?'active':''}">Month</button><button data-range="all" class="${range==='all'?'active':''}">All time</button></div><section class="progress-month-heading"><button class="round-icon disabled">${svgIcon('chevronLeft')}</button><b>${new Date().toLocaleDateString(currentLocale(),{month:'long',year:'numeric'})}</b><button class="round-icon disabled">${svgIcon('chevronRight')}</button></section><section class="progress-color-grid"><article class="pmetric red"><span>${svgIcon('dumbbell')}</span><small>Gym Sessions</small><b>${metrics.gym}</b></article><article class="pmetric blue"><span>${svgIcon('university')}</span><small>Class Attendance</small><b>${metrics.classes?metrics.classPct+'%':'—'}</b></article><article class="pmetric green"><span>${svgIcon('fork')}</span><small>Three-Meal Days</small><b>${metrics.mealDays}</b></article><article class="pmetric yellow"><span>${svgIcon('money')}</span><small>Money Spent</small><b>${fmtMoney(monthMetrics().spending)}</b></article><article class="pmetric purple"><span>${svgIcon('check')}</span><small>Daily Completion</small><b>${metrics.avgCompletion}%</b></article><article class="pmetric cyan"><span>${svgIcon('heart')}</span><small>Weight</small><b>${latestWeightText()}</b></article></section><div class="section-title"><h2>Insights</h2></div><section class="insight-list mock-insights">${lightweightInsights().map((x,i)=>`<div class="insight-row"><span>${svgIcon(i%2?'wallet':'spark')}</span><p>${escapeHTML(x)}</p></div>`).join('')}</section><div class="section-title"><h2>Achievements</h2><span class="muted tiny">${unlocked}/${ach.length}</span></div><section class="achievement-grid">${ach.map(a=>{const pct=Math.round(a.tierProgress/a.tierSpan*100);return `<article class="achievement ${a.unlocked?'unlocked':''}"><span>${a.unlocked?svgIcon('trophy'):'○'}</span><div><div class="achievement-title-row"><b>${escapeHTML(a.title)}</b>${a.level?`<i>Level ${a.level}</i>`:''}</div><small>${escapeHTML(a.desc)}</small><div class="achievement-progress"><i style="width:${pct}%"></i></div><em>${a.value}/${a.nextTarget}${a.unlocked?' · next tier':''}</em></div></article>`}).join('')}</section><div class="section-title"><h2>30-day comparison</h2></div><section class="comparison-grid"><div class="comparison-card"><small>Gym</small><b>${m30.gym}</b><span>${signedDelta(m30.gym,p30.gym)}</span></div><div class="comparison-card"><small>Meals</small><b>${m30.mealDays}</b><span>${signedDelta(m30.mealDays,p30.mealDays)}</span></div><div class="comparison-card"><small>Classes</small><b>${m30.classes?m30.classPct+'%':'—'}</b><span>${p30.classes?signedDelta(m30.classPct,p30.classPct,'%'):'—'}</span></div><div class="comparison-card"><small>Good days</small><b>${m30.goodDays}</b><span>${signedDelta(m30.goodDays,p30.goodDays)}</span></div></section>`;
+  setHeader('Progress');
+  const range=state.settings.statsRange||'30',metrics=rangeMetrics(range),ach=achievementData(),unlocked=ach.filter(a=>a.unlocked).length,m30=rangeMetrics('30'),p30=previous30Metrics();
+  const rangeLabel=range==='7'?'Last 7 days':range==='30'?'Last 30 days':`Since ${appStartDate().toLocaleDateString(currentLocale(),{month:'short',year:'numeric'})}`;
+  main.innerHTML=`${moreBack()}<div class="segmented mock-segmented"><button data-range="7" class="${range==='7'?'active':''}">7 days</button><button data-range="30" class="${range==='30'?'active':''}">30 days</button><button data-range="all" class="${range==='all'?'active':''}">All time</button></div><section class="progress-range-title"><small>VIEWING</small><b>${escapeHTML(rangeLabel)}</b></section><section class="progress-color-grid"><article class="pmetric red"><span>${svgIcon('dumbbell')}</span><small>Gym Sessions</small><b>${metrics.gym}</b></article><article class="pmetric blue"><span>${svgIcon('university')}</span><small>Class Attendance</small><b>${metrics.classes?metrics.classPct+'%':'—'}</b></article><article class="pmetric green"><span>${svgIcon('fork')}</span><small>Three-Meal Days</small><b>${metrics.mealDays}</b></article><article class="pmetric yellow"><span>${svgIcon('money')}</span><small>Money Spent</small><b>${fmtMoney(spendingForRange(range))}</b></article><article class="pmetric purple"><span>${svgIcon('check')}</span><small>Daily Completion</small><b>${metrics.avgCompletion}%</b></article><article class="pmetric cyan"><span>${svgIcon('heart')}</span><small>Weight</small><b>${latestWeightText()}</b></article></section>${range==='30'?monthInReviewHTML():''}<div class="section-title"><h2>Insights</h2></div><section class="insight-list mock-insights">${lightweightInsights().map((x,i)=>`<div class="insight-row"><span>${svgIcon(i%2?'wallet':'spark')}</span><p>${escapeHTML(x)}</p></div>`).join('')}</section><div class="section-title"><h2>Achievements</h2><span class="muted tiny">${unlocked}/${ach.length}</span></div><section class="achievement-grid">${ach.map(a=>{const pct=Math.round(a.tierProgress/a.tierSpan*100);return `<article class="achievement ${a.unlocked?'unlocked':''}"><span>${a.unlocked?svgIcon('trophy'):'○'}</span><div><div class="achievement-title-row"><b>${escapeHTML(a.title)}</b>${a.level?`<i>Level ${a.level}</i>`:''}</div><small>${escapeHTML(a.desc)}</small><div class="achievement-progress"><i style="width:${pct}%"></i></div><em>${a.value}/${a.nextTarget}${a.unlocked?' · next tier':''}</em></div></article>`}).join('')}</section><div class="section-title"><h2>30-day comparison</h2></div><section class="comparison-grid"><div class="comparison-card"><small>Gym</small><b>${m30.gym}</b><span>${signedDelta(m30.gym,p30.gym)}</span></div><div class="comparison-card"><small>Meals</small><b>${m30.mealDays}</b><span>${signedDelta(m30.mealDays,p30.mealDays)}</span></div><div class="comparison-card"><small>Classes</small><b>${m30.classes?m30.classPct+'%':'—'}</b><span>${p30.classes?signedDelta(m30.classPct,p30.classPct,'%'):'—'}</span></div><div class="comparison-card"><small>Good days</small><b>${m30.goodDays}</b><span>${signedDelta(m30.goodDays,p30.goodDays)}</span></div></section>`;
   bindMoreBack();$$('[data-range]').forEach(b=>b.onclick=()=>{state.settings.statsRange=b.dataset.range;save();renderProgress();});localizeTree(main);
 }
 function latestWeightText(){const x=[...(state.health.weightLogs||[])].sort((a,b)=>String(a.date).localeCompare(String(b.date))).pop();return x?`${Number(x.weight).toFixed(1)} kg`:'—';}
@@ -1164,6 +1202,54 @@ function openRestartModal() {
   $('#restartResetMoves').onclick=()=>{applyAdaptiveRestart(resetPlan);modal.close();toast(manualCount?'Today rebuilt from the original schedule':'Today rebuilt around the current time');renderToday();};
   $('#cancelModal').onclick=()=>modal.close();
 }
+function dailyWakeItem(date){return itemsForDate(date,{ignoreOverrides:true}).find(i=>i.id==='wake')||null;}
+function dayWakeTime(date){const key=todayKey(date),wake=dailyWakeItem(date);if(!wake)return state.profile.wakeTarget||'08:00';const ov=state.records[key]?.timeOverrides?.[occurrenceKey(wake)];return ov?.start||wake.start;}
+function setDayWakeOverride(date,time){
+  const key=todayKey(date),wake=dailyWakeItem(date);if(!wake)return false;const rec=ensureRecord(key),dur=durationMinutes(wake),start=minutesFromTime(time);rec.timeOverrides[occurrenceKey(wake)]={start:minutesToTime(start),end:minutesToTime(start+dur),manual:true,adaptive:false,dayAnchor:true};return true;
+}
+function buildFutureDayPlan(date,preserveManual=true,wakeTime=null){
+  const key=todayKey(date),rec=ensureRecord(key),manualMap=rec.timeOverrides||{},mode=modeForDate(key);
+  let baseItems=itemsForMode(itemsForDate(date,{ignoreOverrides:true}),mode);
+  const wakeBase=baseItems.find(i=>i.id==='wake');const baseWake=minutesFromTime(wakeBase?.start||state.profile.wakeTarget||'08:00');
+  const chosenWake=minutesFromTime(wakeTime||manualMap[wakeBase?occurrenceKey(wakeBase):'']?.start||wakeBase?.start||state.profile.wakeTarget||'08:00');
+  if(preserveManual)baseItems=baseItems.map(i=>{const ov=manualMap[occurrenceKey(i)];return ov?.manual?{...i,...ov}:i;});
+  const sleepItem=baseItems.find(i=>i.id==='sleep');const sleepLimit=minutesFromTime(sleepItem?.start||state.profile.sleepTarget||'23:30');
+  const anchored=[],overrides={},moved=[];let lastMealEnd=null;
+  for(const item of baseItems){
+    if(item.id==='wake'){const dur=durationMinutes(item);anchored.push({start:chosenWake,end:chosenWake+dur,item});overrides[occurrenceKey(item)]={start:minutesToTime(chosenWake),end:minutesToTime(chosenWake+dur),manual:true,adaptive:false,dayAnchor:true};continue;}
+    if(itemIsFixed(item))anchored.push({start:minutesFromTime(item.start),end:minutesFromTime(item.end||item.start)+(!item.end?30:0),item});
+  }
+  const blocked=[...anchored];
+  const wakeShift=chosenWake-baseWake;
+  const movable=baseItems.filter(i=>i.id!=='wake'&&!itemIsFixed(i)).sort((a,b)=>minutesFromTime(a.start)-minutesFromTime(b.start));
+  for(const item of movable){
+    const normalDuration=durationMinutes(item),manual=preserveManual&&!!manualMap[occurrenceKey(item)]?.manual;
+    let desired=minutesFromTime(item.start);
+    if(!manual&&['groom','breakfast'].includes(item.id))desired=Math.max(chosenWake,desired+wakeShift);
+    desired=Math.max(chosenWake,desired);
+    if(item.category==='Food'&&lastMealEnd!==null)desired=Math.max(desired,lastMealEnd+150);
+    const slot=findOpenSlot(desired,normalDuration,blocked,sleepLimit);if(slot===null)continue;
+    const newStart=slot,newEnd=slot+normalDuration;blocked.push({start:newStart,end:newEnd,item});
+    if(item.category==='Food')lastMealEnd=newEnd;
+    const original=itemsForDate(date,{ignoreOverrides:true}).find(x=>occurrenceKey(x)===occurrenceKey(item));
+    const changed=!original||newStart!==minutesFromTime(original.start)||manual||['groom','breakfast'].includes(item.id)&&wakeShift!==0;
+    if(changed){const ov={start:minutesToTime(newStart),end:minutesToTime(newEnd),adaptive:true,manual};overrides[occurrenceKey(item)]=ov;moved.push({...item,...ov});}
+  }
+  // Preserve any day-specific manual overrides for items not currently included by the mode.
+  if(preserveManual)Object.entries(manualMap).forEach(([occ,ov])=>{if(ov?.manual&&!overrides[occ]&&!baseItems.some(i=>occurrenceKey(i)===occ&&itemIsFixed(i)))overrides[occ]={...ov};});
+  return {key,overrides,moved,wakeTime:minutesToTime(chosenWake),manualCount:Object.values(manualMap).filter(x=>x?.manual&&!x?.dayAnchor).length};
+}
+function applyFutureDayPlan(plan){const rec=ensureRecord(plan.key);rec.timeOverrides=plan.overrides;rec.futurePlannedAt=new Date().toISOString();save();}
+function openFutureDayPlanner(date){
+  const key=todayKey(date);if(key<=todayKey())return toast('Use Today to rebuild the current day');
+  const currentWake=dayWakeTime(date);const manualCount=Object.values(ensureRecord(key).timeOverrides||{}).filter(x=>x?.manual&&!x?.dayAnchor).length;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ONE-DAY PLAN</p><h2>${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}</h2><p class="muted">This changes only this date. Your recurring routine stays untouched.</p><div class="stack"><label><span class="label">Wake time for this day</span><input class="input" id="futureWakeTime" type="time" value="${escapeAttr(currentWake)}"></label><label class="switch-row"><input type="checkbox" id="keepFutureMoves" ${manualCount?'checked':''}><span><b>Keep my moves</b><small>Keep swaps and time changes you already made for this day while rebuilding around them.</small></span></label></div><button class="primary full" id="rebuildFutureDay" style="margin-top:14px">Rebuild day</button><button class="secondary full" id="resetFutureDay" style="margin-top:8px">Reset day to routine</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modal.showModal();
+  $('#rebuildFutureDay').onclick=()=>{const time=$('#futureWakeTime').value||currentWake;setDayWakeOverride(date,time);const keep=$('#keepFutureMoves').checked;const plan=buildFutureDayPlan(date,keep,time);applyFutureDayPlan(plan);modal.close();renderWeek();toast('Future day rebuilt');};
+  $('#resetFutureDay').onclick=()=>{const rec=ensureRecord(key);rec.timeOverrides={};delete rec.futurePlannedAt;save();modal.close();renderWeek();toast('Day restored to recurring routine');};
+  $('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
+}
+
 function captureWeekEditContext(){if(state.settings.activeTab==='week')weekEditContext={date:state.settings.selectedWeekDate||todayKey(),scrollY:window.scrollY};else weekEditContext=null;}
 function renderAfterEditor(){if(state.settings.activeTab==='week'&&weekEditContext){const ctx=weekEditContext;weekEditContext=null;state.settings.selectedWeekDate=ctx.date;save();renderWeek();requestAnimationFrame(()=>window.scrollTo({top:ctx.scrollY,behavior:'auto'}));}else{weekEditContext=null;render();}}
 
@@ -1206,16 +1292,17 @@ function openScheduleItemModal(id=null,preset={}) {
 function openOneOffTaskModal(id=null,preset={}) {
   captureWeekEditContext();
   const existing=id?state.oneOffTasks.find(x=>x.id===id):null;
-  const item=existing || {title:preset.title||'',date:preset.date||todayKey(),start:preset.start||'12:00',end:preset.end||'',category:preset.category||'Life',detail:preset.detail||''};
+  const item=existing || {title:preset.title||'',date:preset.date||todayKey(),start:preset.start||'12:00',end:preset.end||'',category:preset.category||'Life',detail:preset.detail||'',fixed:!!preset.fixed};
   modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ONE-OFF TASK</p><h2>${existing?'Edit task':'Add task'}</h2><div class="stack">
     <label><span class="label">Task</span><input class="input" id="oneTitle" value="${escapeAttr(item.title)}" placeholder="e.g. Buy groceries"></label>
     <label><span class="label">Date</span><input class="input" id="oneDate" type="date" value="${item.date}"></label>
     <div class="form-grid"><label><span class="label">Start</span><input class="input" id="oneStart" type="time" value="${item.start}"></label><label><span class="label">End (optional)</span><input class="input" id="oneEnd" type="time" value="${item.end||''}"></label></div>
     <label><span class="label">Category</span><select id="oneCategory">${CATEGORIES.map(c=>`<option ${c===item.category?'selected':''}>${c}</option>`).join('')}</select></label>
+    <label class="switch-row"><input type="checkbox" id="oneFixed" ${item.fixed?'checked':''}><span><b>Fixed time / appointment</b><small>Use for meetings or anything Reset should never move.</small></span></label>
     <label><span class="label">Note</span><textarea id="oneDetail" placeholder="Keep it specific.">${escapeHTML(item.detail||'')}</textarea></label>
   </div><button class="primary full" id="saveOneTask" style="margin-top:14px">Save task</button>${existing?'<button class="danger-btn full" id="deleteOneTask" style="margin-top:8px">Delete task</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#saveOneTask').onclick=()=>{const title=$('#oneTitle').value.trim();if(!title)return toast('Add a task name');const startTime=$('#oneStart').value||'12:00', endTime=$('#oneEnd').value||'';if(endTime&&minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');const data={title,date:$('#oneDate').value||todayKey(),start:startTime,end:endTime,category:$('#oneCategory').value,detail:$('#oneDetail').value.trim()};if(existing)Object.assign(existing,data);else state.oneOffTasks.push({id:uid('one'),...data});save();modal.close();toast('Task scheduled');renderAfterEditor();};
+  $('#saveOneTask').onclick=()=>{const title=$('#oneTitle').value.trim();if(!title)return toast('Add a task name');const startTime=$('#oneStart').value||'12:00', endTime=$('#oneEnd').value||'';if(endTime&&minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');const data={title,date:$('#oneDate').value||todayKey(),start:startTime,end:endTime,category:$('#oneCategory').value,detail:$('#oneDetail').value.trim(),fixed:$('#oneFixed').checked};if(existing)Object.assign(existing,data);else state.oneOffTasks.push({id:uid('one'),...data});save();modal.close();toast('Task scheduled');renderAfterEditor();};
   if(existing)$('#deleteOneTask').onclick=()=>{state.oneOffTasks=state.oneOffTasks.filter(x=>x.id!==existing.id);save();modal.close();toast('Task deleted');renderAfterEditor();};
   $('#cancelModal').onclick=()=>modal.close();
 }
@@ -1293,26 +1380,62 @@ function openWeightModal(id=null){
 
 
 function exercisePR(exerciseId,excludeId=null){const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===exerciseId && l.id!==excludeId);return logs.length?Math.max(...logs.map(l=>Number(l.weight||0))):0;}
+function exerciseById(id){return (state.gym.exercises||[]).find(x=>x.id===id)||null;}
+function exerciseTargets(ex){return [...new Set([ex?.group,...(Array.isArray(ex?.targets)?ex.targets:[])].filter(Boolean))];}
+function exercisesForFocus(focus){
+  const all=state.gym.exercises||[];
+  const priority={
+    'Full Body':['leg_press','leg_curl','chest_press','lat_pulldown','shoulder_press','standing_calf_raise','ab_crunch_machine'],
+    'Upper Body':['chest_press','lat_pulldown','seated_row','shoulder_press','rear_delt_fly','biceps_curl','triceps_pushdown'],
+    'Lower Body':['leg_press','leg_curl','glute_kickback','standing_calf_raise','hanging_knee_raise'],
+    'Core':['ab_crunch_machine','hanging_knee_raise']
+  };
+  if(priority[focus])return priority[focus].map(exerciseById).filter(Boolean);
+  const aliases={Arms:['Arms','Biceps','Triceps'],Legs:['Legs','Quads','Hamstrings','Glutes','Calves']};const wanted=aliases[focus]||[focus];
+  return all.filter(ex=>exerciseTargets(ex).some(g=>wanted.includes(g))).slice(0,8);
+}
+function workoutFocuses(){return ['Full Body','Upper Body','Lower Body','Chest','Back','Shoulders','Arms','Legs','Glutes','Calves','Core'];}
+function openWorkoutPlanner(){
+  let focus='Full Body';
+  const draw=()=>{const picks=exercisesForFocus(focus);modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">START WORKOUT</p><h2>What are you training?</h2><div class="focus-chip-wrap">${workoutFocuses().map(x=>`<button class="focus-chip ${x===focus?'active':''}" data-workout-focus="${escapeAttr(x)}">${escapeHTML(x)}</button>`).join('')}</div><div class="workout-plan-preview"><div class="row between center"><div><small>PLAN</small><b>${escapeHTML(focus)}</b></div><em>${picks.length} exercises</em></div>${picks.length?picks.map((ex,i)=>`<div class="plan-exercise-row"><span>${i+1}</span><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')} · 3 sets · 8–12 reps</small></div></div>`).join(''):'<div class="empty-state">No matching exercises yet. Add one in Strength Progress.</div>'}</div><button class="primary full" id="startPlannedWorkout" ${picks.length?'':'disabled'}>Start ${escapeHTML(focus)} workout</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$$('[data-workout-focus]',modalContent).forEach(b=>b.onclick=()=>{focus=b.dataset.workoutFocus;draw();});if($('#startPlannedWorkout'))$('#startPlannedWorkout').onclick=()=>{state.gym.activeWorkout={date:todayKey(),focus,exerciseIds:picks.map(x=>x.id),completedExerciseIds:[],startedAt:new Date().toISOString()};save();modal.close();renderGym();toast(`${focus} workout started`);};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);};
+  draw();
+}
+function activeWorkoutHTML(){
+  const w=state.gym.activeWorkout;if(!w||w.date!==todayKey())return '';
+  const completed=new Set(w.completedExerciseIds||[]),exercises=(w.exerciseIds||[]).map(exerciseById).filter(Boolean);return `<section class="active-workout-card"><div class="row between center"><div><span>IN PROGRESS</span><h3>${escapeHTML(w.focus||'Workout')}</h3></div><b>${completed.size}/${exercises.length}</b></div><div class="weekbar"><span style="width:${exercises.length?Math.round(completed.size/exercises.length*100):0}%"></span></div><div class="active-workout-list">${exercises.map(ex=>`<div class="active-workout-row ${completed.has(ex.id)?'done':''}"><span class="workout-check">${completed.has(ex.id)?svgIcon('check'):''}</span><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')} · 3 × 8–12</small></div><button class="secondary tiny-workout-btn" data-workout-log="${escapeAttr(ex.id)}">${completed.has(ex.id)?'Log again':'Log'}</button></div>`).join('')}</div><button class="success-btn full" id="finishWorkoutBtn">${svgIcon('check')} Finish workout</button><button class="text-button full" id="cancelWorkoutBtn">Cancel workout</button></section>`;
+}
+function markActiveWorkoutExercise(exerciseId){const w=state.gym.activeWorkout;if(!w||w.date!==todayKey())return;if(!Array.isArray(w.completedExerciseIds))w.completedExerciseIds=[];if(!w.completedExerciseIds.includes(exerciseId))w.completedExerciseIds.push(exerciseId);}
+function finishActiveWorkout(){const k=todayKey();state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k))state.gym.sessions.push(k);state.gym.activeWorkout=null;save();renderGym();toast('Workout finished');}
+
 function renderGym(){
   setHeader('Gym');
   const sessions=gymSessionDates(), view=state.settings.gymView||'workouts', weeklyGoal=clamp(Number(state.gym.weeklyGoal||3),1,7);
-  const exercise=state.gym.exercises.find(x=>x.id===state.settings.selectedExerciseId)||state.gym.exercises[0]||null;
+  const groupFilter=state.settings.gymGroupFilter||'All';
+  const filteredExercises=(state.gym.exercises||[]).filter(ex=>groupFilter==='All'||exerciseTargets(ex).includes(groupFilter));
+  let exercise=filteredExercises.find(x=>x.id===state.settings.selectedExerciseId)||filteredExercises[0]||state.gym.exercises[0]||null;
   if(exercise)state.settings.selectedExerciseId=exercise.id;
   const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===exercise?.id).sort((a,b)=>String(a.date).localeCompare(String(b.date))||Number(a.createdAt||0)-Number(b.createdAt||0));
+  const allLogs=[...(state.gym.logs||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.createdAt||0)-Number(a.createdAt||0));
+  const historyFilter=state.settings.gymHistoryExercise||'all';const historyLogs=historyFilter==='all'?allLogs:allLogs.filter(l=>l.exerciseId===historyFilter);
   const first=logs[0],last=logs[logs.length-1],change=first&&last?Number(last.weight)-Number(first.weight):0,pr=exercise?exercisePR(exercise.id):0;
   const weekStart=startOfWeek(new Date()),weekKeys=new Set(Array.from({length:7},(_,i)=>todayKey(addDays(weekStart,i)))),weekSessions=[...sessions].filter(k=>weekKeys.has(k)).sort();
   const recentSessions=[...sessions].sort().reverse();
   const prRows=state.gym.exercises.map(ex=>({ex,pr:exercisePR(ex.id)})).filter(x=>x.pr>0).sort((a,b)=>b.pr-a.pr);
   let body='';
-  if(view==='workouts') body=`<section class="gym-week-card"><div class="row between center"><div><span>This Week</span><b>${weekSessions.length} session${weekSessions.length===1?'':'s'}</b></div><button class="goal-pill" id="editGymGoalBtn">Goal ${weeklyGoal}</button></div><div class="weekbar"><span style="width:${Math.min(100,weekSessions.length/weeklyGoal*100)}%"></span></div><small class="gym-goal-copy">${weekSessions.length>=weeklyGoal?'Weekly goal reached':`${Math.max(0,weeklyGoal-weekSessions.length)} to go`}</small></section><section class="workout-type-list">${weekSessions.length?weekSessions.map((k,i)=>`<div class="workout-type done"><span class="workout-icon">${svgIcon('dumbbell')}</span><div><b>Workout ${i+1}</b><small>Logged session</small></div><em>${formatDateShort(parseDateKey(k))}</em></div>`).join(''):'<div class="empty-state">No workouts logged this week yet.</div>'}</section><button class="primary full" id="logGymSessionBtn">${sessions.has(todayKey())?'Today logged':'Start Workout'}</button><div class="section-title"><h2>Recent Sessions</h2><button data-gym-view="history">See all</button></div><section class="recent-session-list">${recentSessions.slice(0,5).map(k=>`<div class="workout-type done"><span class="workout-icon">${svgIcon('dumbbell')}</span><div><b>Workout</b><small>${formatDateShort(parseDateKey(k))}</small></div></div>`).join('')||'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
-  if(view==='progress') body=`<div class="section-title first-section"><h2>Strength Progress</h2><div class="row"><button class="secondary small-btn" id="manageExercisesBtn">Manage</button><button id="addExerciseBtn">+ Exercise</button></div></div>${state.gym.exercises.length?`<section class="card flat"><label><span class="label">Exercise</span><select id="gymExerciseSelect">${state.gym.exercises.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===exercise?.id?'selected':''}>${escapeHTML(x.name)} · ${escapeHTML(x.group||'')}</option>`).join('')}</select></label>${exercise?`<section class="progress-color-grid gym-metrics"><article class="pmetric blue"><small>First</small><b>${first?Number(first.weight):'—'}</b><em>kg</em></article><article class="pmetric green"><small>Current</small><b>${last?Number(last.weight):'—'}</b><em>kg</em></article><article class="pmetric yellow"><small>PR</small><b>${pr||'—'}</b><em>kg</em></article><article class="pmetric purple"><small>Change</small><b>${logs.length>1?(change>0?'+':'')+change:'—'}</b><em>kg</em></article></section>${gymChartHTML(logs)}`:''}</section><button class="primary full" id="logGymBtn">+ Log exercise</button>`:`<section class="card flat empty-state">No exercises yet. Add one to start tracking strength.</section>`}<div class="section-title"><h2>Personal Bests</h2></div><section class="card flat">${prRows.length?prRows.map(({ex,pr})=>`<div class="pr-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'')}</small></div><strong>${Number(pr)} kg</strong></div>`).join(''):'<div class="empty-state">Your PRs will appear after you log exercises.</div>'}</section>`;
-  if(view==='history') body=`<div class="section-title first-section"><h2>Exercise History</h2><button class="secondary small-btn" id="selectGymBtn">${historySelectMode.gym?'Done':'Select'}</button></div>${historySelectToolbar('gym')}<section class="card flat">${exercise&&logs.length?logs.slice().reverse().map(l=>`<div class="gym-log">${historySelectMode.gym?historySelectCheckbox('gym',l.id):''}<div><b>${Number(l.weight)} kg</b><small>${escapeHTML(exercise?.name||'Exercise')} · ${escapeHTML(formatDateShort(parseDateKey(l.date)))} · ${Number(l.sets||0)||'—'} × ${Number(l.reps||0)||'—'}</small></div>${historySelectMode.gym?'':`<div class="row"><button class="text-button tiny" data-edit-gym="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-gym="${l.id}">Delete</button></div>`}</div>`).join(''):'<div class="empty-state">No weight logs for this exercise yet.</div>'}</section><div class="section-title"><h2>Workout Days</h2><button class="secondary small-btn" id="selectWorkoutBtn">${historySelectMode.workout?'Done':'Select'}</button></div>${historySelectToolbar('workout')}<section class="card flat">${recentSessions.length?recentSessions.map(k=>`<div class="gym-log">${historySelectMode.workout?historySelectCheckbox('workout',k):''}<div><b>${escapeHTML(formatDateShort(parseDateKey(k)))}</b><small>Workout session</small></div>${historySelectMode.workout?'':`<button class="text-button tiny danger-text" data-del-session="${k}">Remove</button>`}</div>`).join(''):'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
+  if(view==='workouts') body=`${activeWorkoutHTML()}<section class="gym-week-card"><div class="row between center"><div><span>This Week</span><b>${weekSessions.length} session${weekSessions.length===1?'':'s'}</b></div><button class="goal-pill" id="editGymGoalBtn">Goal ${weeklyGoal}</button></div><div class="weekbar"><span style="width:${Math.min(100,weekSessions.length/weeklyGoal*100)}%"></span></div><small class="gym-goal-copy">${weekSessions.length>=weeklyGoal?'Weekly goal reached':`${Math.max(0,weeklyGoal-weekSessions.length)} to go`}</small></section>${state.gym.activeWorkout?.date===todayKey()?'':`<button class="primary full" id="startWorkoutBtn">Start Workout</button><section class="workout-type-list gym-focus-guide"><div class="workout-type"><span class="workout-icon">${svgIcon('spark')}</span><div><b>Choose what you are training</b><small>Full body or a muscle focus. Reset builds a simple exercise list from your own library.</small></div></div></section>`}<div class="section-title"><h2>Recent Sessions</h2><button data-gym-view="history">See all</button></div><section class="recent-session-list">${recentSessions.slice(0,5).map(k=>`<div class="workout-type done"><span class="workout-icon">${svgIcon('dumbbell')}</span><div><b>Workout</b><small>${formatDateShort(parseDateKey(k))}</small></div></div>`).join('')||'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
+  if(view==='progress') body=`<div class="section-title first-section"><h2>Strength Progress</h2><div class="row"><button class="secondary small-btn" id="manageExercisesBtn">Manage</button><button id="addExerciseBtn">+ Exercise</button></div></div><div class="muscle-filter-strip">${['All',...GYM_GROUPS.filter(g=>g!=='Other')].map(g=>`<button class="focus-chip ${g===groupFilter?'active':''}" data-gym-group="${escapeAttr(g)}">${escapeHTML(g)}</button>`).join('')}</div>${state.gym.exercises.length?`<section class="card flat"><label><span class="label">Exercise</span><select id="gymExerciseSelect">${filteredExercises.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===exercise?.id?'selected':''}>${escapeHTML(x.name)} · ${escapeHTML(x.group||'')}</option>`).join('')}</select></label>${exercise?`<section class="progress-color-grid gym-metrics"><article class="pmetric blue"><small>First</small><b>${first?Number(first.weight):'—'}</b><em>kg</em></article><article class="pmetric green"><small>Current</small><b>${last?Number(last.weight):'—'}</b><em>kg</em></article><article class="pmetric yellow"><small>PR</small><b>${pr||'—'}</b><em>kg</em></article><article class="pmetric purple"><small>Change</small><b>${logs.length>1?(change>0?'+':'')+change:'—'}</b><em>kg</em></article></section>${gymChartHTML(logs)}`:'<div class="empty-state">No exercise in this muscle group yet.</div>'}</section><button class="primary full" id="logGymBtn">+ Log exercise</button>`:`<section class="card flat empty-state">No exercises yet. Add one to start tracking strength.</section>`}<div class="section-title"><h2>Personal Bests</h2></div><section class="card flat">${prRows.length?prRows.map(({ex,pr})=>`<div class="pr-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'')}</small></div><strong>${Number(pr)} kg</strong></div>`).join(''):'<div class="empty-state">Your PRs will appear after you log exercises.</div>'}</section>`;
+  if(view==='history') body=`<div class="section-title first-section"><h2>Exercise History</h2><button class="secondary small-btn" id="selectGymBtn">${historySelectMode.gym?'Done':'Select'}</button></div><label class="history-exercise-filter"><span class="label">Show</span><select id="gymHistoryFilter"><option value="all" ${historyFilter==='all'?'selected':''}>All exercises</option>${state.gym.exercises.map(x=>`<option value="${escapeAttr(x.id)}" ${historyFilter===x.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label>${historySelectToolbar('gym')}<section class="card flat">${historyLogs.length?historyLogs.map(l=>{const ex=exerciseById(l.exerciseId);return `<div class="gym-log">${historySelectMode.gym?historySelectCheckbox('gym',l.id):''}<div><b>${escapeHTML(ex?.name||'Deleted exercise')} · ${Number(l.weight)} kg</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))} · ${escapeHTML(ex?.group||'Other')} · ${Number(l.sets||0)||'—'} × ${Number(l.reps||0)||'—'}</small></div>${historySelectMode.gym?'':`<div class="row"><button class="text-button tiny" data-edit-gym="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-gym="${l.id}">Delete</button></div>`}</div>`}).join(''):'<div class="empty-state">No exercise logs match this filter.</div>'}</section><div class="section-title"><h2>Workout Days</h2><button class="secondary small-btn" id="selectWorkoutBtn">${historySelectMode.workout?'Done':'Select'}</button></div>${historySelectToolbar('workout')}<section class="card flat">${recentSessions.length?recentSessions.map(k=>`<div class="gym-log">${historySelectMode.workout?historySelectCheckbox('workout',k):''}<div><b>${escapeHTML(formatDateShort(parseDateKey(k)))}</b><small>Workout session</small></div>${historySelectMode.workout?'':`<button class="text-button tiny danger-text" data-del-session="${k}">Remove</button>`}</div>`).join(''):'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
   main.innerHTML=`${moreBack()}<div class="segmented gym-tabs"><button data-gym-view="workouts" class="${view==='workouts'?'active':''}">Workouts</button><button data-gym-view="progress" class="${view==='progress'?'active':''}">Progress</button><button data-gym-view="history" class="${view==='history'?'active':''}">History</button></div>${body}`;
   bindMoreBack();
   $$('[data-gym-view]').forEach(b=>b.onclick=()=>{state.settings.gymView=b.dataset.gymView;save();renderGym();});
-  if($('#gymExerciseSelect'))$('#gymExerciseSelect').onchange=e=>{state.settings.selectedExerciseId=e.target.value;historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();};
+  $$('[data-gym-group]').forEach(b=>b.onclick=()=>{state.settings.gymGroupFilter=b.dataset.gymGroup;const pool=(state.gym.exercises||[]).filter(ex=>b.dataset.gymGroup==='All'||exerciseTargets(ex).includes(b.dataset.gymGroup));if(pool.length)state.settings.selectedExerciseId=pool[0].id;save();renderGym();});
+  if($('#gymExerciseSelect'))$('#gymExerciseSelect').onchange=e=>{state.settings.selectedExerciseId=e.target.value;save();renderGym();};
+  if($('#gymHistoryFilter'))$('#gymHistoryFilter').onchange=e=>{state.settings.gymHistoryExercise=e.target.value;historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();};
   if($('#logGymBtn'))$('#logGymBtn').onclick=()=>openGymLogModal();
-  if($('#logGymSessionBtn'))$('#logGymSessionBtn').onclick=()=>{const k=todayKey();state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k)){state.gym.sessions.push(k);save();toast('Workout day logged');renderGym();}else toast('Today is already logged');};
+  if($('#startWorkoutBtn'))$('#startWorkoutBtn').onclick=()=>{if(state.gym.activeWorkout?.date===todayKey())return toast('Your workout is already in progress');openWorkoutPlanner();};
+  $$('[data-workout-log]').forEach(b=>b.onclick=()=>openGymLogModal(null,b.dataset.workoutLog));
+  if($('#finishWorkoutBtn'))$('#finishWorkoutBtn').onclick=finishActiveWorkout;
+  if($('#cancelWorkoutBtn'))$('#cancelWorkoutBtn').onclick=()=>{state.gym.activeWorkout=null;save();renderGym();toast('Workout plan cleared');};
   if($('#addExerciseBtn'))$('#addExerciseBtn').onclick=()=>openExerciseModal();
   if($('#manageExercisesBtn'))$('#manageExercisesBtn').onclick=openExerciseManager;
   if($('#editGymGoalBtn'))$('#editGymGoalBtn').onclick=openGymGoalModal;
@@ -1325,6 +1448,7 @@ function renderGym(){
   bindHistorySelection('workout',renderGym,ids=>{const set=new Set(ids),removed=state.gym.sessions.filter(k=>set.has(k));state.gym.sessions=state.gym.sessions.filter(k=>!set.has(k));removed.forEach(k=>{if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);});historySelected.workout.clear();historySelectMode.workout=false;save();renderGym();toast(`${removed.length} workout days removed`,'Undo',()=>{removed.forEach(k=>{state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k))state.gym.sessions.push(k);});save();renderGym();});});
   localizeTree(main);
 }
+
 function gymChartHTML(logs){
   if(logs.length<2)return `<div class="chart-empty">Log this exercise at least twice to see a progress chart.</div>`;
   const pts=logs.slice(-12),vals=pts.map(x=>Number(x.weight||0)),min=Math.min(...vals),max=Math.max(...vals),span=Math.max(1,max-min),w=320,h=130,pad=18;
@@ -1332,20 +1456,20 @@ function gymChartHTML(logs){
   const path=coords.map((p,i)=>`${i?'L':'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
   return `<div class="gym-chart-wrap"><svg class="gym-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Weight progress chart"><path class="chart-line" d="${path}"/>${coords.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="4"><title>${p.v} kg · ${escapeHTML(p.date)}</title></circle>`).join('')}<text x="${pad}" y="14">${max} kg</text><text x="${pad}" y="${h-3}">${min} kg</text></svg></div>`;
 }
-function openGymLogModal(id=null){
+function openGymLogModal(id=null,presetExerciseId=null){
   const existing=id?(state.gym.logs||[]).find(x=>x.id===id):null;
-  const ex=state.gym.exercises.find(x=>x.id===(existing?.exerciseId||state.settings.selectedExerciseId))||state.gym.exercises[0];
+  const ex=state.gym.exercises.find(x=>x.id===(existing?.exerciseId||presetExerciseId||state.settings.selectedExerciseId))||state.gym.exercises[0];
   modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>${existing?'Edit':'Log'} an exercise</h2><div class="stack"><label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label><div class="form-grid"><label><span class="label">Weight (kg)</span><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal" value="${existing?Number(existing.weight):''}"></label><label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${existing?.date||todayKey()}"></label></div><div class="form-grid"><label><span class="label">Sets</span><input class="input" id="gymSets" type="number" min="1" max="20" value="${existing?Number(existing.sets||3):3}"></label><label><span class="label">Reps</span><input class="input" id="gymReps" type="number" min="1" max="100" value="${existing?Number(existing.reps||10):10}"></label></div></div><button class="primary full" id="saveGymLog" style="margin-top:14px">Save log</button>${existing?'<button class="danger-btn full" id="deleteGymLog" style="margin-top:8px">Delete log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#saveGymLog').onclick=()=>{const weight=Number($('#gymWeight').value);if(!(weight>0))return toast('Enter the weight you used');const exerciseId=$('#gymLogExercise').value,date=$('#gymDate').value||todayKey();const priorPR=exercisePR(exerciseId,existing?.id||null);const data={exerciseId,weight,sets:clamp(Number($('#gymSets').value||3),1,20),reps:clamp(Number($('#gymReps').value||10),1,100),date,createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.gym.logs.push({id:uid('gymlog'),...data});state.gym.sessionExcluded=state.gym.sessionExcluded.filter(k=>k!==date);state.settings.selectedExerciseId=exerciseId;save();modal.close();renderGym();toast(weight>priorPR?`New PR: ${weight} kg`:(existing?'Gym log updated':'Gym progress saved'));};
+  $('#saveGymLog').onclick=()=>{const weight=Number($('#gymWeight').value);if(!(weight>0))return toast('Enter the weight you used');const exerciseId=$('#gymLogExercise').value,date=$('#gymDate').value||todayKey();const priorPR=exercisePR(exerciseId,existing?.id||null);const data={exerciseId,weight,sets:clamp(Number($('#gymSets').value||3),1,20),reps:clamp(Number($('#gymReps').value||10),1,100),date,createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.gym.logs.push({id:uid('gymlog'),...data});state.gym.sessionExcluded=state.gym.sessionExcluded.filter(k=>k!==date);state.settings.selectedExerciseId=exerciseId;if(!existing)markActiveWorkoutExercise(exerciseId);save();modal.close();renderGym();toast(weight>priorPR?`New PR: ${weight} kg`:(existing?'Gym log updated':'Gym progress saved'));};
   if(existing)$('#deleteGymLog').onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===existing.id);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();modal.close();renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});};
   $('#cancelModal').onclick=()=>modal.close();
 }
 function openExerciseModal(id=null){
   const existing=id?(state.gym.exercises||[]).find(x=>x.id===id):null;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>${existing?'Edit exercise':'Add an exercise'}</h2><div class="stack"><label><span class="label">Exercise name</span><input class="input" id="exerciseName" value="${escapeAttr(existing?.name||'')}" placeholder="e.g. Incline dumbbell press"></label><label><span class="label">Muscle group</span><input class="input" id="exerciseGroup" value="${escapeAttr(existing?.group||'')}" placeholder="e.g. Chest"></label></div><button class="primary full" id="saveExercise" style="margin-top:14px">${existing?'Save':'Add exercise'}</button>${existing?'<button class="danger-btn full" id="deleteExercise" style="margin-top:8px">Delete exercise</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>${existing?'Edit exercise':'Add an exercise'}</h2><div class="stack"><label><span class="label">Exercise name</span><input class="input" id="exerciseName" value="${escapeAttr(existing?.name||'')}" placeholder="e.g. Incline dumbbell press"></label><label><span class="label">Muscle group</span><select id="exerciseGroup">${[...new Set([existing?.group,...GYM_GROUPS].filter(Boolean))].map(g=>`<option value="${escapeAttr(g)}" ${g===(existing?.group||'Other')?'selected':''}>${escapeHTML(g)}</option>`).join('')}</select></label></div><button class="primary full" id="saveExercise" style="margin-top:14px">${existing?'Save':'Add exercise'}</button>${existing?'<button class="danger-btn full" id="deleteExercise" style="margin-top:8px">Delete exercise</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#saveExercise').onclick=()=>{const name=$('#exerciseName').value.trim();if(!name)return toast('Add an exercise name');if(existing){existing.name=name;existing.group=$('#exerciseGroup').value.trim()||'Other';}else{const x={id:uid('exercise'),name,group:$('#exerciseGroup').value.trim()||'Other'};state.gym.exercises.push(x);state.settings.selectedExerciseId=x.id;}save();modal.close();renderGym();toast(existing?'Exercise updated':'Exercise added');};
+  $('#saveExercise').onclick=()=>{const name=$('#exerciseName').value.trim();if(!name)return toast('Add an exercise name');if(existing){existing.name=name;existing.group=$('#exerciseGroup').value||'Other';existing.targets=[existing.group];}else{const x={id:uid('exercise'),name,group:$('#exerciseGroup').value||'Other',targets:[$('#exerciseGroup').value||'Other']};state.gym.exercises.push(x);state.settings.selectedExerciseId=x.id;}save();modal.close();renderGym();toast(existing?'Exercise updated':'Exercise added');};
   if(existing&&$('#deleteExercise'))$('#deleteExercise').onclick=()=>{const exIndex=state.gym.exercises.findIndex(x=>x.id===existing.id);const removedExercise={...existing};const removedLogs=(state.gym.logs||[]).map((item,index)=>({item,index})).filter(x=>x.item.exerciseId===existing.id);state.gym.exercises.splice(exIndex,1);state.gym.logs=state.gym.logs.filter(l=>l.exerciseId!==existing.id);state.settings.selectedExerciseId=state.gym.exercises[0]?.id||'';save();modal.close();renderGym();toast('Exercise deleted','Undo',()=>{state.gym.exercises.splice(Math.max(0,Math.min(exIndex,state.gym.exercises.length)),0,removedExercise);restoreDeletedObjects(state.gym.logs,removedLogs);state.settings.selectedExerciseId=removedExercise.id;save();renderGym();});};
   $('#cancelModal').onclick=()=>modal.close();
   localizeTree(modalContent);
@@ -1440,7 +1564,7 @@ if('serviceWorker' in navigator){
         reloading=true;
         window.location.reload();
       });
-      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.1.1',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.2.0',{updateViaCache:'none'});
       if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});
       reg.addEventListener('updatefound',()=>{
         const worker=reg.installing;
