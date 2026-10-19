@@ -1,6 +1,6 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 11;
-const APP_DISPLAY_VERSION = '3.2.0';
+const APP_VERSION = 12;
+const APP_DISPLAY_VERSION = '3.3.0';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -18,7 +18,7 @@ function dayShort(i){return isArabic()?DAY_SHORT_AR[i]:DAY_SHORT_EN[i];}
 function dayLong(i){return isArabic()?DAY_LONG_AR[i]:DAY_LONG_EN[i];}
 const DAY_SHORT=DAY_SHORT_EN, DAY_LONG=DAY_LONG_EN;
 const CATEGORIES = ['Routine','University','Fitness','Food','Life','Project','Sleep','Other'];
-const GYM_GROUPS = ['Chest','Back','Shoulders','Rear Delts','Biceps','Triceps','Quads','Hamstrings','Glutes','Calves','Core','Legs','Arms','Other'];
+const GYM_GROUPS = ['Chest','Back','Shoulders','Rear Delts','Biceps','Triceps','Quads','Hamstrings','Glutes','Calves','Core','Traps','Forearms','Legs','Arms','Other'];
 const ICON_PATHS = {
   chevronLeft:'<path d="M15 18l-6-6 6-6"/>',
   chevronRight:'<path d="M9 6l6 6-6 6"/>',
@@ -39,7 +39,8 @@ const ICON_PATHS = {
   settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
   arrowUpRight:'<path d="M7 17L17 7M9 7h8v8"/>',
   fork:'<path d="M7 3v7M4 3v5c0 2 1 3 3 3s3-1 3-3V3M7 11v10M15 3v18M15 3c4 2 4 7 0 9"/>',
-  spark:'<path d="M12 3l1.2 4.3L17.5 9l-4.3 1.7L12 15l-1.2-4.3L6.5 9l4.3-1.7L12 3zM19 15l.7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15z"/>'
+  spark:'<path d="M12 3l1.2 4.3L17.5 9l-4.3 1.7L12 15l-1.2-4.3L6.5 9l4.3-1.7L12 3zM19 15l.7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15z"/>',
+  moon:'<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.6 8.6 0 1 0 11.2 11.2z"/>'
 };
 function svgIcon(name, cls='ui-icon') { return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name]||''}</svg>`; }
 
@@ -68,7 +69,7 @@ const AR_UI = {
   'Current saved rate':'السعر المحفوظ الحالي','AUD → SAR conversion':'تحويل الدولار الأسترالي إلى الريال','Currency':'العملة','Refresh':'تحديث','Saved directly in SAR':'سيتم الحفظ مباشرة بالريال','No rate saved':'لا يوجد سعر محفوظ','or set manually':'أو أدخله يدويًا','A$1 equals how many SAR?':'كم ريال يساوي 1 دولار أسترالي؟','Save manual rate':'حفظ السعر اليدوي','Choose language':'اختر اللغة'
 };
 Object.assign(AR_UI,{
-  'Manage':'إدارة','Edit details':'تعديل التفاصيل','Fuel, service & rego':'الوقود والصيانة والتسجيل','Body weight and simple progress':'وزن الجسم والتقدم البسيط','Progress & achievements':'التقدم والإنجازات','Insights, trends and long-term goals':'الملاحظات والاتجاهات والأهداف طويلة المدى','No workouts logged this week yet.':'لم يتم تسجيل تمارين هذا الأسبوع بعد.','Weekly goal reached':'تم تحقيق الهدف الأسبوعي','No exercises yet. Add one to start tracking strength.':'لا توجد تمارين بعد. أضف تمريناً لبدء تتبع القوة.','No fuel fill logged yet':'لم يتم تسجيل تعبئة وقود بعد','Due today':'مستحق اليوم','Current reading':'القراءة الحالية','Edit exercise':'تعديل التمرين','Exercise updated':'تم تحديث التمرين','Exercise added':'تمت إضافة التمرين','Exercise deleted':'تم حذف التمرين','Workout session':'جلسة تمرين','Logged session':'جلسة مسجلة','Goal':'الهدف','Weekly goal':'الهدف الأسبوعي','Choose how many workout days you want in a normal week. This is a target, not a fixed program.':'اختر عدد أيام التمرين التي تريدها في أسبوع عادي. هذا هدف وليس برنامجاً ثابتاً.','What are you training?':'ماذا ستتمرن اليوم؟','Choose what you are training':'اختر ما ستتمرن عليه','Full body or a muscle focus. Reset builds a simple exercise list from your own library.':'جسم كامل أو مجموعة عضلية محددة. يبني Reset قائمة بسيطة من تمارينك.','Start Workout':'ابدأ التمرين','IN PROGRESS':'قيد التنفيذ','PLAN':'الخطة','Log':'سجل','Log again':'سجل مرة أخرى','Finish workout':'إنهاء التمرين','Cancel workout':'إلغاء التمرين','All exercises':'كل التمارين','Show':'عرض','Strength Progress':'تقدم القوة','Personal Bests':'الأرقام الشخصية','7 days':'7 أيام','30 days':'30 يوماً','All time':'كل الوقت','Last 7 days':'آخر 7 أيام','Last 30 days':'آخر 30 يوماً','VIEWING':'عرض','Fixed time / appointment':'وقت ثابت / موعد','Use for meetings or anything Reset should never move.':'استخدمه للاجتماعات أو أي شيء لا يجب على Reset تحريكه.','ONE-DAY PLAN':'خطة يوم واحد','Rebuild day':'أعد بناء اليوم','Reset day to routine':'أعد اليوم للروتين','Keep swaps and time changes you already made for this day while rebuilding around them.':'احتفظ بالتبديلات وتغييرات الوقت التي أجريتها لهذا اليوم أثناء إعادة البناء.'
+  'Sleep duration':'مدة النوم','Last night':'الليلة الماضية','7-day average':'متوسط 7 أيام','30-day average':'متوسط 30 يوماً','Sleep history':'سجل النوم','Target duration':'المدة المستهدفة','Bedtime consistency':'انتظام وقت النوم','Wake consistency':'انتظام وقت الاستيقاظ','Log / correct night':'تسجيل / تصحيح ليلة','Sleep tool':'النوم','Duration, timing and consistency.':'المدة والتوقيت والانتظام.','On target':'ضمن الهدف','Short':'قصير','Long':'طويل','Incomplete':'غير مكتمل','Manage':'إدارة','Edit details':'تعديل التفاصيل','Fuel, service & rego':'الوقود والصيانة والتسجيل','Body weight and simple progress':'وزن الجسم والتقدم البسيط','Progress & achievements':'التقدم والإنجازات','Insights, trends and long-term goals':'الملاحظات والاتجاهات والأهداف طويلة المدى','No workouts logged this week yet.':'لم يتم تسجيل تمارين هذا الأسبوع بعد.','Weekly goal reached':'تم تحقيق الهدف الأسبوعي','No exercises yet. Add one to start tracking strength.':'لا توجد تمارين بعد. أضف تمريناً لبدء تتبع القوة.','No fuel fill logged yet':'لم يتم تسجيل تعبئة وقود بعد','Due today':'مستحق اليوم','Current reading':'القراءة الحالية','Edit exercise':'تعديل التمرين','Exercise updated':'تم تحديث التمرين','Exercise added':'تمت إضافة التمرين','Exercise deleted':'تم حذف التمرين','Workout session':'جلسة تمرين','Logged session':'جلسة مسجلة','Goal':'الهدف','Weekly goal':'الهدف الأسبوعي','Choose how many workout days you want in a normal week. This is a target, not a fixed program.':'اختر عدد أيام التمرين التي تريدها في أسبوع عادي. هذا هدف وليس برنامجاً ثابتاً.','What are you training?':'ماذا ستتمرن اليوم؟','Choose what you are training':'اختر ما ستتمرن عليه','Full body or a muscle focus. Reset builds a simple exercise list from your own library.':'جسم كامل أو مجموعة عضلية محددة. يبني Reset قائمة بسيطة من تمارينك.','Start Workout':'ابدأ التمرين','IN PROGRESS':'قيد التنفيذ','PLAN':'الخطة','Log':'سجل','Log again':'سجل مرة أخرى','Finish workout':'إنهاء التمرين','Cancel workout':'إلغاء التمرين','All exercises':'كل التمارين','Show':'عرض','Strength Progress':'تقدم القوة','Personal Bests':'الأرقام الشخصية','7 days':'7 أيام','30 days':'30 يوماً','All time':'كل الوقت','Last 7 days':'آخر 7 أيام','Last 30 days':'آخر 30 يوماً','VIEWING':'عرض','Fixed time / appointment':'وقت ثابت / موعد','Use for meetings or anything Reset should never move.':'استخدمه للاجتماعات أو أي شيء لا يجب على Reset تحريكه.','ONE-DAY PLAN':'خطة يوم واحد','Rebuild day':'أعد بناء اليوم','Reset day to routine':'أعد اليوم للروتين','Keep swaps and time changes you already made for this day while rebuilding around them.':'احتفظ بالتبديلات وتغييرات الوقت التي أجريتها لهذا اليوم أثناء إعادة البناء.'
 });
 function ui(text){return isArabic()?(AR_UI[text]||text):text;}
 function translateTextValue(text){
@@ -195,9 +196,9 @@ function dateInRange(key,item) {
 
 function defaultSchedule() {
   return [
-    {id:'wake', title:'Wake up + curtains open', days:[0,1,2,3,4,5,6], start:'08:00', end:'08:10', category:'Routine', detail:'Get out of bed immediately. No scrolling or gooning in bed.', active:true, essential:true, manualLocked:true, minMinutes:5},
-    {id:'groom', title:'Shower + grooming', days:[0,1,2,3,4,5,6], start:'08:10', end:'08:30', category:'Routine', detail:'Teeth, deodorant, hair/beard and clean clothes.', active:true, essential:true, manualLocked:true, minMinutes:15},
-    {id:'breakfast', title:'Breakfast', days:[0,1,2,3,4,5,6], start:'08:30', end:'09:00', category:'Food', detail:'Eat early and include protein.', active:true, essential:true, manualLocked:true, minMinutes:20},
+    {id:'wake', title:'Wake up + curtains open', days:[0,1,2,3,4,5,6], start:'08:00', end:'08:10', category:'Routine', detail:'Get out of bed immediately. No scrolling or gooning in bed.', active:true, essential:true, fixed:true, manualLocked:true, anchor:'wake', minMinutes:5},
+    {id:'groom', title:'Shower + grooming', days:[0,1,2,3,4,5,6], start:'08:10', end:'08:30', category:'Routine', detail:'Teeth, deodorant, hair/beard and clean clothes.', active:true, essential:true, minMinutes:15},
+    {id:'breakfast', title:'Breakfast', days:[0,1,2,3,4,5,6], start:'08:30', end:'09:00', category:'Food', detail:'Eat early and include protein.', active:true, essential:true, minMinutes:20},
 
     {id:'catch_mon', title:'Focused university catch-up', days:[1], start:'10:00', end:'11:30', category:'University', detail:'Work on the highest-priority backlog before today’s class.', active:true, minMinutes:60},
     {id:'catch_tue', title:'Focused university catch-up', days:[2], start:'13:00', end:'14:00', category:'University', detail:'Use the gap before the Reservoir Engineering workshop.', active:true, minMinutes:45},
@@ -226,32 +227,41 @@ function defaultSchedule() {
     {id:'sat_reset', title:'Room + personal reset', days:[6], start:'10:30', end:'11:30', category:'Life', detail:'Bathroom, bedsheets, grooming and anything small that has been building up.', active:true, minMinutes:30},
     {id:'sun_money', title:'Money check', days:[0], start:'10:30', end:'10:50', category:'Life', detail:'Check spending, allocations and upcoming car/travel costs.', active:true, minMinutes:15},
     {id:'sun_week', title:'Plan the coming week', days:[0], start:'11:00', end:'11:30', category:'Life', detail:'Classes, urgent uni work, gym and one focus for the week.', active:true, minMinutes:20},
-    {id:'phone', title:'Phone away', days:[0,1,2,3,4,5,6], start:'23:00', end:'23:05', category:'Sleep', detail:'Charge it away from the bed. No late scroll spiral.', active:true, fixed:true},
-    {id:'sleep', title:'Lights out', days:[0,1,2,3,4,5,6], start:'23:30', end:'23:40', category:'Sleep', detail:'Protect tomorrow before it starts.', active:true, fixed:true}
+    {id:'phone', title:'Phone away', days:[0,1,2,3,4,5,6], start:'23:00', end:'23:05', category:'Sleep', detail:'Charge it away from the bed. No late scroll spiral.', active:true},
+    {id:'sleep', title:'Sleep', days:[0,1,2,3,4,5,6], start:'23:30', end:'23:40', category:'Sleep', detail:'Protect tomorrow before it starts.', active:true, fixed:true, manualLocked:true, anchor:'sleep'}
   ];
 }
 function defaultGymExercises() {
   return [
-    {id:'chest_press',name:'Chest Press',group:'Chest',targets:['Chest','Triceps']},
-    {id:'lat_pulldown',name:'Lat Pulldown',group:'Back',targets:['Back','Biceps']},
-    {id:'seated_row',name:'Seated Row',group:'Back',targets:['Back','Rear Delts','Biceps']},
+    {id:'chest_press',name:'Chest Press',group:'Chest',targets:['Chest','Triceps','Shoulders']},
+    {id:'lat_pulldown',name:'Lat Pulldown',group:'Back',targets:['Back','Biceps','Forearms']},
+    {id:'seated_row',name:'Seated Row',group:'Back',targets:['Back','Rear Delts','Biceps','Traps','Forearms']},
     {id:'shoulder_press',name:'Shoulder Press',group:'Shoulders',targets:['Shoulders','Triceps']},
-    {id:'leg_press',name:'Leg Press',group:'Legs',targets:['Quads','Glutes']},
+    {id:'leg_press',name:'Leg Press',group:'Quads',targets:['Quads','Glutes']},
     {id:'leg_curl',name:'Leg Curl',group:'Hamstrings',targets:['Hamstrings']},
-    {id:'biceps_curl',name:'Biceps Curl',group:'Arms',targets:['Biceps']},
-    {id:'triceps_pushdown',name:'Triceps Pushdown',group:'Arms',targets:['Triceps']},
+    {id:'biceps_curl',name:'Biceps Curl',group:'Biceps',targets:['Biceps','Forearms']},
+    {id:'triceps_pushdown',name:'Triceps Pushdown',group:'Triceps',targets:['Triceps']},
     {id:'standing_calf_raise',name:'Standing Calf Raise',group:'Calves',targets:['Calves']},
     {id:'ab_crunch_machine',name:'Ab Crunch Machine',group:'Core',targets:['Core']},
     {id:'glute_kickback',name:'Glute Kickback',group:'Glutes',targets:['Glutes']},
-    {id:'rear_delt_fly',name:'Rear Delt Fly',group:'Rear Delts',targets:['Rear Delts','Shoulders']},
+    {id:'rear_delt_fly',name:'Rear Delt Fly',group:'Rear Delts',targets:['Rear Delts','Shoulders','Traps']},
     {id:'hanging_knee_raise',name:'Hanging Knee Raise',group:'Core',targets:['Core']}
   ];
 }
+function defaultWorkoutPresets(){
+  return {
+    'Full Body':['leg_press','leg_curl','chest_press','lat_pulldown','shoulder_press','rear_delt_fly','biceps_curl','triceps_pushdown','standing_calf_raise','ab_crunch_machine'],
+    'Upper Body':['chest_press','lat_pulldown','seated_row','shoulder_press','rear_delt_fly','biceps_curl','triceps_pushdown'],
+    'Lower Body':['leg_press','leg_curl','glute_kickback','standing_calf_raise'],
+    'Custom':[]
+  };
+}
+
 function defaultState() {
   return {
     version: APP_VERSION,
     meta: {createdAt:new Date().toISOString()},
-    profile: {wakeTarget:'08:00', sleepTarget:'23:30', paydayDay:29},
+    profile: {wakeTarget:'08:00', sleepTarget:'23:30', sleepDurationTarget:8, paydayDay:29},
     schedule: defaultSchedule(),
     oneOffTasks: [],
     records: {},
@@ -285,11 +295,11 @@ function defaultState() {
       nextTask:'Use the app consistently and improve only what is genuinely useful.',
       plan:'Keep it simple, reliable and useful on iPhone.', sessions:0, logs:[]
     }],
-    gym:{exercises:defaultGymExercises(),logs:[],sessions:[],sessionExcluded:[],weeklyGoal:3,activeWorkout:null},
+    gym:{exercises:defaultGymExercises(),logs:[],sessions:[],sessionExcluded:[],weeklyGoal:3,activeWorkout:null,workoutPresets:defaultWorkoutPresets()},
     health:{weightLogs:[]},
     car:{model:'2007 Honda Accord V6 Luxury',odometer:180000,regoDue:'',serviceDueDate:'',serviceDueKm:0,fuelLogs:[],maintenanceLogs:[]},
     weeklyReviews:[],
-    settings:{activeTab:'today', selectedWeekDate:todayKey(), statsRange:'30', moreView:'home', mode:'normal', modeSetDate:todayKey(), selectedExerciseId:'chest_press', gymView:'workouts', gymGroupFilter:'All', gymHistoryExercise:'all', moneyHistoryMonth:monthKey(), moneyHistoryBucket:'all', moneyView:'home', language:'en'}
+    settings:{activeTab:'today', selectedWeekDate:todayKey(), statsRange:'30', moreView:'home', mode:'normal', modeSetDate:todayKey(), selectedExerciseId:'chest_press', gymView:'workouts', gymGroupFilter:'All', gymHistoryExercise:'all', gymHistoryExpanded:false, sleepHistoryExpanded:false, moneyHistoryMonth:monthKey(), moneyHistoryBucket:'all', moneyView:'home', language:'en'}
   };
 }
 
@@ -307,6 +317,14 @@ function migrateState(parsed) {
   const builtInIds = new Set(cleanedSchedule.map(x=>x.id));
   const mustAdd = base.schedule.filter(x=>x.id.startsWith('class_') || x.id.startsWith('catch_') || x.id==='lunch_thu' || x.id==='outside_mon').filter(x=>!builtInIds.has(x.id));
   next.schedule = cleanedSchedule.length ? [...cleanedSchedule, ...mustAdd] : base.schedule;
+  // v3.3: wake/sleep are permanent day anchors. Morning tasks and phone are flexible again.
+  next.schedule=next.schedule.map(item=>{
+    if(item.id==='wake') return {...item,fixed:true,manualLocked:true,anchor:'wake',essential:true};
+    if(item.id==='sleep') return {...item,title:'Sleep',fixed:true,manualLocked:true,anchor:'sleep'};
+    if(['groom','breakfast'].includes(item.id)){const x={...item,fixed:false,manualLocked:false};delete x.anchor;return x;}
+    if(item.id==='phone'){const x={...item,fixed:false,manualLocked:false};delete x.anchor;return x;}
+    return item;
+  });
   next.oneOffTasks = Array.isArray(parsed.oneOffTasks) ? parsed.oneOffTasks : [];
   next.records = parsed.records || {};
   next.courses = Array.isArray(parsed.courses) ? parsed.courses : base.courses;
@@ -354,20 +372,31 @@ function migrateState(parsed) {
   const defaultGymById=new Map(base.gym.exercises.map(x=>[x.id,x]));
   let migratedExercises=Array.isArray(oldGym.exercises)&&oldGym.exercises.length?oldGym.exercises.map(ex=>{
     const meta=defaultGymById.get(ex.id)||{};
-    return {...meta,...ex,targets:Array.isArray(ex.targets)&&ex.targets.length?ex.targets:(meta.targets||[ex.group||'Other'])};
+    if(defaultGymById.has(ex.id))return {...ex,name:ex.name||meta.name,group:meta.group,targets:[...(meta.targets||[meta.group||'Other'])]};
+    return {...ex,targets:Array.isArray(ex.targets)&&ex.targets.length?ex.targets:[ex.group||'Other']};
   }):base.gym.exercises.map(x=>({...x}));
   if(Number(parsed.version||0)<11){
     const existingIds=new Set(migratedExercises.map(x=>x.id));
     ['standing_calf_raise','ab_crunch_machine','glute_kickback','rear_delt_fly','hanging_knee_raise'].forEach(id=>{const ex=defaultGymById.get(id);if(ex&&!existingIds.has(id))migratedExercises.push({...ex});});
   }
+  const presetDefaults=defaultWorkoutPresets();
+  const savedPresets=oldGym.workoutPresets&&typeof oldGym.workoutPresets==='object'?oldGym.workoutPresets:{};
+  const validExerciseIds=new Set(migratedExercises.map(x=>x.id));
+  const workoutPresets={};
+  Object.keys(presetDefaults).forEach(name=>{
+    const candidate=Number(parsed.version||0)<12?presetDefaults[name]:(Array.isArray(savedPresets[name])?savedPresets[name]:presetDefaults[name]);
+    workoutPresets[name]=candidate.filter(id=>validExerciseIds.has(id));
+  });
   next.gym={
     exercises:migratedExercises,
     logs:Array.isArray(oldGym.logs)?oldGym.logs:[],
     sessions:Array.isArray(oldGym.sessions)?[...new Set(oldGym.sessions)]:[],
     sessionExcluded:Array.isArray(oldGym.sessionExcluded)?[...new Set(oldGym.sessionExcluded)]:[],
     weeklyGoal:clamp(Number(oldGym.weeklyGoal||base.gym.weeklyGoal||3),1,7),
-    activeWorkout:oldGym.activeWorkout&&typeof oldGym.activeWorkout==='object'?{...oldGym.activeWorkout,exerciseIds:Array.isArray(oldGym.activeWorkout.exerciseIds)?oldGym.activeWorkout.exerciseIds:[],completedExerciseIds:Array.isArray(oldGym.activeWorkout.completedExerciseIds)?oldGym.activeWorkout.completedExerciseIds:[]}:null
+    activeWorkout:oldGym.activeWorkout&&typeof oldGym.activeWorkout==='object'?{...oldGym.activeWorkout,id:oldGym.activeWorkout.id||uid('workout'),exerciseIds:Array.isArray(oldGym.activeWorkout.exerciseIds)?oldGym.activeWorkout.exerciseIds:[],completedExerciseIds:Array.isArray(oldGym.activeWorkout.completedExerciseIds)?oldGym.activeWorkout.completedExerciseIds:[]}:null,
+    workoutPresets
   };
+  if(Number(parsed.version||0)<12){next.settings.gymHistoryExercise='all';next.settings.gymHistoryExpanded=false;}
   if(!['All',...GYM_GROUPS].includes(next.settings.gymGroupFilter))next.settings.gymGroupFilter='All';
   if(!next.settings.gymHistoryExercise)next.settings.gymHistoryExercise='all';
   next.health={...base.health,...(parsed.health||{})};
@@ -527,7 +556,7 @@ function itemsForDate(date, options={}) {
   const oneOff=state.oneOffTasks
     .filter(x=>x.date===key)
     .map(x=>applyDailyOverride({...x,source:'oneoff'},key,options.ignoreOverrides));
-  return [...recurring,...oneOff].sort((a,b)=>minutesFromTime(a.start)-minutesFromTime(b.start) || String(a.title).localeCompare(String(b.title)));
+  return [...recurring,...oneOff].sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b) || String(a.title).localeCompare(String(b.title)));
 }
 function currentMode() {
   if(state.settings.mode==='bad' && state.settings.modeSetDate!==todayKey()) {state.settings.mode='normal';state.settings.modeSetDate=todayKey();}
@@ -544,16 +573,17 @@ function itemIncludedForMode(item,mode) {
 function itemsForMode(items,mode=currentMode()){return items.filter(i=>itemIncludedForMode(i,mode));}
 function modeForDate(key){return state.records[key]?.mode || 'normal';}
 function dayCompletion(date) {
-  const key=todayKey(date); const items=itemsForMode(itemsForDate(date),modeForDate(key));
+  const key=todayKey(date); const items=itemsForMode(itemsForDate(date),modeForDate(key)).filter(i=>getStatus(i,key)!=='cancelled');
   if(!items.length) return 0;
   const done=items.filter(i=>getStatus(i,key)==='done').length;
   return Math.round(done/items.length*100);
 }
+
 function dayFinishState(date=new Date()) {
-  const key=todayKey(date); const items=itemsForMode(itemsForDate(date),modeForDate(key));
+  const key=todayKey(date); const items=itemsForMode(itemsForDate(date),modeForDate(key)).filter(i=>getStatus(i,key)!=='cancelled');
   if(!items.length) return null;
   const statuses=items.map(i=>getStatus(i,key));
-  const closed=new Set(['done','missed','deferred','dropped']);
+  const closed=new Set(['done','missed','deferred','dropped','cancelled']);
   const pending=statuses.filter(s=>!closed.has(s)).length;
   const done=statuses.filter(s=>s==='done').length;
   const missed=statuses.filter(s=>s==='missed').length;
@@ -562,6 +592,7 @@ function dayFinishState(date=new Date()) {
   if(pending>0 || done===0) return null;
   return {type:(missed||deferred||dropped)?'recovery':'full', done, missed, deferred, dropped, total:items.length};
 }
+
 function showDayFinishPop(result) {
   const old=$('.day-finish-pop'); if(old) old.remove();
   const el=document.createElement('div');
@@ -635,38 +666,44 @@ function categoryBadge(category) {
   const cls=category==='University'?'blue':category==='Fitness'?'purple':category==='Sleep'?'warn':category==='Food'?'':category==='Project'?'purple':'';
   return `<span class="badge ${cls}">${escapeHTML(category || 'Task')}</span>`;
 }
+function isDayAnchor(item){return !!item && (item.anchor==='wake'||item.anchor==='sleep'||item.id==='wake'||item.id==='sleep');}
+function itemSortMinutes(item){return minutesFromTime(item.start)+1440*Number(item.dayOffset||0);}
+function itemEndSortMinutes(item){const start=itemSortMinutes(item);let end=minutesFromTime(item.end||item.start)+1440*Number(item.dayOffset||0);if(item.end&&end<start)end+=1440;return end+(!item.end?30:0);}
+function sleepDayOffsetForTime(time){return minutesFromTime(time)<720?1:0;}
 function timeWindow(item) {
-  if(item.end && item.end!==item.start) return `${formatClock(item.start)}–${formatClock(item.end)}`;
-  return formatClock(item.start);
+  const suffix=Number(item.dayOffset||0)>0?' (+1)':'';
+  if(item.end && item.end!==item.start) return `${formatClock(item.start)}–${formatClock(item.end)}${suffix}`;
+  return `${formatClock(item.start)}${suffix}`;
 }
 function statusForTime(item, date, nowMin=currentMinutes()) {
   if(todayKey(date)!==todayKey()) return '';
-  const s=minutesFromTime(item.start); const e=minutesFromTime(item.end || item.start)+(!item.end?30:0);
+  const s=itemSortMinutes(item); const e=itemEndSortMinutes(item);
   if(nowMin>=s && nowMin<=Math.max(s+10,e)) return 'now';
   if(nowMin<s) return 'future';
   return 'past';
 }
+
 function nextUsefulItem(items,key) {
   const now=currentMinutes();
-  const active=items.filter(i=>!['done','skipped','missed','deferred','dropped'].includes(getStatus(i,key)));
+  const active=items.filter(i=>!isClosedStatus(getStatus(i,key)));
   const current=active.find(i=>statusForTime(i,new Date())==='now');
   if(current) return {item:current,mode:'now'};
-  const overdueEssential=active.find(i=>i.essential && minutesFromTime(i.end||i.start)<now);
+  const overdueEssential=active.find(i=>i.essential && itemEndSortMinutes(i)<now);
   if(overdueEssential) return {item:overdueEssential,mode:'overdue'};
-  const next=active.find(i=>minutesFromTime(i.start)>now);
+  const next=active.find(i=>itemSortMinutes(i)>now);
   if(next) return {item:next,mode:'next'};
-  const overdue=active.find(i=>minutesFromTime(i.end||i.start)<now && !itemIsFixed(i));
+  const overdue=active.find(i=>itemEndSortMinutes(i)<now && !itemIsFixed(i));
   if(overdue) return {item:overdue,mode:'overdue'};
   return null;
 }
 function countdownText(item,mode) {
   if(mode==='overdue') return 'NOW';
+  const now=currentMinutes();
   if(mode==='now') {
-    const e=minutesFromTime(item.end||item.start);
-    const diff=Math.max(0,e-currentMinutes());
+    const diff=Math.max(0,itemEndSortMinutes(item)-now);
     return diff>0 ? `${diff}m` : 'NOW';
   }
-  const diff=Math.max(0,minutesFromTime(item.start)-currentMinutes());
+  const diff=Math.max(0,itemSortMinutes(item)-now);
   if(diff<60) return `${diff}m`;
   return `${Math.floor(diff/60)}h ${diff%60}m`;
 }
@@ -675,13 +712,14 @@ function renderToday(preserveScroll=false) {
   const scroll=window.scrollY;
   const date=new Date(); const key=todayKey(date); const rec=ensureRecord(key);rec.mode=currentMode();
   const allItems=itemsForDate(date); const items=itemsForMode(allItems,currentMode()); const parked=allItems.filter(i=>!itemIncludedForMode(i,currentMode()));
-  const done=items.filter(i=>getStatus(i,key)==='done').length,total=items.length,pct=total?Math.round(done/total*100):0;
+  const effectiveItems=items.filter(i=>getStatus(i,key)!=='cancelled');
+  const done=effectiveItems.filter(i=>getStatus(i,key)==='done').length,total=effectiveItems.length,pct=total?Math.round(done/total*100):0;
   const next=nextUsefulItem(items,key); const finish=dayFinishState(date); const lastSleep=previousUnloggedSleep();
   const hour=new Date().getHours(); const greeting=hour<12?'Good morning':hour<18?'Good afternoon':'Good evening';
   const open=items.filter(i=>!isClosedStatus(getStatus(i,key))); const hero=next?.item||open[0]||null;
   const nextAfter=hero?open.find(i=>occurrenceKey(i)!==occurrenceKey(hero) && minutesFromTime(i.start)>=minutesFromTime(hero.start)):null;
   const heroMode=next?.mode||'next'; const heroCanComplete=hero && (heroMode==='now'||heroMode==='overdue');
-  const classes=items.filter(i=>i.isClass), habits=items.filter(i=>!i.isClass && ['Routine','Food','Fitness','Sleep'].includes(i.category)), other=items.filter(i=>!classes.includes(i)&&!habits.includes(i));
+  const classes=effectiveItems.filter(i=>i.isClass), habits=effectiveItems.filter(i=>!i.isClass && ['Routine','Food','Fitness','Sleep'].includes(i.category)), other=effectiveItems.filter(i=>!classes.includes(i)&&!habits.includes(i));
   const count=(arr)=>[arr.filter(i=>getStatus(i,key)==='done').length,arr.length]; const cc=count(classes),hc=count(habits),oc=count(other);
   const pendingFlexible=items.filter(i=>!itemManualMoveLocked(i)&&!isClosedStatus(getStatus(i,key))); const showWrap=hour>=18&&pendingFlexible.length>0;
   const adjusted=items.filter(i=>i.adjusted).length,missed=items.filter(i=>getStatus(i,key)==='missed').length;
@@ -713,85 +751,85 @@ function timelineItemHTML(item,date,showActions=false) {
   const isNext=timeState==='future' && !isClosedStatus(status);
   const nowClass=timeState==='now' && status==='pending'?'now':'';
   const nextClass=isNext?'next':'';
-  const closedStatus=['missed','deferred','dropped'].includes(status);
-  const locked=itemManualMoveLocked(item);
-  const statusBadge=status==='missed'?'<span class="badge danger-badge">MISSED</span>':status==='deferred'?'<span class="badge blue">MOVED</span>':status==='dropped'?'<span class="badge muted-badge">DROPPED</span>':item.adjusted?'<span class="badge adjusted-badge">ADJUSTED</span>':nowClass?'<span class="badge">NOW</span>':'';
+  const closedStatus=['missed','deferred','dropped','cancelled'].includes(status);
+  const locked=itemManualMoveLocked(item), anchor=isDayAnchor(item);
+  const statusBadge=status==='missed'?'<span class="badge danger-badge">MISSED</span>':status==='cancelled'?'<span class="badge muted-badge">CANCELLED</span>':status==='deferred'?'<span class="badge blue">MOVED</span>':status==='dropped'?'<span class="badge muted-badge">DROPPED</span>':item.adjusted?'<span class="badge adjusted-badge">ADJUSTED</span>':nowClass?'<span class="badge">NOW</span>':'';
   const actualSleep=item.id==='sleep' ? state.records[key]?.actualSleepAt : '';
+  const actualWake=item.id==='wake' ? state.records[key]?.actualWakeAt : '';
+  const anchorBadge=anchor?`<span class="badge anchor-badge">${item.id==='wake'?'WAKE':'SLEEP'} ANCHOR</span>`:'';
   const sleepBadge=actualSleep?`<span class="badge sleep-badge">SLEPT ${escapeHTML(actualSleepClock(actualSleep))}</span>`:'';
-  return `<div class="timeline-item ${nowClass} ${nextClass} ${status}" data-timeline-occ="${escapeAttr(occurrenceKey(item))}">
-    <div class="timeline-time">${formatClock(item.start)}</div><span class="timeline-dot"></span>
+  const wakeBadge=actualWake?`<span class="badge sleep-badge">AWAKE ${escapeHTML(actualSleepClock(actualWake))}</span>`:'';
+  const canMarkMissed=!anchor && status==='pending' && key<=todayKey();
+  const canCancel=!anchor && !['done','deferred','dropped','cancelled'].includes(status);
+  const canRestore=(status==='cancelled'||status==='dropped'||(status==='missed'&&!itemIsFixed(item)));
+  return `<div class="timeline-item ${anchor?'anchor-item':''} ${nowClass} ${nextClass} ${status}" data-timeline-occ="${escapeAttr(occurrenceKey(item))}">
+    <div class="timeline-time">${formatClock(item.start)}${Number(item.dayOffset||0)>0?'<small>+1</small>':''}</div><span class="timeline-dot"></span>
     <div class="timeline-body">
       <div class="timeline-main">
         <input class="check" type="checkbox" data-occ="${escapeAttr(occurrenceKey(item))}" data-date="${key}" ${status==='done'?'checked':''} ${closedStatus?'disabled':''} aria-label="Mark ${escapeAttr(item.title)} done">
         <div class="timeline-copy"><b>${escapeHTML(item.title)}</b><small>${escapeHTML(item.detail||'')}</small>
-          <div class="timeline-meta">${categoryBadge(item.category)}<span class="badge blue">${escapeHTML(timeWindow(item))}</span>${locked?'<span class="badge lock-badge">LOCKED</span>':''}${statusBadge}${sleepBadge}</div>
+          <div class="timeline-meta">${anchorBadge}${categoryBadge(item.category)}<span class="badge blue">${escapeHTML(timeWindow(item))}</span>${locked&&!anchor?'<span class="badge lock-badge">LOCKED</span>':''}${statusBadge}${sleepBadge}${wakeBadge}</div>
         </div>
       </div>
-      ${showActions?`<div class="quick-actions"><button data-edit-item="${item.source}:${item.id}" type="button">Edit</button>${item.id==='sleep'?`<button data-log-sleep="${key}" type="button">${actualSleep?'Edit sleep time':'Log sleep time'}</button>`:''}${!locked && !isClosedStatus(status) && status!=='done'?`<button data-move-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Move</button>`:''}${status==='missed'?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}${status==='deferred'?`<button data-undo-defer="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Undo move</button>`:''}${status==='dropped'?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}</div>`:''}
+      ${showActions?`<div class="quick-actions">${anchor?`<button data-plan-anchors="${key}" type="button">Adjust day</button>${item.id==='sleep'?`<button data-log-sleep="${key}" type="button">${actualSleep?'Edit sleep time':'Log sleep time'}</button>`:''}`:`<button data-edit-item="${item.source}:${item.id}" type="button">Edit</button>${!locked && !isClosedStatus(status) && status!=='done'?`<button data-move-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Move</button>`:''}${canMarkMissed?`<button data-miss-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Mark missed</button>`:''}${canCancel?`<button data-cancel-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Cancel for day</button>`:''}${canRestore?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}${status==='deferred'?`<button data-undo-defer="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Undo move</button>`:''}`}</div>`:''}
     </div>
   </div>`;
+}
+function markMissedBeforeWake(key,wakeValue){
+  const rec=ensureRecord(key), date=parseDateKey(key), d=new Date(wakeValue);
+  if(Number.isNaN(d.getTime()))return;
+  const wakeMin=d.getHours()*60+d.getMinutes();
+  itemsForDate(date).forEach(item=>{
+    if(isDayAnchor(item)||getStatus(item,key)!=='pending')return;
+    if(itemEndSortMinutes(item)<=wakeMin)rec.itemStatus[occurrenceKey(item)]='missed';
+  });
+}
+function restoreMissedItem(item,key){
+  const rec=ensureRecord(key);delete rec.itemStatus[occurrenceKey(item)];
+  if(!itemIsFixed(item)&&key===todayKey()&&itemEndSortMinutes(item)<currentMinutes()){
+    const date=parseDateKey(key),duration=itemDurationForMove(item),blocked=itemsForDate(date).filter(x=>occurrenceKey(x)!==occurrenceKey(item)&&itemManualMoveLocked(x)&&getStatus(x,key)!=='cancelled'&&itemEndSortMinutes(x)>=currentMinutes()).map(x=>({start:itemSortMinutes(x),end:itemEndSortMinutes(x)}));
+    const slot=findOpenSlot(roundUpMinutes(currentMinutes(),5),duration,blocked,daySleepAbsoluteMinutes(date));
+    if(slot!=null)rec.timeOverrides[occurrenceKey(item)]={start:minutesToTime(slot%1440),end:minutesToTime((slot+duration)%1440),dayOffset:Math.floor(slot/1440),manual:true,adaptive:false};
+  }
+  save();
 }
 function bindTimeline(date) {
   const key=todayKey(date);
   $$('[data-occ]').forEach(cb=>cb.addEventListener('change',()=>{
-    const occ=cb.dataset.occ; const item=itemsForDate(date).find(x=>occurrenceKey(x)===occ);
-    if(item) setStatus(item,key,cb.checked?'done':'pending');
-    const y=window.scrollY;
-    render();
-    requestAnimationFrame(()=>{window.scrollTo(0,y); if(cb.checked) maybeCelebrateDayFinish(date);});
+    const occ=cb.dataset.occ; const item=itemsForDate(date).find(x=>occurrenceKey(x)===occ); if(!item)return;
+    if(item.id==='sleep' && cb.checked){cb.checked=false;openSleepLogModal(key);return;}
+    if(item.id==='wake'){
+      const rec=ensureRecord(key);
+      if(cb.checked){
+        const now=key===todayKey()?new Date():new Date(`${key}T${item.start}:00`);rec.actualWakeAt=localDateTimeInput(now);
+        const wakeClock=rec.actualWakeAt.slice(11,16);setDayWakeOverride(parseDateKey(key),wakeClock);markMissedBeforeWake(key,rec.actualWakeAt);setStatus(item,key,'done');
+      }else{delete rec.actualWakeAt;setStatus(item,key,'pending');}
+    }else setStatus(item,key,cb.checked?'done':'pending');
+    const y=window.scrollY;render();requestAnimationFrame(()=>{window.scrollTo(0,y);if(cb.checked)maybeCelebrateDayFinish(date);});
   }));
-  $$('[data-edit-item]').forEach(btn=>btn.addEventListener('click',()=>{
-    const [source,id]=btn.dataset.editItem.split(':');
-    if(source==='schedule') openScheduleItemModal(id);
-    else openOneOffTaskModal(id);
-  }));
+  $$('[data-edit-item]').forEach(btn=>btn.addEventListener('click',()=>{const [source,id]=btn.dataset.editItem.split(':');if(source==='schedule')openScheduleItemModal(id);else openOneOffTaskModal(id);}));
+  $$('[data-plan-anchors]').forEach(btn=>btn.addEventListener('click',()=>openDayAnchorPlanner(parseDateKey(btn.dataset.planAnchors))));
   $$('[data-log-sleep]').forEach(btn=>btn.addEventListener('click',()=>openSleepLogModal(btn.dataset.logSleep)));
-  $$('[data-move-item]').forEach(btn=>btn.addEventListener('click',()=>{
-    const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.moveItem);
-    if(item) openMoveItemModal(item,date);
-  }));
-  $$('[data-restore-item]').forEach(btn=>btn.addEventListener('click',()=>{
-    const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.restoreItem);
-    if(item){setStatus(item,key,'pending');render();}
-  }));
-  $$('[data-undo-defer]').forEach(btn=>btn.addEventListener('click',()=>{
-    const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.undoDefer);
-    if(item){restoreDeferredItem(item,key);render();toast('Move undone');}
-  }));
+  $$('[data-move-item]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.moveItem);if(item)openMoveItemModal(item,date);}));
+  $$('[data-miss-item]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.missItem);if(item){setStatus(item,key,'missed');render();toast('Marked missed','Undo',()=>{setStatus(item,key,'pending');render();});}}));
+  $$('[data-cancel-item]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.cancelItem);if(item){const old=getStatus(item,key);setStatus(item,key,'cancelled');render();toast('Cancelled for this day','Undo',()=>{setStatus(item,key,old==='pending'?'pending':old);render();});}}));
+  $$('[data-restore-item]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.restoreItem);if(item){restoreMissedItem(item,key);render();toast('Restored');}}));
+  $$('[data-undo-defer]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.undoDefer);if(item){restoreDeferredItem(item,key);render();toast('Move undone');}}));
 }
 function openSleepLogModal(targetKey) {
-  const item=sleepItemForKey(targetKey);
-  if(!item) return toast('Sleep task was not found for that day');
-  const rec=ensureRecord(targetKey);
-  const targetDate=parseDateKey(targetKey);
-  const nextKey=todayKey(addDays(targetDate,1));
-  let defaultValue=rec.actualSleepAt||'';
+  const item=sleepItemForKey(targetKey); if(!item)return toast('Sleep anchor was not found for that day');
+  const rec=ensureRecord(targetKey),targetDate=parseDateKey(targetKey),nextKey=todayKey(addDays(targetDate,1));let defaultValue=rec.actualSleepAt||'';
   if(!defaultValue){
     const now=new Date();
-    if(targetKey===todayKey(addDays(now,-1))) defaultValue=localDateTimeInput(now);
-    else if(targetKey===todayKey() && currentMinutes()>=minutesFromTime(state.profile.sleepTarget||'23:30')) defaultValue=localDateTimeInput(now);
-    else {
-      const planned=new Date(targetDate);
-      const [h,m]=(state.profile.sleepTarget||item.start||'23:30').split(':').map(Number);
-      planned.setHours(h,m,0,0);
-      defaultValue=localDateTimeInput(planned);
-    }
+    if(targetKey===todayKey(addDays(now,-1)))defaultValue=localDateTimeInput(now);
+    else if(targetKey===todayKey()&&currentMinutes()>=itemSortMinutes(item)%1440)defaultValue=localDateTimeInput(now);
+    else{const planned=new Date(targetDate),off=Number(item.dayOffset||0);planned.setDate(planned.getDate()+off);const [h,m]=(item.start||state.profile.sleepTarget||'23:30').split(':').map(Number);planned.setHours(h,m,0,0);defaultValue=localDateTimeInput(planned);}
   }
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Log when you actually went to sleep</h2><p class="muted">Your target is ${escapeHTML(formatClock(state.profile.sleepTarget||'23:30'))}. Going past it does not stop you recording the night properly.</p><label><span class="label">Actual sleep time</span><input class="input" id="actualSleepInput" type="datetime-local" value="${escapeAttr(defaultValue)}"></label><button class="primary full" id="saveSleepLog" style="margin-top:14px">Save sleep time</button>${rec.actualSleepAt?'<button class="danger-btn full" id="clearSleepLog" style="margin-top:8px">Clear sleep log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Log when you actually went to sleep</h2><p class="muted">This belongs to the night of ${escapeHTML(formatDateShort(targetDate))}, even if you slept after midnight.</p><label><span class="label">Actual sleep time</span><input class="input" id="actualSleepInput" type="datetime-local" value="${escapeAttr(defaultValue)}"></label><button class="primary full" id="saveSleepLog" style="margin-top:14px">Save sleep time</button>${rec.actualSleepAt?'<button class="danger-btn full" id="clearSleepLog" style="margin-top:8px">Clear sleep log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#saveSleepLog').onclick=()=>{
-    const value=$('#actualSleepInput').value;
-    if(!value || !value.includes('T')) return toast('Choose the actual sleep time');
-    const actualKey=value.slice(0,10);
-    if(actualKey!==targetKey && actualKey!==nextKey) return toast('Use that evening or the following morning');
-    rec.actualSleepAt=value;
-    setStatus(item,targetKey,'done');
-    save(); modal.close(); renderToday(true);
-    toast(`Sleep logged at ${actualSleepClock(value)}`);
-    requestAnimationFrame(()=>maybeCelebrateDayFinish(parseDateKey(targetKey)));
-  };
-  if($('#clearSleepLog')) $('#clearSleepLog').onclick=()=>{delete rec.actualSleepAt;setStatus(item,targetKey,'pending');save();modal.close();renderToday(true);toast('Sleep log cleared');};
-  $('#cancelModal').onclick=()=>modal.close();
+  $('#saveSleepLog').onclick=()=>{const value=$('#actualSleepInput').value;if(!value||!value.includes('T'))return toast('Choose the actual sleep time');const actualKey=value.slice(0,10);if(actualKey!==targetKey&&actualKey!==nextKey)return toast('Use that evening or the following morning');rec.actualSleepAt=value;setDaySleepOverride(targetDate,value.slice(11,16));setStatus(item,targetKey,'done');save();modal.close();render();toast(`Sleep logged at ${actualSleepClock(value)}`);requestAnimationFrame(()=>maybeCelebrateDayFinish(targetDate));};
+  if($('#clearSleepLog'))$('#clearSleepLog').onclick=()=>{delete rec.actualSleepAt;setStatus(item,targetKey,'pending');save();modal.close();render();toast('Sleep log cleared');};
+  $('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
 }
 
 function suggestTimeForNewTask(date) {
@@ -845,7 +883,7 @@ function renderWeek() {
   if(!days.some(d=>todayKey(d)===selectedKey)){selected=weekStart;selectedKey=todayKey(selected);state.settings.selectedWeekDate=selectedKey;}
   setHeader('Week',selected);const selectedItems=itemsForDate(selected);
   main.innerHTML=`<section class="week-header-card"><div class="week-nav clean"><button class="round-icon" id="prevWeekBtn" aria-label="Previous week">${svgIcon('chevronLeft')}</button><div><b>${formatDateShort(weekStart)} – ${formatDateShort(weekEnd)}</b><button class="today-link" id="todayWeekBtn">Today</button></div><button class="round-icon" id="nextWeekBtn" aria-label="Next week">${svgIcon('chevronRight')}</button></div><div class="week-strip modern">${days.map(d=>{const k=todayKey(d),p=dayCompletion(d);return `<button class="week-day ${k===selectedKey?'active':''} ${k===todayKey()?'today':''}" data-day-key="${k}"><small>${dayShort(d.getDay())}</small><strong>${d.getDate()}</strong><i style="--p:${p}%"></i></button>`}).join('')}</div></section>
-  <div class="section-title week-day-title"><div><span class="section-kicker">${dayLong(selected.getDay())}</span><h2>${formatDateShort(selected)}</h2></div><div class="week-day-actions">${selectedKey>todayKey()?'<button class="secondary small-btn" id="planDayBtn">Plan day</button>':''}<button id="addWeekTaskBtn">+ Task</button></div></div>
+  <div class="section-title week-day-title"><div><span class="section-kicker">${dayLong(selected.getDay())}</span><h2>${formatDateShort(selected)}</h2></div><div class="week-day-actions">${selectedKey>=todayKey()?'<button class="secondary small-btn" id="planDayBtn">Plan day</button>':''}<button id="addWeekTaskBtn">+ Task</button></div></div>
   <section class="week-day-schedule">${selectedItems.length?selectedItems.map(i=>timelineItemHTML(i,selected,true)).join(''):'<div class="empty-state">Nothing scheduled for this day.</div>'}</section>
   <details class="routine-manager"><summary><span><b>Weekly routine</b><small>${state.schedule.filter(s=>s.active!==false).length} recurring items</small></span>${svgIcon('chevronRight')}</summary><div class="routine-actions"><button class="primary" id="addRoutineBtn">+ Recurring item</button><button class="secondary" id="manageRoutineBtn">Manage routine</button></div></details>`;
   $('#prevWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey(addDays(selected,-7));save();renderWeek();};$('#nextWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey(addDays(selected,7));save();renderWeek();};$('#todayWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey();save();renderWeek();};$$('[data-day-key]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.dayKey;save();renderWeek();});$('#addWeekTaskBtn').onclick=()=>openOneOffTaskModal(null,{date:selectedKey,start:'12:00'});if($('#planDayBtn'))$('#planDayBtn').onclick=()=>openFutureDayPlanner(selected);$('#addRoutineBtn').onclick=()=>openScheduleItemModal(null,{days:[selected.getDay()]});$('#manageRoutineBtn').onclick=openScheduleManager;bindTimeline(selected);localizeTree(main);
@@ -1009,7 +1047,7 @@ function pastClassOccurrences(dates){
   const now=new Date(); const nowKey=todayKey(now); const nowMin=currentMinutes(); const out=[];
   dates.forEach(date=>{const key=todayKey(date);itemsForDate(date,{ignoreOverrides:true}).filter(i=>i.isClass).forEach(i=>{
     const ended=key<nowKey || (key===nowKey && minutesFromTime(i.end||i.start)<nowMin);
-    if(ended) out.push({date,key,item:i,done:getStatus(i,key)==='done'});
+    const status=getStatus(i,key); if(ended && status!=='cancelled') out.push({date,key,item:i,done:status==='done'});
   });});
   return out;
 }
@@ -1042,7 +1080,7 @@ function previous30Metrics(){const end=addDays(new Date(),-30);end.setHours(12,0
 function signedDelta(current,previous,suffix=''){const d=current-previous;return `${d>0?'+':''}${d}${suffix}`;}
 function totalProjectSessions(){return (state.projects||[]).reduce((a,p)=>a+Number(p.sessions||0),0);}
 function perfectClassDaysCount(){
-  return dateRange('all').filter(d=>{const items=itemsForDate(d,{ignoreOverrides:true}).filter(i=>i.isClass);if(!items.length)return false;const key=todayKey(d);const ended=key<todayKey()||items.every(i=>minutesFromTime(i.end||i.start)<currentMinutes());return ended&&items.every(i=>getStatus(i,key)==='done');}).length;
+  return dateRange('all').filter(d=>{const key=todayKey(d);const items=itemsForDate(d,{ignoreOverrides:true}).filter(i=>i.isClass&&getStatus(i,key)!=='cancelled');if(!items.length)return false;const ended=key<todayKey()||items.every(i=>itemEndSortMinutes(i)<currentMinutes());return ended&&items.every(i=>getStatus(i,key)==='done');}).length;
 }
 function perfectWeeksCount(){
   const appStart=startOfWeek(appStartDate()), currentStart=startOfWeek(new Date()); let count=0;
@@ -1104,15 +1142,16 @@ function lightweightInsights(){
   const currentSpend=transactionsForMonth(monthKey()).reduce((a,t)=>a+Number(t.amount||0),0); const prevDate=new Date();prevDate.setMonth(prevDate.getMonth()-1);const prevSpend=transactionsForMonth(monthKey(prevDate)).reduce((a,t)=>a+Number(t.amount||0),0);if(currentSpend||prevSpend)out.push(`Spending this month is ${fmtMoney(currentSpend)}${prevSpend?` versus ${fmtMoney(prevSpend)} last month`:''}.`);
   const tracked=Object.keys(state.records).filter(k=>state.records[k]?.itemStatus&&Object.keys(state.records[k].itemStatus).length).length;
   if(tracked>=7){const byDay=Array.from({length:7},()=>[]);Object.keys(state.records).forEach(k=>{const d=parseDateKey(k);byDay[d.getDay()].push(dayCompletion(d));});const avgs=byDay.map(a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):-1);const best=Math.max(...avgs);if(best>=0)out.push(`${DAY_LONG[avgs.indexOf(best)]} is your strongest tracked day at about ${best}% completion.`);}
+  const sleep30=sleepAverageForDays(30);if(sleep30.count>=3)out.push(`Average sleep is ${formatDurationHours(sleep30.average)} over ${sleep30.count} logged night${sleep30.count===1?'':'s'} in the last 30 days.`);
   const perfectWeeks=perfectWeeksCount();if(perfectWeeks)out.push(`You have completed ${perfectWeeks} perfect week${perfectWeeks===1?'':'s'} with every scheduled item finished.`);
   if(!out.length)out.push('Keep using Reset and useful patterns will appear here automatically.');
   return out.slice(0,4);
 }
 function renderMore() {
   const view=state.settings.moreView||'home';
-  if(view==='gym')return renderGym();if(view==='health')return renderHealth();if(view==='car')return renderCar();if(view==='projects')return renderProjects();if(view==='progress')return renderProgress();if(view.startsWith('project:'))return renderProjectDetail(view.slice(8));
+  if(view==='gym')return renderGym();if(view==='health')return renderHealth();if(view==='sleep')return renderSleep();if(view==='car')return renderCar();if(view==='projects')return renderProjects();if(view==='progress')return renderProgress();if(view.startsWith('project:'))return renderProjectDetail(view.slice(8));
   setHeader('More');const unlocked=achievementData().filter(a=>a.unlocked).length;
-  main.innerHTML=`<div class="section-title first-section"><h2>Life Tools</h2></div><section class="tool-grid mock-tools">${toolCard('gym','Gym','Workout','dumbbell',`${gymSessionDates().size} sessions`)}${toolCard('health','Health','Body weight and simple progress','heart',`${state.health.weightLogs.length} entries`)}${toolCard('car','Car','Fuel, service & rego','car',state.car.model||'Vehicle')}${toolCard('projects','Projects','Track your progress','folder',`${state.projects.filter(p=>!p.archived).length} active`)}</section><div class="section-title"><h2>Progress</h2></div><section class="progress-link-grid single-progress-link"><button class="progress-link" data-more-view="progress"><span class="tool-icon blue">${svgIcon('chart')}</span><span><b>Progress & achievements</b><small>Insights, trends and long-term goals</small></span><em>${unlocked} earned</em></button></section>`;
+  main.innerHTML=`<div class="section-title first-section"><h2>Life Tools</h2></div><section class="tool-grid mock-tools">${toolCard('gym','Gym','Workout','dumbbell',`${gymSessionDates().size} sessions`)}${toolCard('health','Health','Body weight and simple progress','heart',`${state.health.weightLogs.length} entries`)}${toolCard('sleep','Sleep','Duration, timing and consistency.','moon',sleepToolMeta())}${toolCard('car','Car','Fuel, service & rego','car',state.car.model||'Vehicle')}${toolCard('projects','Projects','Track your progress','folder',`${state.projects.filter(p=>!p.archived).length} active`)}</section><div class="section-title"><h2>Progress</h2></div><section class="progress-link-grid single-progress-link"><button class="progress-link" data-more-view="progress"><span class="tool-icon blue">${svgIcon('chart')}</span><span><b>Progress & achievements</b><small>Insights, trends and long-term goals</small></span><em>${unlocked} earned</em></button></section>`;
   $$('[data-more-view]').forEach(b=>b.onclick=()=>{const v=b.dataset.moreView;moreHomeScrollY=window.scrollY;state.settings.moreView=v;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});localizeTree(main);
 }
 function renderProgress(){
@@ -1124,13 +1163,13 @@ function renderProgress(){
 }
 function latestWeightText(){const x=[...(state.health.weightLogs||[])].sort((a,b)=>String(a.date).localeCompare(String(b.date))).pop();return x?`${Number(x.weight).toFixed(1)} kg`:'—';}
 
-function toolCard(view,title,desc,icon,meta=''){const tone=({gym:'blue',health:'purple',money:'green',car:'orange',projects:'violet'})[view]||'blue';return `<button class="tool-card" data-more-view="${escapeAttr(view)}"><span class="tool-icon ${tone}">${svgIcon(icon)}</span><span class="tool-card-copy"><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small>${meta?`<em>${escapeHTML(meta)}</em>`:''}</span></button>`;}
+function toolCard(view,title,desc,icon,meta=''){const tone=({gym:'blue',health:'purple',sleep:'cyan',money:'green',car:'orange',projects:'violet'})[view]||'blue';return `<button class="tool-card" data-more-view="${escapeAttr(view)}"><span class="tool-icon ${tone}">${svgIcon(icon)}</span><span class="tool-card-copy"><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small>${meta?`<em>${escapeHTML(meta)}</em>`:''}</span></button>`;}
 function toolLink(view,title,desc){return `<button class="tool-link" data-more-view="${escapeAttr(view)}"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small></span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`;}
 function moreBack(label='More'){return `<button class="back-link" id="moreBackBtn">${svgIcon('chevronLeft')}<span>${escapeHTML(label)}</span></button>`;}
 function bindMoreBack(){const b=$('#moreBackBtn');if(b)b.onclick=()=>{const y=moreHomeScrollY;state.settings.moreView='home';save();renderMore();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));};}
-function itemIsFixed(item) { return item.fixed===true || item.isClass===true; }
-function itemManualMoveLocked(item) { return itemIsFixed(item) || item.manualLocked===true || ['wake','groom','breakfast','phone','sleep'].includes(item.id); }
-function isClosedStatus(status){ return ['done','missed','deferred','dropped'].includes(status); }
+function itemIsFixed(item) { return isDayAnchor(item) || item.fixed===true || item.isClass===true; }
+function itemManualMoveLocked(item) { return itemIsFixed(item) || item.manualLocked===true; }
+function isClosedStatus(status){ return ['done','missed','deferred','dropped','cancelled'].includes(status); }
 function itemDurationForMove(item){ return Math.max(5,durationMinutes(item)); }
 function setItemTimeOverride(item,key,startTime){
   const rec=ensureRecord(key); const occ=occurrenceKey(item), dur=itemDurationForMove(item); const start=minutesFromTime(startTime); const existing=rec.timeOverrides[occ]||{};
@@ -1164,91 +1203,88 @@ function findOpenSlot(desired,duration,blocked,limit) {
   }
   return null;
 }
+function findOpenSlotBackward(latestEnd,duration,blocked,floor=0) {
+  let end=Math.max(floor+duration,latestEnd);
+  const sorted=[...blocked].sort((a,b)=>b.start-a.start);
+  for(let guard=0;guard<100;guard++) {
+    const start=end-duration;
+    if(start<floor) return null;
+    const collision=sorted.find(x=>start < x.end && end > x.start);
+    if(!collision) return start;
+    end=collision.start;
+  }
+  return null;
+}
 function buildAdaptiveRestartPlan(date=new Date(),preserveManual=false) {
-  const key=todayKey(date); const rec=ensureRecord(key); const manualMap=rec.timeOverrides||{};
+  const key=todayKey(date),rec=ensureRecord(key),manualMap=rec.timeOverrides||{};
   let baseItems=itemsForMode(itemsForDate(date,{ignoreOverrides:true}),currentMode());
-  if(preserveManual){baseItems=baseItems.map(i=>{const ov=manualMap[occurrenceKey(i)];return ov?.manual?{...i,...ov}:i;});}
-  const now=roundUpMinutes(currentMinutes(),5);
-  const sleepLimit=Math.max(now+30, minutesFromTime(state.profile.sleepTarget||'23:30'));
-  const pending=baseItems.filter(i=>!isClosedStatus(getStatus(i,key)));
-  const fixed=pending.filter(itemIsFixed);
-  const movable=pending.filter(i=>!itemIsFixed(i));
-  const missedFixed=fixed.filter(i=>minutesFromTime(i.end||i.start)<now);
-  const futureFixed=fixed.filter(i=>minutesFromTime(i.end||i.start)>=now).map(i=>({start:minutesFromTime(i.start),end:minutesFromTime(i.end||i.start)+(!i.end?30:0),item:i}));
-  const blocked=[...futureFixed], overrides={}, moved=[]; let lastMealEnd=null;
-  const ordered=[...movable].sort((a,b)=>{const aOver=minutesFromTime(a.end||a.start)<now,bOver=minutesFromTime(b.end||b.start)<now;const aRank=aOver&&a.essential?0:aOver?1:2,bRank=bOver&&b.essential?0:bOver?1:2;return aRank-bRank||minutesFromTime(a.start)-minutesFromTime(b.start);});
+  if(preserveManual)baseItems=baseItems.map(i=>{const ov=manualMap[occurrenceKey(i)];return ov?.manual?{...i,...ov}:i;});
+  const now=roundUpMinutes(currentMinutes(),5),sleepLimit=Math.max(now+30,daySleepAbsoluteMinutes(date));
+  // Keep one-day wake/sleep anchors even while the rest of the day is rebuilt.
+  const overrides={};Object.entries(manualMap).forEach(([occ,ov])=>{if(ov?.dayAnchor)overrides[occ]={...ov};});
+  const candidates=baseItems.filter(i=>getStatus(i,key)!=='done'&&getStatus(i,key)!=='cancelled'&&getStatus(i,key)!=='deferred'&&getStatus(i,key)!=='dropped');
+  const fixed=candidates.filter(itemIsFixed),movable=candidates.filter(i=>!itemIsFixed(i));
+  const missedFixed=fixed.filter(i=>!isDayAnchor(i)&&itemEndSortMinutes(i)<now);
+  const futureFixed=fixed.filter(i=>itemEndSortMinutes(i)>=now).map(i=>({start:itemSortMinutes(i),end:itemEndSortMinutes(i),item:i}));
+  const blocked=[...futureFixed],moved=[];let lastMealEnd=null;
+  const ordered=[...movable].sort((a,b)=>{const aOver=itemEndSortMinutes(a)<now||getStatus(a,key)==='missed',bOver=itemEndSortMinutes(b)<now||getStatus(b,key)==='missed';const aRank=aOver&&a.essential?0:aOver?1:2,bRank=bOver&&b.essential?0:bOver?1:2;return aRank-bRank||itemSortMinutes(a)-itemSortMinutes(b);});
   for(const item of ordered){
-    if(getStatus(item,key)==='done')continue;
-    const originalStart=minutesFromTime(item.start),overdue=minutesFromTime(item.end||item.start)<now,normalDuration=durationMinutes(item),duration=overdue?Math.max(5,Math.min(normalDuration,Number(item.minMinutes||normalDuration))):normalDuration;
+    const originalStart=itemSortMinutes(item),overdue=itemEndSortMinutes(item)<now||getStatus(item,key)==='missed',normalDuration=durationMinutes(item),duration=overdue?Math.max(5,Math.min(normalDuration,Number(item.minMinutes||normalDuration))):normalDuration;
     let desired=overdue?now:Math.max(now,originalStart);if(item.category==='Food'&&lastMealEnd!==null)desired=Math.max(desired,lastMealEnd+150);
     const slot=findOpenSlot(desired,duration,blocked,sleepLimit);if(slot===null)continue;
     const newStart=slot,newEnd=slot+duration;blocked.push({start:newStart,end:newEnd,item});if(item.category==='Food')lastMealEnd=newEnd;
     const wasManual=!!manualMap[occurrenceKey(item)]?.manual;
-    if(newStart!==originalStart||duration!==normalDuration||overdue||wasManual){const ov={start:minutesToTime(newStart),end:minutesToTime(newEnd),adaptive:true,manual:preserveManual&&wasManual};if(item.id==='breakfast'&&overdue){ov.title='First meal + protein';ov.detail='Eat now. Do not let waking late turn into not eating.';}if(item.id==='wake'&&overdue)ov.title='Get up + curtains open';overrides[occurrenceKey(item)]=ov;moved.push({...item,...ov});}
+    if(newStart!==originalStart||duration!==normalDuration||overdue||wasManual){const ov={start:minutesToTime(newStart),end:minutesToTime(newEnd),dayOffset:Math.floor(newStart/1440),adaptive:true,manual:preserveManual&&wasManual};if(item.id==='breakfast'&&overdue){ov.title='First meal + protein';ov.detail='Eat now. Do not let waking late turn into not eating.';}overrides[occurrenceKey(item)]=ov;moved.push({...item,...ov});}
   }
-  return {key,now,overrides,moved,missedFixed,preserveManual,manualCount:Object.values(manualMap).filter(x=>x?.manual).length};
+  return {key,now,overrides,moved,missedFixed,preserveManual,manualCount:Object.values(manualMap).filter(x=>x?.manual&&!x?.dayAnchor).length};
 }
 function applyAdaptiveRestart(plan) {
   const rec=ensureRecord(plan.key);rec.timeOverrides=plan.overrides;
-  for(const item of plan.missedFixed){if(getStatus(item,plan.key)!=='done')rec.itemStatus[occurrenceKey(item)]='missed';}
-  Object.keys(rec.itemStatus).forEach(k=>{if(rec.itemStatus[k]!=='missed')return;const item=itemsForDate(parseDateKey(plan.key),{ignoreOverrides:true}).find(x=>occurrenceKey(x)===k);if(item&&(!itemIsFixed(item)||minutesFromTime(item.end||item.start)>=plan.now))delete rec.itemStatus[k];});
+  for(const item of plan.missedFixed){if(getStatus(item,plan.key)!=='done'&&getStatus(item,plan.key)!=='cancelled')rec.itemStatus[occurrenceKey(item)]='missed';}
+  for(const item of plan.moved){if(rec.itemStatus[occurrenceKey(item)]==='missed')delete rec.itemStatus[occurrenceKey(item)];}
+  Object.keys(rec.itemStatus).forEach(k=>{if(rec.itemStatus[k]!=='missed')return;const item=itemsForDate(parseDateKey(plan.key),{ignoreOverrides:true}).find(x=>occurrenceKey(x)===k);if(item&&!itemIsFixed(item))delete rec.itemStatus[k];});
   rec.resetCount=(rec.resetCount||0)+1;rec.restartAt=new Date().toISOString();save();
 }
 function openRestartModal() {
-  const keepPlan=buildAdaptiveRestartPlan(new Date(),true), resetPlan=buildAdaptiveRestartPlan(new Date(),false); const manualCount=keepPlan.manualCount; const p=manualCount?keepPlan:resetPlan; const missCount=p.missedFixed.length;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ADAPTIVE RESTART</p><h2>Rebuild the rest of today.</h2><p class="muted">Fixed classes and sleep stay fixed. Nothing important is deleted.${missCount?` ${missCount} fixed event${missCount===1?' is':'s are'} already past and will stay visible as missed.`:''}</p>${manualCount?`<div class="card flat restart-preview"><b>${manualCount} manual move${manualCount===1?'':'s'} detected</b><small>Choose whether Reset should keep the order/timing choices you made or return to the original schedule before rebuilding.</small></div><button class="primary full" id="restartKeepMoves" style="margin-top:12px">Rebuild + keep my moves</button><button class="secondary full" id="restartResetMoves" style="margin-top:8px">Reset my moves + rebuild</button>`:`<div class="card flat restart-preview"><b>Adaptive rebuild</b><small>Overdue flexible tasks move forward around fixed events.</small></div><button class="primary full" id="restartResetMoves" style="margin-top:12px">Rebuild today</button>`}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  if($('#restartKeepMoves'))$('#restartKeepMoves').onclick=()=>{applyAdaptiveRestart(keepPlan);modal.close();toast('Today rebuilt and your manual order was kept');renderToday();};
-  $('#restartResetMoves').onclick=()=>{applyAdaptiveRestart(resetPlan);modal.close();toast(manualCount?'Today rebuilt from the original schedule':'Today rebuilt around the current time');renderToday();};
-  $('#cancelModal').onclick=()=>modal.close();
+  const keepPlan=buildAdaptiveRestartPlan(new Date(),true),resetPlan=buildAdaptiveRestartPlan(new Date(),false),manualCount=keepPlan.manualCount,p=manualCount?keepPlan:resetPlan,missCount=p.missedFixed.length;
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ADAPTIVE RESTART</p><h2>Rebuild the rest of today.</h2><p class="muted">Wake and sleep anchors stay fixed for this day. Classes and appointments are never moved.${missCount?` ${missCount} fixed event${missCount===1?' is':'s are'} already past and will stay visible as missed.`:''}</p>${manualCount?`<div class="card flat restart-preview"><b>${manualCount} manual move${manualCount===1?'':'s'} detected</b><small>Choose whether Reset should keep the order/timing choices you made or return to the original schedule before rebuilding.</small></div><button class="primary full" id="restartKeepMoves" style="margin-top:12px">Rebuild + keep my moves</button><button class="secondary full" id="restartResetMoves" style="margin-top:8px">Reset my moves + rebuild</button>`:`<div class="card flat restart-preview"><b>Adaptive rebuild</b><small>Overdue flexible tasks move forward around fixed events.</small></div><button class="primary full" id="restartResetMoves" style="margin-top:12px">Rebuild today</button>`}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modal.showModal();if($('#restartKeepMoves'))$('#restartKeepMoves').onclick=()=>{applyAdaptiveRestart(keepPlan);modal.close();toast('Today rebuilt and your manual order was kept');renderToday();};$('#restartResetMoves').onclick=()=>{applyAdaptiveRestart(resetPlan);modal.close();toast(manualCount?'Today rebuilt from the original schedule':'Today rebuilt around the current time');renderToday();};$('#cancelModal').onclick=()=>modal.close();
 }
 function dailyWakeItem(date){return itemsForDate(date,{ignoreOverrides:true}).find(i=>i.id==='wake')||null;}
+function dailySleepItem(date){return itemsForDate(date,{ignoreOverrides:true}).find(i=>i.id==='sleep')||null;}
 function dayWakeTime(date){const key=todayKey(date),wake=dailyWakeItem(date);if(!wake)return state.profile.wakeTarget||'08:00';const ov=state.records[key]?.timeOverrides?.[occurrenceKey(wake)];return ov?.start||wake.start;}
-function setDayWakeOverride(date,time){
-  const key=todayKey(date),wake=dailyWakeItem(date);if(!wake)return false;const rec=ensureRecord(key),dur=durationMinutes(wake),start=minutesFromTime(time);rec.timeOverrides[occurrenceKey(wake)]={start:minutesToTime(start),end:minutesToTime(start+dur),manual:true,adaptive:false,dayAnchor:true};return true;
-}
-function buildFutureDayPlan(date,preserveManual=true,wakeTime=null){
-  const key=todayKey(date),rec=ensureRecord(key),manualMap=rec.timeOverrides||{},mode=modeForDate(key);
-  let baseItems=itemsForMode(itemsForDate(date,{ignoreOverrides:true}),mode);
-  const wakeBase=baseItems.find(i=>i.id==='wake');const baseWake=minutesFromTime(wakeBase?.start||state.profile.wakeTarget||'08:00');
-  const chosenWake=minutesFromTime(wakeTime||manualMap[wakeBase?occurrenceKey(wakeBase):'']?.start||wakeBase?.start||state.profile.wakeTarget||'08:00');
+function daySleepTime(date){const key=todayKey(date),sleep=dailySleepItem(date);if(!sleep)return state.profile.sleepTarget||'23:30';const ov=state.records[key]?.timeOverrides?.[occurrenceKey(sleep)];return ov?.start||sleep.start;}
+function daySleepOffset(date){const key=todayKey(date),sleep=dailySleepItem(date);if(!sleep)return sleepDayOffsetForTime(state.profile.sleepTarget||'23:30');const ov=state.records[key]?.timeOverrides?.[occurrenceKey(sleep)];return Number(ov?.dayOffset??sleep.dayOffset??sleepDayOffsetForTime(ov?.start||sleep.start));}
+function daySleepAbsoluteMinutes(date){return minutesFromTime(daySleepTime(date))+1440*daySleepOffset(date);}
+function setDayWakeOverride(date,time){const key=todayKey(date),wake=dailyWakeItem(date);if(!wake)return false;const rec=ensureRecord(key),dur=durationMinutes(wake),start=minutesFromTime(time);rec.timeOverrides[occurrenceKey(wake)]={start:minutesToTime(start),end:minutesToTime(start+dur),dayOffset:0,manual:true,adaptive:false,dayAnchor:true};return true;}
+function setDaySleepOverride(date,time){const key=todayKey(date),sleep=dailySleepItem(date);if(!sleep)return false;const rec=ensureRecord(key),dur=durationMinutes(sleep),off=sleepDayOffsetForTime(time),start=minutesFromTime(time);rec.timeOverrides[occurrenceKey(sleep)]={start:minutesToTime(start),end:minutesToTime(start+dur),dayOffset:off,manual:true,adaptive:false,dayAnchor:true};return true;}
+function buildFutureDayPlan(date,preserveManual=true,wakeTime=null,sleepTime=null){
+  const key=todayKey(date),rec=ensureRecord(key),manualMap=rec.timeOverrides||{},mode=modeForDate(key);let baseItems=itemsForMode(itemsForDate(date,{ignoreOverrides:true}),mode);
+  const wakeBase=baseItems.find(i=>i.id==='wake'),sleepBase=baseItems.find(i=>i.id==='sleep'),baseWake=minutesFromTime(wakeBase?.start||state.profile.wakeTarget||'08:00'),chosenWake=minutesFromTime(wakeTime||manualMap[wakeBase?occurrenceKey(wakeBase):'']?.start||wakeBase?.start||state.profile.wakeTarget||'08:00');
+  const chosenSleepTime=sleepTime||manualMap[sleepBase?occurrenceKey(sleepBase):'']?.start||sleepBase?.start||state.profile.sleepTarget||'23:30',chosenSleepOff=sleepDayOffsetForTime(chosenSleepTime),sleepLimit=minutesFromTime(chosenSleepTime)+1440*chosenSleepOff;
   if(preserveManual)baseItems=baseItems.map(i=>{const ov=manualMap[occurrenceKey(i)];return ov?.manual?{...i,...ov}:i;});
-  const sleepItem=baseItems.find(i=>i.id==='sleep');const sleepLimit=minutesFromTime(sleepItem?.start||state.profile.sleepTarget||'23:30');
-  const anchored=[],overrides={},moved=[];let lastMealEnd=null;
-  for(const item of baseItems){
-    if(item.id==='wake'){const dur=durationMinutes(item);anchored.push({start:chosenWake,end:chosenWake+dur,item});overrides[occurrenceKey(item)]={start:minutesToTime(chosenWake),end:minutesToTime(chosenWake+dur),manual:true,adaptive:false,dayAnchor:true};continue;}
-    if(itemIsFixed(item))anchored.push({start:minutesFromTime(item.start),end:minutesFromTime(item.end||item.start)+(!item.end?30:0),item});
-  }
-  const blocked=[...anchored];
-  const wakeShift=chosenWake-baseWake;
-  const movable=baseItems.filter(i=>i.id!=='wake'&&!itemIsFixed(i)).sort((a,b)=>minutesFromTime(a.start)-minutesFromTime(b.start));
-  for(const item of movable){
-    const normalDuration=durationMinutes(item),manual=preserveManual&&!!manualMap[occurrenceKey(item)]?.manual;
-    let desired=minutesFromTime(item.start);
-    if(!manual&&['groom','breakfast'].includes(item.id))desired=Math.max(chosenWake,desired+wakeShift);
-    desired=Math.max(chosenWake,desired);
-    if(item.category==='Food'&&lastMealEnd!==null)desired=Math.max(desired,lastMealEnd+150);
-    const slot=findOpenSlot(desired,normalDuration,blocked,sleepLimit);if(slot===null)continue;
-    const newStart=slot,newEnd=slot+normalDuration;blocked.push({start:newStart,end:newEnd,item});
-    if(item.category==='Food')lastMealEnd=newEnd;
-    const original=itemsForDate(date,{ignoreOverrides:true}).find(x=>occurrenceKey(x)===occurrenceKey(item));
-    const changed=!original||newStart!==minutesFromTime(original.start)||manual||['groom','breakfast'].includes(item.id)&&wakeShift!==0;
-    if(changed){const ov={start:minutesToTime(newStart),end:minutesToTime(newEnd),adaptive:true,manual};overrides[occurrenceKey(item)]=ov;moved.push({...item,...ov});}
-  }
-  // Preserve any day-specific manual overrides for items not currently included by the mode.
+  const overrides={},blocked=[],moved=[];let lastMealEnd=null;
+  if(wakeBase){const dur=durationMinutes(wakeBase);overrides[occurrenceKey(wakeBase)]={start:minutesToTime(chosenWake),end:minutesToTime(chosenWake+dur),dayOffset:0,manual:true,adaptive:false,dayAnchor:true};blocked.push({start:chosenWake,end:chosenWake+dur,item:wakeBase});}
+  if(sleepBase){const dur=durationMinutes(sleepBase),abs=minutesFromTime(chosenSleepTime)+1440*chosenSleepOff;overrides[occurrenceKey(sleepBase)]={start:chosenSleepTime,end:minutesToTime(abs+dur),dayOffset:chosenSleepOff,manual:true,adaptive:false,dayAnchor:true};}
+  for(const item of baseItems){if(isDayAnchor(item))continue;if(itemIsFixed(item))blocked.push({start:itemSortMinutes(item),end:itemEndSortMinutes(item),item});}
+  const wakeShift=chosenWake-baseWake,movable=baseItems.filter(i=>!isDayAnchor(i)&&!itemIsFixed(i)&&getStatus(i,key)!=='cancelled').sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b));
+  for(const item of movable){const normalDuration=durationMinutes(item),manual=preserveManual&&!!manualMap[occurrenceKey(item)]?.manual;let desired=itemSortMinutes(item);if(!manual&&['groom','breakfast'].includes(item.id))desired=Math.max(chosenWake,desired+wakeShift);desired=Math.max(chosenWake,desired);if(item.category==='Food'&&lastMealEnd!==null)desired=Math.max(desired,lastMealEnd+150);let slot=findOpenSlot(desired,normalDuration,blocked,sleepLimit);if(slot===null)slot=findOpenSlotBackward(sleepLimit,normalDuration,blocked,chosenWake);if(slot===null)continue;const newStart=slot,newEnd=slot+normalDuration;blocked.push({start:newStart,end:newEnd,item});if(item.category==='Food')lastMealEnd=newEnd;const original=itemsForDate(date,{ignoreOverrides:true}).find(x=>occurrenceKey(x)===occurrenceKey(item)),changed=!original||newStart!==itemSortMinutes(original)||manual||(['groom','breakfast'].includes(item.id)&&wakeShift!==0);if(changed){const ov={start:minutesToTime(newStart),end:minutesToTime(newEnd),dayOffset:Math.floor(newStart/1440),adaptive:true,manual};overrides[occurrenceKey(item)]=ov;moved.push({...item,...ov});}}
   if(preserveManual)Object.entries(manualMap).forEach(([occ,ov])=>{if(ov?.manual&&!overrides[occ]&&!baseItems.some(i=>occurrenceKey(i)===occ&&itemIsFixed(i)))overrides[occ]={...ov};});
-  return {key,overrides,moved,wakeTime:minutesToTime(chosenWake),manualCount:Object.values(manualMap).filter(x=>x?.manual&&!x?.dayAnchor).length};
+  return {key,overrides,moved,wakeTime:minutesToTime(chosenWake),sleepTime:chosenSleepTime,manualCount:Object.values(manualMap).filter(x=>x?.manual&&!x?.dayAnchor).length};
 }
 function applyFutureDayPlan(plan){const rec=ensureRecord(plan.key);rec.timeOverrides=plan.overrides;rec.futurePlannedAt=new Date().toISOString();save();}
-function openFutureDayPlanner(date){
-  const key=todayKey(date);if(key<=todayKey())return toast('Use Today to rebuild the current day');
-  const currentWake=dayWakeTime(date);const manualCount=Object.values(ensureRecord(key).timeOverrides||{}).filter(x=>x?.manual&&!x?.dayAnchor).length;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ONE-DAY PLAN</p><h2>${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}</h2><p class="muted">This changes only this date. Your recurring routine stays untouched.</p><div class="stack"><label><span class="label">Wake time for this day</span><input class="input" id="futureWakeTime" type="time" value="${escapeAttr(currentWake)}"></label><label class="switch-row"><input type="checkbox" id="keepFutureMoves" ${manualCount?'checked':''}><span><b>Keep my moves</b><small>Keep swaps and time changes you already made for this day while rebuilding around them.</small></span></label></div><button class="primary full" id="rebuildFutureDay" style="margin-top:14px">Rebuild day</button><button class="secondary full" id="resetFutureDay" style="margin-top:8px">Reset day to routine</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+function openDayAnchorPlanner(date){
+  const key=todayKey(date);if(key<todayKey())return toast('Past day anchors can be corrected from their history instead');
+  const currentWake=dayWakeTime(date),currentSleep=daySleepTime(date),manualCount=Object.values(ensureRecord(key).timeOverrides||{}).filter(x=>x?.manual&&!x?.dayAnchor).length,isToday=key===todayKey();
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DAY PLAN</p><h2>${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}</h2><p class="muted">Wake and sleep change only for this date. Your recurring routine stays untouched.</p><div class="stack"><label><span class="label">Wake time for this day</span><input class="input" id="futureWakeTime" type="time" value="${escapeAttr(currentWake)}"></label><label><span class="label">Sleep time for this night</span><input class="input" id="futureSleepTime" type="time" value="${escapeAttr(currentSleep)}"><small class="field-help">Times before noon are treated as after midnight on the following calendar day.</small></label><label class="switch-row"><input type="checkbox" id="keepFutureMoves" ${manualCount?'checked':''}><span><b>Keep my moves</b><small>Keep swaps and manual time changes while rebuilding around the new anchors.</small></span></label></div><button class="primary full" id="rebuildFutureDay" style="margin-top:14px">Save + rebuild day</button><button class="secondary full" id="saveAnchorsOnly" style="margin-top:8px">Save anchors only</button><button class="secondary full" id="resetFutureDay" style="margin-top:8px">Reset day to routine</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#rebuildFutureDay').onclick=()=>{const time=$('#futureWakeTime').value||currentWake;setDayWakeOverride(date,time);const keep=$('#keepFutureMoves').checked;const plan=buildFutureDayPlan(date,keep,time);applyFutureDayPlan(plan);modal.close();renderWeek();toast('Future day rebuilt');};
-  $('#resetFutureDay').onclick=()=>{const rec=ensureRecord(key);rec.timeOverrides={};delete rec.futurePlannedAt;save();modal.close();renderWeek();toast('Day restored to recurring routine');};
+  const saveAnchors=()=>{const wake=$('#futureWakeTime').value||currentWake,sleep=$('#futureSleepTime').value||currentSleep;setDayWakeOverride(date,wake);setDaySleepOverride(date,sleep);save();return {wake,sleep};};
+  $('#rebuildFutureDay').onclick=()=>{const {wake,sleep}=saveAnchors(),keep=$('#keepFutureMoves').checked;if(isToday){const rec=ensureRecord(key),beforeWake=!rec.actualWakeAt&&currentMinutes()<minutesFromTime(wake);if(beforeWake){const plan=buildFutureDayPlan(date,keep,wake,sleep);applyFutureDayPlan(plan);}else{const plan=buildAdaptiveRestartPlan(new Date(),keep);applyAdaptiveRestart(plan);}}else{const plan=buildFutureDayPlan(date,keep,wake,sleep);applyFutureDayPlan(plan);}modal.close();render();toast(isToday?'Today rebuilt':'Day rebuilt');};
+  $('#saveAnchorsOnly').onclick=()=>{saveAnchors();modal.close();render();toast('Day anchors saved');};
+  $('#resetFutureDay').onclick=()=>{const rec=ensureRecord(key);rec.timeOverrides={};delete rec.futurePlannedAt;save();modal.close();render();toast('Day restored to recurring routine');};
   $('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
 }
+function openFutureDayPlanner(date){openDayAnchorPlanner(date);}
 
 function captureWeekEditContext(){if(state.settings.activeTab==='week')weekEditContext={date:state.settings.selectedWeekDate||todayKey(),scrollY:window.scrollY};else weekEditContext=null;}
 function renderAfterEditor(){if(state.settings.activeTab==='week'&&weekEditContext){const ctx=weekEditContext;weekEditContext=null;state.settings.selectedWeekDate=ctx.date;save();renderWeek();requestAnimationFrame(()=>window.scrollTo({top:ctx.scrollY,behavior:'auto'}));}else{weekEditContext=null;render();}}
@@ -1274,7 +1310,7 @@ function openScheduleItemModal(id=null,preset={}) {
     <div class="form-grid"><label><span class="label">Starts on (optional)</span><input class="input" id="schedStartDate" type="date" value="${item.startDate||''}"></label><label><span class="label">Ends on (optional)</span><input class="input" id="schedEndDate" type="date" value="${item.endDate||''}"></label></div>
     <div><span class="label">Repeat on</span><div class="day-picker">${DAY_PICK.map((d,i)=>`<label class="day-toggle"><input type="checkbox" data-repeat-day="${i}" ${item.days.includes(i)?'checked':''}><span>${d}</span></label>`).join('')}</div></div>
     <label><span class="label">Note</span><textarea id="schedDetail" placeholder="What exactly should you do?">${escapeHTML(item.detail||'')}</textarea></label>
-  </div><button class="primary full" id="saveSchedule" style="margin-top:14px">Save recurring item</button>${existing?'<button class="danger-btn full" id="deleteSchedule" style="margin-top:8px">Delete recurring item</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  </div><button class="primary full" id="saveSchedule" style="margin-top:14px">Save recurring item</button>${existing&&!isDayAnchor(item)?'<button class="danger-btn full" id="deleteSchedule" style="margin-top:8px">Delete recurring item</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
   $('#saveSchedule').onclick=()=>{
     const title=$('#schedTitle').value.trim(); const days=$$('[data-repeat-day]').filter(x=>x.checked).map(x=>Number(x.dataset.repeatDay));
@@ -1282,10 +1318,11 @@ function openScheduleItemModal(id=null,preset={}) {
     const startTime=$('#schedStart').value||'09:00', endTime=$('#schedEnd').value||'10:00', startDate=$('#schedStartDate').value||'', endDate=$('#schedEndDate').value||'';
     if(minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');
     if(startDate&&endDate&&endDate<startDate)return toast('End date must be after start date');
-    const data={title,days,start:startTime,end:endTime,category:$('#schedCategory').value,detail:$('#schedDetail').value.trim(),active:true,fixed:$('#schedFixed').checked,startDate,endDate};
+    const anchor=isDayAnchor(item);const data={title,days,start:startTime,end:endTime,category:$('#schedCategory').value,detail:$('#schedDetail').value.trim(),active:true,fixed:anchor?true:$('#schedFixed').checked,startDate,endDate};
+    if(anchor){data.manualLocked=true;data.anchor=item.anchor;}
     if(existing){Object.assign(existing,data);if(existing.id==='wake')state.profile.wakeTarget=data.start;if(existing.id==='sleep')state.profile.sleepTarget=data.start;}else state.schedule.push({id:uid('sched'),...data});save();modal.close();toast('Weekly schedule updated');renderAfterEditor();
   };
-  if(existing)$('#deleteSchedule').onclick=()=>{state.schedule=state.schedule.filter(x=>x.id!==existing.id);save();modal.close();toast('Recurring item deleted');renderAfterEditor();};
+  if(existing&&!isDayAnchor(item)&&$('#deleteSchedule'))$('#deleteSchedule').onclick=()=>{state.schedule=state.schedule.filter(x=>x.id!==existing.id);save();modal.close();toast('Recurring item deleted');renderAfterEditor();};
   $('#cancelModal').onclick=()=>modal.close();
 }
 
@@ -1379,110 +1416,109 @@ function openWeightModal(id=null){
 }
 
 
-function exercisePR(exerciseId,excludeId=null){const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===exerciseId && l.id!==excludeId);return logs.length?Math.max(...logs.map(l=>Number(l.weight||0))):0;}
+function sleepNightRecord(nightKey){
+  const night=parseDateKey(nightKey),nextKey=todayKey(addDays(night,1)),sleepValue=state.records[nightKey]?.actualSleepAt||'',wakeValue=state.records[nextKey]?.actualWakeAt||'';
+  const sleepDate=sleepValue?new Date(sleepValue):null,wakeDate=wakeValue?new Date(wakeValue):null;
+  let durationHours=null;
+  if(sleepDate&&wakeDate&&!Number.isNaN(sleepDate.getTime())&&!Number.isNaN(wakeDate.getTime())){
+    const hours=(wakeDate-sleepDate)/36e5;if(hours>0&&hours<=20)durationHours=hours;
+  }
+  return {nightKey,nextKey,night,sleepValue,wakeValue,sleepDate,wakeDate,durationHours};
+}
+function sleepNightRecords(days=180){
+  const out=[];const today=new Date();
+  for(let i=1;i<=days;i++){const d=addDays(today,-i),key=todayKey(d);if(d<appStartDate()&&!(state.records[key]?.actualSleepAt))continue;const r=sleepNightRecord(key);if(r.sleepValue||r.wakeValue)out.push(r);}
+  return out.sort((a,b)=>b.nightKey.localeCompare(a.nightKey));
+}
+function sleepAverageForDays(days){const since=todayKey(addDays(new Date(),-days)),rows=sleepNightRecords(Math.max(days+2,35)).filter(r=>r.nightKey>=since&&r.durationHours!=null);return {count:rows.length,average:rows.length?rows.reduce((a,r)=>a+r.durationHours,0)/rows.length:0,rows};}
+function formatDurationHours(hours){if(!(hours>0))return '—';const total=Math.round(hours*60);return `${Math.floor(total/60)}h ${String(total%60).padStart(2,'0')}m`;}
+function sleepStatus(hours){const target=clamp(Number(state.profile.sleepDurationTarget||8),4,14);if(hours==null)return 'Incomplete';if(hours<target-.5)return 'Short';if(hours>target+1.5)return 'Long';return 'On target';}
+function sleepStatusClass(hours){const x=sleepStatus(hours);return x==='On target'?'good':x==='Incomplete'?'neutral':'warn';}
+function sleepClockFromValue(value){return value&&value.includes('T')?formatClock(value.slice(11,16)):'—';}
+function sleepRelativeBedMinutes(r){if(!r.sleepDate)return null;const clock=r.sleepDate.getHours()*60+r.sleepDate.getMinutes();return r.sleepValue.slice(0,10)===r.nightKey?clock:clock+1440;}
+function avgAbsDeviation(values){if(!values.length)return null;const avg=values.reduce((a,b)=>a+b,0)/values.length;return values.reduce((a,b)=>a+Math.abs(b-avg),0)/values.length;}
+function sleepConsistency(rows,kind){const values=rows.filter(r=>kind==='bed'?r.sleepDate:r.wakeDate).map(r=>kind==='bed'?sleepRelativeBedMinutes(r):r.wakeDate.getHours()*60+r.wakeDate.getMinutes());const dev=avgAbsDeviation(values);if(dev==null)return {text:'—',label:'Need more nights'};const mins=Math.round(dev);return {text:`±${mins}m`,label:mins<=30?'Very consistent':mins<=60?'Fairly consistent':'Irregular'};}
+function sleepToolMeta(){const last=sleepNightRecord(todayKey(addDays(new Date(),-1)));return last.durationHours!=null?formatDurationHours(last.durationHours):'No complete night yet';}
+function sleepChartHTML(){const rows=sleepNightRecords(21).filter(r=>r.durationHours!=null).slice(0,14).reverse();if(rows.length<2)return '<div class="chart-empty">Log at least two complete nights to see your sleep trend.</div>';const max=Math.max(10,...rows.map(r=>r.durationHours)),target=clamp(Number(state.profile.sleepDurationTarget||8),4,14);return `<div class="sleep-chart"><div class="sleep-target-line" style="--target:${Math.min(100,target/max*100)}%"><span>${target}h target</span></div>${rows.map(r=>`<div class="sleep-bar-wrap" title="${escapeAttr(formatDateShort(r.night))} · ${escapeAttr(formatDurationHours(r.durationHours))}"><div class="sleep-bar ${sleepStatusClass(r.durationHours)}" style="height:${Math.max(8,Math.round(r.durationHours/max*100))}%"></div><small>${dayShort(addDays(r.night,1).getDay()).slice(0,1)}</small></div>`).join('')}</div>`;}
+function renderSleep(){
+  setHeader('Sleep');const last=sleepNightRecord(todayKey(addDays(new Date(),-1))),avg7=sleepAverageForDays(7),avg30=sleepAverageForDays(30),recent=sleepNightRecords(180),expanded=!!state.settings.sleepHistoryExpanded,shown=expanded?recent:recent.slice(0,7),consRows=recent.filter(r=>r.durationHours!=null).slice(0,14),bed=sleepConsistency(consRows,'bed'),wake=sleepConsistency(consRows,'wake'),target=clamp(Number(state.profile.sleepDurationTarget||8),4,14);
+  main.innerHTML=`${moreBack()}<section class="sleep-hero ${sleepStatusClass(last.durationHours)}"><div><p class="eyebrow">LAST NIGHT</p><h2>${formatDurationHours(last.durationHours)}</h2><p>${sleepClockFromValue(last.sleepValue)} → ${sleepClockFromValue(last.wakeValue)}</p></div><span class="sleep-status-pill">${sleepStatus(last.durationHours)}</span></section><section class="sleep-metric-grid"><article><small>7-day average</small><b>${formatDurationHours(avg7.average)}</b><span>${avg7.count} logged night${avg7.count===1?'':'s'}</span></article><article><small>30-day average</small><b>${formatDurationHours(avg30.average)}</b><span>${avg30.count} logged night${avg30.count===1?'':'s'}</span></article><article><small>Target duration</small><b>${formatDurationHours(target)}</b><button class="text-button tiny" id="editSleepTarget">Edit</button></article></section><section class="card flat sleep-chart-card"><div class="row between center"><div><p class="eyebrow">DURATION</p><h3 style="margin:0">Recent nights</h3></div></div>${sleepChartHTML()}</section><section class="sleep-consistency-grid"><article><span>${svgIcon('moon')}</span><div><small>Bedtime consistency</small><b>${bed.text}</b><em>${bed.label}</em></div></article><article><span>${svgIcon('calendar')}</span><div><small>Wake consistency</small><b>${wake.text}</b><em>${wake.label}</em></div></article></section><div class="section-title"><h2>Sleep history</h2><div class="row"><button class="secondary small-btn" id="addSleepNightBtn">+ Night</button>${recent.length>7?`<button class="secondary small-btn" id="toggleSleepHistory">${expanded?'Recent':'View all'}</button>`:''}</div></div><section class="card flat">${shown.length?shown.map(r=>`<div class="sleep-history-row"><span class="sleep-history-icon ${sleepStatusClass(r.durationHours)}">${svgIcon('moon')}</span><div><b>${escapeHTML(formatDateShort(r.night))} night</b><small>${sleepClockFromValue(r.sleepValue)} → ${sleepClockFromValue(r.wakeValue)} · ${formatDurationHours(r.durationHours)}</small></div><button class="secondary small-btn" data-edit-sleep-night="${r.nightKey}">Edit</button></div>`).join(''):'<div class="empty-state">No sleep history yet. Log sleep and wake times and Reset will calculate it automatically.</div>'}</section>`;
+  bindMoreBack();$('#editSleepTarget').onclick=openSleepTargetModal;$('#addSleepNightBtn').onclick=()=>openSleepNightModal(todayKey(addDays(new Date(),-1)));if($('#toggleSleepHistory'))$('#toggleSleepHistory').onclick=()=>{state.settings.sleepHistoryExpanded=!expanded;save();renderSleep();};$$('[data-edit-sleep-night]').forEach(b=>b.onclick=()=>openSleepNightModal(b.dataset.editSleepNight));localizeTree(main);
+}
+function openSleepTargetModal(){const current=clamp(Number(state.profile.sleepDurationTarget||8),4,14);modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Target duration</h2><p class="muted">This only changes your duration target. Your planned sleep and wake times stay separate.</p><div class="quick-value-row sleep-target-options">${[7,7.5,8,8.5,9].map(v=>`<button class="quick-value ${v===current?'active':''}" data-sleep-target="${v}">${v}h</button>`).join('')}</div><label><span class="label">Custom hours</span><input class="input" id="sleepTargetHours" type="number" min="4" max="14" step="0.25" value="${current}"></label><button class="primary full" id="saveSleepTarget" style="margin-top:14px">Save target</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$$('[data-sleep-target]').forEach(b=>b.onclick=()=>{$('#sleepTargetHours').value=b.dataset.sleepTarget;$$('[data-sleep-target]').forEach(x=>x.classList.toggle('active',x===b));});$('#saveSleepTarget').onclick=()=>{state.profile.sleepDurationTarget=clamp(Number($('#sleepTargetHours').value||8),4,14);save();modal.close();renderSleep();toast('Sleep target updated');};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);}
+function openSleepNightModal(nightKey){
+  const r=sleepNightRecord(nightKey),night=parseDateKey(nightKey),next=addDays(night,1),nextKey=todayKey(next);const plannedSleep=daySleepTime(night),plannedWake=dayWakeTime(next);let sleepValue=r.sleepValue,wakeValue=r.wakeValue;
+  if(!sleepValue){const d=new Date(night),off=sleepDayOffsetForTime(plannedSleep);d.setDate(d.getDate()+off);const [h,m]=plannedSleep.split(':').map(Number);d.setHours(h,m,0,0);sleepValue=localDateTimeInput(d);}if(!wakeValue){const d=new Date(next);const [h,m]=plannedWake.split(':').map(Number);d.setHours(h,m,0,0);wakeValue=localDateTimeInput(d);}
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP HISTORY</p><h2>${escapeHTML(formatDateShort(night))} night</h2><p class="muted">Sleep after midnight still belongs to this night.</p><div class="stack"><label><span class="label">Went to sleep</span><input class="input" id="sleepNightBed" type="datetime-local" value="${escapeAttr(sleepValue)}"></label><label><span class="label">Woke up</span><input class="input" id="sleepNightWake" type="datetime-local" value="${escapeAttr(wakeValue)}"></label></div><button class="primary full" id="saveSleepNight" style="margin-top:14px">Save night</button>${r.sleepValue||r.wakeValue?'<button class="danger-btn full" id="deleteSleepNight" style="margin-top:8px">Clear this night</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
+  $('#saveSleepNight').onclick=()=>{const bed=$('#sleepNightBed').value,wake=$('#sleepNightWake').value;if(!bed||!wake)return toast('Choose both sleep and wake times');const bd=new Date(bed),wd=new Date(wake);if(Number.isNaN(bd.getTime())||Number.isNaN(wd.getTime())||wd<=bd)return toast('Wake time must be after sleep time');const hours=(wd-bd)/36e5;if(hours>20)return toast('That sleep duration looks too long');const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);sleepRec.actualSleepAt=bed;wakeRec.actualWakeAt=wake;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'done');if(wakeItem)setStatus(wakeItem,nextKey,'done');setDaySleepOverride(night,bed.slice(11,16));setDayWakeOverride(next,wake.slice(11,16));save();modal.close();renderSleep();toast('Sleep night saved');};
+  if($('#deleteSleepNight'))$('#deleteSleepNight').onclick=()=>{const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);delete sleepRec.actualSleepAt;delete wakeRec.actualWakeAt;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'pending');if(wakeItem)setStatus(wakeItem,nextKey,'pending');save();modal.close();renderSleep();toast('Sleep night cleared');};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
+}
+
+
+function exercisePR(exerciseId,excludeId=null){const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===exerciseId&&l.id!==excludeId);return logs.length?Math.max(...logs.map(l=>Number(l.weight||0))):0;}
 function exerciseById(id){return (state.gym.exercises||[]).find(x=>x.id===id)||null;}
 function exerciseTargets(ex){return [...new Set([ex?.group,...(Array.isArray(ex?.targets)?ex.targets:[])].filter(Boolean))];}
-function exercisesForFocus(focus){
-  const all=state.gym.exercises||[];
-  const priority={
-    'Full Body':['leg_press','leg_curl','chest_press','lat_pulldown','shoulder_press','standing_calf_raise','ab_crunch_machine'],
-    'Upper Body':['chest_press','lat_pulldown','seated_row','shoulder_press','rear_delt_fly','biceps_curl','triceps_pushdown'],
-    'Lower Body':['leg_press','leg_curl','glute_kickback','standing_calf_raise','hanging_knee_raise'],
-    'Core':['ab_crunch_machine','hanging_knee_raise']
-  };
-  if(priority[focus])return priority[focus].map(exerciseById).filter(Boolean);
-  const aliases={Arms:['Arms','Biceps','Triceps'],Legs:['Legs','Quads','Hamstrings','Glutes','Calves']};const wanted=aliases[focus]||[focus];
-  return all.filter(ex=>exerciseTargets(ex).some(g=>wanted.includes(g))).slice(0,8);
-}
-function workoutFocuses(){return ['Full Body','Upper Body','Lower Body','Chest','Back','Shoulders','Arms','Legs','Glutes','Calves','Core'];}
+function workoutFocuses(){return ['Full Body','Upper Body','Lower Body','Custom'];}
+function validPresetIds(name){const defaults=defaultWorkoutPresets(),source=Array.isArray(state.gym.workoutPresets?.[name])?state.gym.workoutPresets[name]:(defaults[name]||[]),valid=new Set((state.gym.exercises||[]).map(x=>x.id));return source.filter(id=>valid.has(id));}
+function bodyRegionForExercise(ex){const t=exerciseTargets(ex);if(t.includes('Core'))return 'Core';if(t.some(x=>['Quads','Hamstrings','Glutes','Calves','Legs'].includes(x)))return 'Lower Body';if(t.some(x=>['Chest','Back','Shoulders','Rear Delts','Biceps','Triceps','Traps','Forearms','Arms'].includes(x)))return 'Upper Body';return 'Other';}
+function sessionWorkoutLog(workoutId,exerciseId){return [...(state.gym.logs||[])].filter(l=>l.workoutId===workoutId&&l.exerciseId===exerciseId).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0))[0]||null;}
+function latestExerciseLog(exerciseId,excludeId=null){return [...(state.gym.logs||[])].filter(l=>l.exerciseId===exerciseId&&l.id!==excludeId).sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.createdAt||0)-Number(a.createdAt||0))[0]||null;}
+function smartWeightOptions(exerciseId,current=null){const prior=latestExerciseLog(exerciseId,current?.id||null),base=Number(current?.weight||prior?.weight||20),step=base<20?2.5:5;return [...new Set([base-step,base-step/2,base,base+step/2,base+step].map(x=>Math.max(.5,Math.round(x*2)/2)))];}
 function openWorkoutPlanner(){
-  let focus='Full Body';
-  const draw=()=>{const picks=exercisesForFocus(focus);modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">START WORKOUT</p><h2>What are you training?</h2><div class="focus-chip-wrap">${workoutFocuses().map(x=>`<button class="focus-chip ${x===focus?'active':''}" data-workout-focus="${escapeAttr(x)}">${escapeHTML(x)}</button>`).join('')}</div><div class="workout-plan-preview"><div class="row between center"><div><small>PLAN</small><b>${escapeHTML(focus)}</b></div><em>${picks.length} exercises</em></div>${picks.length?picks.map((ex,i)=>`<div class="plan-exercise-row"><span>${i+1}</span><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')} · 3 sets · 8–12 reps</small></div></div>`).join(''):'<div class="empty-state">No matching exercises yet. Add one in Strength Progress.</div>'}</div><button class="primary full" id="startPlannedWorkout" ${picks.length?'':'disabled'}>Start ${escapeHTML(focus)} workout</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$$('[data-workout-focus]',modalContent).forEach(b=>b.onclick=()=>{focus=b.dataset.workoutFocus;draw();});if($('#startPlannedWorkout'))$('#startPlannedWorkout').onclick=()=>{state.gym.activeWorkout={date:todayKey(),focus,exerciseIds:picks.map(x=>x.id),completedExerciseIds:[],startedAt:new Date().toISOString()};save();modal.close();renderGym();toast(`${focus} workout started`);};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);};
-  draw();
+  let focus='Full Body',temp={};workoutFocuses().forEach(name=>temp[name]=new Set(validPresetIds(name)));
+  const draw=()=>{const selected=temp[focus],all=state.gym.exercises||[],defaults=defaultWorkoutPresets(),count=selected.size;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">START WORKOUT</p><h2>Build today’s workout</h2><div class="focus-chip-wrap workout-four">${workoutFocuses().map(x=>`<button class="focus-chip ${x===focus?'active':''}" data-workout-focus="${escapeAttr(x)}">${escapeHTML(x)}</button>`).join('')}</div><div class="workout-builder-head"><div><small>${escapeHTML(focus.toUpperCase())}</small><b>${count} exercise${count===1?'':'s'} selected</b></div><button class="text-button" id="resetWorkoutPreset">${focus==='Custom'?'Clear':'Reset default'}</button></div><div class="exercise-pick-grid">${all.map(ex=>`<label class="exercise-pick ${selected.has(ex.id)?'selected':''}"><input type="checkbox" data-workout-pick="${escapeAttr(ex.id)}" ${selected.has(ex.id)?'checked':''}><span class="exercise-pick-check">${selected.has(ex.id)?svgIcon('check'):''}</span><span><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></span></label>`).join('')}</div><button class="primary full" id="startPlannedWorkout" ${count?'':'disabled'}>Start ${escapeHTML(focus)} workout</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
+    $$('[data-workout-focus]',modalContent).forEach(b=>b.onclick=()=>{focus=b.dataset.workoutFocus;draw();});
+    $$('[data-workout-pick]',modalContent).forEach(cb=>cb.onchange=()=>{if(cb.checked)selected.add(cb.dataset.workoutPick);else selected.delete(cb.dataset.workoutPick);draw();});
+    $('#resetWorkoutPreset').onclick=()=>{temp[focus]=new Set((defaults[focus]||[]).filter(id=>exerciseById(id)));draw();};
+    $('#startPlannedWorkout').onclick=()=>{const ids=[...temp[focus]];if(!ids.length)return toast('Choose at least one exercise');if(!state.gym.workoutPresets)state.gym.workoutPresets=defaultWorkoutPresets();state.gym.workoutPresets[focus]=ids;state.gym.activeWorkout={id:uid('workout'),date:todayKey(),focus,exerciseIds:ids,completedExerciseIds:[],startedAt:new Date().toISOString()};save();modal.close();renderGym();toast(`${focus} workout started`);};
+    $('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
+  };draw();
 }
 function activeWorkoutHTML(){
   const w=state.gym.activeWorkout;if(!w||w.date!==todayKey())return '';
-  const completed=new Set(w.completedExerciseIds||[]),exercises=(w.exerciseIds||[]).map(exerciseById).filter(Boolean);return `<section class="active-workout-card"><div class="row between center"><div><span>IN PROGRESS</span><h3>${escapeHTML(w.focus||'Workout')}</h3></div><b>${completed.size}/${exercises.length}</b></div><div class="weekbar"><span style="width:${exercises.length?Math.round(completed.size/exercises.length*100):0}%"></span></div><div class="active-workout-list">${exercises.map(ex=>`<div class="active-workout-row ${completed.has(ex.id)?'done':''}"><span class="workout-check">${completed.has(ex.id)?svgIcon('check'):''}</span><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')} · 3 × 8–12</small></div><button class="secondary tiny-workout-btn" data-workout-log="${escapeAttr(ex.id)}">${completed.has(ex.id)?'Log again':'Log'}</button></div>`).join('')}</div><button class="success-btn full" id="finishWorkoutBtn">${svgIcon('check')} Finish workout</button><button class="text-button full" id="cancelWorkoutBtn">Cancel workout</button></section>`;
+  const exercises=(w.exerciseIds||[]).map(exerciseById).filter(Boolean),logs=new Map(exercises.map(ex=>[ex.id,sessionWorkoutLog(w.id,ex.id)])),done=exercises.filter(ex=>logs.get(ex.id)).length;
+  return `<section class="active-workout-card"><div class="row between center"><div><span>IN PROGRESS</span><h3>${escapeHTML(w.focus||'Workout')}</h3></div><b>${done}/${exercises.length}</b></div><div class="weekbar"><span style="width:${exercises.length?Math.round(done/exercises.length*100):0}%"></span></div><div class="active-workout-list">${exercises.map(ex=>{const log=logs.get(ex.id);return `<div class="active-workout-row ${log?'done':''}"><span class="workout-check">${log?svgIcon('check'):''}</span><div><b>${escapeHTML(ex.name)}</b><small>${log?`${Number(log.weight)} kg · ${Number(log.sets)} × ${Number(log.reps)}`:`${escapeHTML(ex.group||'Other')} · not logged yet`}</small></div><button class="secondary tiny-workout-btn" data-workout-log="${escapeAttr(ex.id)}">${log?'Edit':'Log'}</button></div>`}).join('')}</div><button class="success-btn full" id="finishWorkoutBtn">${svgIcon('check')} Finish workout</button><button class="text-button full" id="cancelWorkoutBtn">Cancel workout</button></section>`;
 }
 function markActiveWorkoutExercise(exerciseId){const w=state.gym.activeWorkout;if(!w||w.date!==todayKey())return;if(!Array.isArray(w.completedExerciseIds))w.completedExerciseIds=[];if(!w.completedExerciseIds.includes(exerciseId))w.completedExerciseIds.push(exerciseId);}
-function finishActiveWorkout(){const k=todayKey();state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k))state.gym.sessions.push(k);state.gym.activeWorkout=null;save();renderGym();toast('Workout finished');}
-
+function confirmWorkoutAction(kind){
+  const w=state.gym.activeWorkout;if(!w)return;const total=(w.exerciseIds||[]).length,done=(w.exerciseIds||[]).filter(id=>sessionWorkoutLog(w.id,id)).length,isFinish=kind==='finish';
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">WORKOUT</p><h2>${isFinish?'Finish this workout?':'Cancel this workout?'}</h2><p class="muted">${isFinish?(done<total?`You logged ${done} of ${total} exercises. You can still finish if you intentionally skipped the rest.`:`All ${total} exercises are logged.`):'The active workout plan will close. Exercise logs you already saved will stay in your history.'}</p><button class="${isFinish?'success-btn':'danger-btn'} full" id="confirmWorkoutAction" style="margin-top:14px">${isFinish?'Finish workout':'Cancel workout'}</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Go back</button>`;modal.showModal();
+  $('#confirmWorkoutAction').onclick=()=>{if(isFinish){const k=todayKey();state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k))state.gym.sessions.push(k);toast('Workout finished');}else toast('Workout cancelled');state.gym.activeWorkout=null;save();modal.close();renderGym();};$('#cancelModal').onclick=()=>modal.close();
+}
+function finishActiveWorkout(){confirmWorkoutAction('finish');}
+function cancelActiveWorkout(){confirmWorkoutAction('cancel');}
+function prSectionHTML(title,rows){return `<div class="pr-section"><div class="pr-section-title"><b>${escapeHTML(title)}</b><span>${rows.length}</span></div>${rows.length?rows.map(({ex,pr})=>`<div class="pr-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'')}</small></div><strong>${Number(pr)} kg</strong></div>`).join(''):'<div class="empty-state compact-empty">No PRs yet.</div>'}</div>`;}
 function renderGym(){
   setHeader('Gym');
-  const sessions=gymSessionDates(), view=state.settings.gymView||'workouts', weeklyGoal=clamp(Number(state.gym.weeklyGoal||3),1,7);
-  const groupFilter=state.settings.gymGroupFilter||'All';
-  const filteredExercises=(state.gym.exercises||[]).filter(ex=>groupFilter==='All'||exerciseTargets(ex).includes(groupFilter));
-  let exercise=filteredExercises.find(x=>x.id===state.settings.selectedExerciseId)||filteredExercises[0]||state.gym.exercises[0]||null;
-  if(exercise)state.settings.selectedExerciseId=exercise.id;
-  const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===exercise?.id).sort((a,b)=>String(a.date).localeCompare(String(b.date))||Number(a.createdAt||0)-Number(b.createdAt||0));
-  const allLogs=[...(state.gym.logs||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.createdAt||0)-Number(a.createdAt||0));
-  const historyFilter=state.settings.gymHistoryExercise||'all';const historyLogs=historyFilter==='all'?allLogs:allLogs.filter(l=>l.exerciseId===historyFilter);
-  const first=logs[0],last=logs[logs.length-1],change=first&&last?Number(last.weight)-Number(first.weight):0,pr=exercise?exercisePR(exercise.id):0;
-  const weekStart=startOfWeek(new Date()),weekKeys=new Set(Array.from({length:7},(_,i)=>todayKey(addDays(weekStart,i)))),weekSessions=[...sessions].filter(k=>weekKeys.has(k)).sort();
-  const recentSessions=[...sessions].sort().reverse();
-  const prRows=state.gym.exercises.map(ex=>({ex,pr:exercisePR(ex.id)})).filter(x=>x.pr>0).sort((a,b)=>b.pr-a.pr);
+  const sessions=gymSessionDates(),view=state.settings.gymView||'workouts',weeklyGoal=clamp(Number(state.gym.weeklyGoal||3),1,7),groupFilter=state.settings.gymGroupFilter||'All',filteredExercises=(state.gym.exercises||[]).filter(ex=>groupFilter==='All'||exerciseTargets(ex).includes(groupFilter));
+  let exercise=filteredExercises.find(x=>x.id===state.settings.selectedExerciseId)||filteredExercises[0]||state.gym.exercises[0]||null;if(exercise)state.settings.selectedExerciseId=exercise.id;
+  const logs=(state.gym.logs||[]).filter(l=>l.exerciseId===exercise?.id).sort((a,b)=>String(a.date).localeCompare(String(b.date))||Number(a.createdAt||0)-Number(b.createdAt||0)),allLogs=[...(state.gym.logs||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.createdAt||0)-Number(a.createdAt||0));
+  const historyFilter=state.settings.gymHistoryExercise||'all',historyLogs=historyFilter==='all'?allLogs:allLogs.filter(l=>l.exerciseId===historyFilter),historyExpanded=!!state.settings.gymHistoryExpanded,displayHistory=historyExpanded?historyLogs:allLogs.slice(0,8);
+  const first=logs[0],last=logs[logs.length-1],change=first&&last?Number(last.weight)-Number(first.weight):0,pr=exercise?exercisePR(exercise.id):0,weekStart=startOfWeek(new Date()),weekKeys=new Set(Array.from({length:7},(_,i)=>todayKey(addDays(weekStart,i)))),weekSessions=[...sessions].filter(k=>weekKeys.has(k)).sort(),recentSessions=[...sessions].sort().reverse();
+  const prRows=state.gym.exercises.map(ex=>({ex,pr:exercisePR(ex.id),region:bodyRegionForExercise(ex)})).filter(x=>x.pr>0).sort((a,b)=>b.pr-a.pr),upper=prRows.filter(x=>x.region==='Upper Body'),lower=prRows.filter(x=>x.region==='Lower Body'),core=prRows.filter(x=>x.region==='Core'),other=prRows.filter(x=>x.region==='Other');
   let body='';
-  if(view==='workouts') body=`${activeWorkoutHTML()}<section class="gym-week-card"><div class="row between center"><div><span>This Week</span><b>${weekSessions.length} session${weekSessions.length===1?'':'s'}</b></div><button class="goal-pill" id="editGymGoalBtn">Goal ${weeklyGoal}</button></div><div class="weekbar"><span style="width:${Math.min(100,weekSessions.length/weeklyGoal*100)}%"></span></div><small class="gym-goal-copy">${weekSessions.length>=weeklyGoal?'Weekly goal reached':`${Math.max(0,weeklyGoal-weekSessions.length)} to go`}</small></section>${state.gym.activeWorkout?.date===todayKey()?'':`<button class="primary full" id="startWorkoutBtn">Start Workout</button><section class="workout-type-list gym-focus-guide"><div class="workout-type"><span class="workout-icon">${svgIcon('spark')}</span><div><b>Choose what you are training</b><small>Full body or a muscle focus. Reset builds a simple exercise list from your own library.</small></div></div></section>`}<div class="section-title"><h2>Recent Sessions</h2><button data-gym-view="history">See all</button></div><section class="recent-session-list">${recentSessions.slice(0,5).map(k=>`<div class="workout-type done"><span class="workout-icon">${svgIcon('dumbbell')}</span><div><b>Workout</b><small>${formatDateShort(parseDateKey(k))}</small></div></div>`).join('')||'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
-  if(view==='progress') body=`<div class="section-title first-section"><h2>Strength Progress</h2><div class="row"><button class="secondary small-btn" id="manageExercisesBtn">Manage</button><button id="addExerciseBtn">+ Exercise</button></div></div><div class="muscle-filter-strip">${['All',...GYM_GROUPS.filter(g=>g!=='Other')].map(g=>`<button class="focus-chip ${g===groupFilter?'active':''}" data-gym-group="${escapeAttr(g)}">${escapeHTML(g)}</button>`).join('')}</div>${state.gym.exercises.length?`<section class="card flat"><label><span class="label">Exercise</span><select id="gymExerciseSelect">${filteredExercises.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===exercise?.id?'selected':''}>${escapeHTML(x.name)} · ${escapeHTML(x.group||'')}</option>`).join('')}</select></label>${exercise?`<section class="progress-color-grid gym-metrics"><article class="pmetric blue"><small>First</small><b>${first?Number(first.weight):'—'}</b><em>kg</em></article><article class="pmetric green"><small>Current</small><b>${last?Number(last.weight):'—'}</b><em>kg</em></article><article class="pmetric yellow"><small>PR</small><b>${pr||'—'}</b><em>kg</em></article><article class="pmetric purple"><small>Change</small><b>${logs.length>1?(change>0?'+':'')+change:'—'}</b><em>kg</em></article></section>${gymChartHTML(logs)}`:'<div class="empty-state">No exercise in this muscle group yet.</div>'}</section><button class="primary full" id="logGymBtn">+ Log exercise</button>`:`<section class="card flat empty-state">No exercises yet. Add one to start tracking strength.</section>`}<div class="section-title"><h2>Personal Bests</h2></div><section class="card flat">${prRows.length?prRows.map(({ex,pr})=>`<div class="pr-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'')}</small></div><strong>${Number(pr)} kg</strong></div>`).join(''):'<div class="empty-state">Your PRs will appear after you log exercises.</div>'}</section>`;
-  if(view==='history') body=`<div class="section-title first-section"><h2>Exercise History</h2><button class="secondary small-btn" id="selectGymBtn">${historySelectMode.gym?'Done':'Select'}</button></div><label class="history-exercise-filter"><span class="label">Show</span><select id="gymHistoryFilter"><option value="all" ${historyFilter==='all'?'selected':''}>All exercises</option>${state.gym.exercises.map(x=>`<option value="${escapeAttr(x.id)}" ${historyFilter===x.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label>${historySelectToolbar('gym')}<section class="card flat">${historyLogs.length?historyLogs.map(l=>{const ex=exerciseById(l.exerciseId);return `<div class="gym-log">${historySelectMode.gym?historySelectCheckbox('gym',l.id):''}<div><b>${escapeHTML(ex?.name||'Deleted exercise')} · ${Number(l.weight)} kg</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))} · ${escapeHTML(ex?.group||'Other')} · ${Number(l.sets||0)||'—'} × ${Number(l.reps||0)||'—'}</small></div>${historySelectMode.gym?'':`<div class="row"><button class="text-button tiny" data-edit-gym="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-gym="${l.id}">Delete</button></div>`}</div>`}).join(''):'<div class="empty-state">No exercise logs match this filter.</div>'}</section><div class="section-title"><h2>Workout Days</h2><button class="secondary small-btn" id="selectWorkoutBtn">${historySelectMode.workout?'Done':'Select'}</button></div>${historySelectToolbar('workout')}<section class="card flat">${recentSessions.length?recentSessions.map(k=>`<div class="gym-log">${historySelectMode.workout?historySelectCheckbox('workout',k):''}<div><b>${escapeHTML(formatDateShort(parseDateKey(k)))}</b><small>Workout session</small></div>${historySelectMode.workout?'':`<button class="text-button tiny danger-text" data-del-session="${k}">Remove</button>`}</div>`).join(''):'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
-  main.innerHTML=`${moreBack()}<div class="segmented gym-tabs"><button data-gym-view="workouts" class="${view==='workouts'?'active':''}">Workouts</button><button data-gym-view="progress" class="${view==='progress'?'active':''}">Progress</button><button data-gym-view="history" class="${view==='history'?'active':''}">History</button></div>${body}`;
-  bindMoreBack();
-  $$('[data-gym-view]').forEach(b=>b.onclick=()=>{state.settings.gymView=b.dataset.gymView;save();renderGym();});
-  $$('[data-gym-group]').forEach(b=>b.onclick=()=>{state.settings.gymGroupFilter=b.dataset.gymGroup;const pool=(state.gym.exercises||[]).filter(ex=>b.dataset.gymGroup==='All'||exerciseTargets(ex).includes(b.dataset.gymGroup));if(pool.length)state.settings.selectedExerciseId=pool[0].id;save();renderGym();});
-  if($('#gymExerciseSelect'))$('#gymExerciseSelect').onchange=e=>{state.settings.selectedExerciseId=e.target.value;save();renderGym();};
-  if($('#gymHistoryFilter'))$('#gymHistoryFilter').onchange=e=>{state.settings.gymHistoryExercise=e.target.value;historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();};
-  if($('#logGymBtn'))$('#logGymBtn').onclick=()=>openGymLogModal();
-  if($('#startWorkoutBtn'))$('#startWorkoutBtn').onclick=()=>{if(state.gym.activeWorkout?.date===todayKey())return toast('Your workout is already in progress');openWorkoutPlanner();};
-  $$('[data-workout-log]').forEach(b=>b.onclick=()=>openGymLogModal(null,b.dataset.workoutLog));
-  if($('#finishWorkoutBtn'))$('#finishWorkoutBtn').onclick=finishActiveWorkout;
-  if($('#cancelWorkoutBtn'))$('#cancelWorkoutBtn').onclick=()=>{state.gym.activeWorkout=null;save();renderGym();toast('Workout plan cleared');};
-  if($('#addExerciseBtn'))$('#addExerciseBtn').onclick=()=>openExerciseModal();
-  if($('#manageExercisesBtn'))$('#manageExercisesBtn').onclick=openExerciseManager;
-  if($('#editGymGoalBtn'))$('#editGymGoalBtn').onclick=openGymGoalModal;
-  if($('#selectGymBtn'))$('#selectGymBtn').onclick=()=>historySelectToggle('gym',renderGym);
-  if($('#selectWorkoutBtn'))$('#selectWorkoutBtn').onclick=()=>historySelectToggle('workout',renderGym);
-  $$('[data-edit-gym]').forEach(b=>b.onclick=()=>openGymLogModal(b.dataset.editGym));
-  $$('[data-del-gym]').forEach(b=>b.onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===b.dataset.delGym);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});});
-  $$('[data-del-session]').forEach(b=>b.onclick=()=>{const k=b.dataset.delSession;const existed=state.gym.sessions.includes(k);state.gym.sessions=state.gym.sessions.filter(x=>x!==k);if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);save();renderGym();toast('Workout day removed','Undo',()=>{state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(existed&&!state.gym.sessions.includes(k))state.gym.sessions.push(k);save();renderGym();});});
-  bindHistorySelection('gym',renderGym,ids=>{const set=new Set(ids),removed=state.gym.logs.map((item,index)=>({item,index})).filter(x=>set.has(x.item.id));state.gym.logs=state.gym.logs.filter(x=>!set.has(x.id));historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();toast(`${removed.length} exercise logs deleted`,'Undo',()=>{restoreDeletedObjects(state.gym.logs,removed);save();renderGym();});});
-  bindHistorySelection('workout',renderGym,ids=>{const set=new Set(ids),removed=state.gym.sessions.filter(k=>set.has(k));state.gym.sessions=state.gym.sessions.filter(k=>!set.has(k));removed.forEach(k=>{if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);});historySelected.workout.clear();historySelectMode.workout=false;save();renderGym();toast(`${removed.length} workout days removed`,'Undo',()=>{removed.forEach(k=>{state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k))state.gym.sessions.push(k);});save();renderGym();});});
-  localizeTree(main);
+  if(view==='workouts')body=`${activeWorkoutHTML()}<section class="gym-week-card"><div class="row between center"><div><span>This Week</span><b>${weekSessions.length} session${weekSessions.length===1?'':'s'}</b></div><button class="goal-pill" id="editGymGoalBtn">Goal ${weeklyGoal}</button></div><div class="weekbar"><span style="width:${Math.min(100,weekSessions.length/weeklyGoal*100)}%"></span></div><small class="gym-goal-copy">${weekSessions.length>=weeklyGoal?'Weekly goal reached':`${Math.max(0,weeklyGoal-weekSessions.length)} to go`}</small></section>${state.gym.activeWorkout?.date===todayKey()?'':`<button class="primary full" id="startWorkoutBtn">Start Workout</button><section class="workout-type-list gym-focus-guide"><div class="workout-type"><span class="workout-icon">${svgIcon('spark')}</span><div><b>Choose your workout</b><small>Full Body, Upper Body, Lower Body or Custom. Every exercise stays editable before you start.</small></div></div></section>`}<div class="section-title"><h2>Recent Sessions</h2><button data-gym-view="history">See all</button></div><section class="recent-session-list">${recentSessions.slice(0,5).map(k=>`<div class="workout-type done"><span class="workout-icon">${svgIcon('dumbbell')}</span><div><b>Workout</b><small>${formatDateShort(parseDateKey(k))}</small></div></div>`).join('')||'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
+  if(view==='progress')body=`<div class="section-title first-section"><h2>Strength Progress</h2><div class="row"><button class="secondary small-btn" id="manageExercisesBtn">Manage</button><button id="addExerciseBtn">+ Exercise</button></div></div><div class="muscle-filter-strip">${['All',...GYM_GROUPS.filter(g=>g!=='Other')].map(g=>`<button class="focus-chip ${g===groupFilter?'active':''}" data-gym-group="${escapeAttr(g)}">${escapeHTML(g)}</button>`).join('')}</div>${state.gym.exercises.length?`<section class="card flat"><label><span class="label">Exercise</span><select id="gymExerciseSelect">${filteredExercises.map(x=>`<option value="${escapeAttr(x.id)}" ${x.id===exercise?.id?'selected':''}>${escapeHTML(x.name)} · ${escapeHTML(x.group||'')}</option>`).join('')}</select></label>${exercise?`<section class="progress-color-grid gym-metrics"><article class="pmetric blue"><small>First</small><b>${first?Number(first.weight):'—'}</b><em>kg</em></article><article class="pmetric green"><small>Current</small><b>${last?Number(last.weight):'—'}</b><em>kg</em></article><article class="pmetric yellow"><small>PR</small><b>${pr||'—'}</b><em>kg</em></article><article class="pmetric purple"><small>Change</small><b>${logs.length>1?(change>0?'+':'')+change:'—'}</b><em>kg</em></article></section>${gymChartHTML(logs)}`:'<div class="empty-state">No exercise in this muscle group yet.</div>'}</section><button class="primary full" id="logGymBtn">+ Log exercise</button>`:`<section class="card flat empty-state">No exercises yet. Add one to start tracking strength.</section>`}<div class="section-title"><h2>Personal Bests</h2></div><section class="card flat pr-groups">${prSectionHTML('Upper Body',upper)}${prSectionHTML('Lower Body',lower)}${prSectionHTML('Core',core)}${other.length?prSectionHTML('Other',other):''}</section>`;
+  if(view==='history')body=`<div class="section-title first-section"><h2>${historyExpanded?'All Exercise Logs':'Recent Exercise Logs'}</h2><div class="row"><button class="secondary small-btn" id="toggleGymHistory">${historyExpanded?'Recent':'View all'}</button><button class="secondary small-btn" id="selectGymBtn">${historySelectMode.gym?'Done':'Select'}</button></div></div>${historyExpanded?`<label class="history-exercise-filter"><span class="label">Show</span><select id="gymHistoryFilter"><option value="all" ${historyFilter==='all'?'selected':''}>All exercises</option>${state.gym.exercises.map(x=>`<option value="${escapeAttr(x.id)}" ${historyFilter===x.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label>`:''}${historySelectToolbar('gym')}<section class="card flat">${displayHistory.length?displayHistory.map(l=>{const ex=exerciseById(l.exerciseId);return `<div class="gym-log">${historySelectMode.gym?historySelectCheckbox('gym',l.id):''}<div><b>${escapeHTML(ex?.name||'Deleted exercise')} · ${Number(l.weight)} kg</b><small>${escapeHTML(formatDateShort(parseDateKey(l.date)))} · ${escapeHTML(ex?.group||'Other')} · ${Number(l.sets||0)||'—'} × ${Number(l.reps||0)||'—'}</small></div>${historySelectMode.gym?'':`<div class="row"><button class="text-button tiny" data-edit-gym="${l.id}">Edit</button><button class="text-button tiny danger-text" data-del-gym="${l.id}">Delete</button></div>`}</div>`}).join(''):'<div class="empty-state">No exercise logs match this view.</div>'}</section><div class="section-title"><h2>Workout Days</h2><button class="secondary small-btn" id="selectWorkoutBtn">${historySelectMode.workout?'Done':'Select'}</button></div>${historySelectToolbar('workout')}<section class="card flat">${recentSessions.length?recentSessions.map(k=>`<div class="gym-log">${historySelectMode.workout?historySelectCheckbox('workout',k):''}<div><b>${escapeHTML(formatDateShort(parseDateKey(k)))}</b><small>Workout session</small></div>${historySelectMode.workout?'':`<button class="text-button tiny danger-text" data-del-session="${k}">Remove</button>`}</div>`).join(''):'<div class="empty-state">No workout days logged yet.</div>'}</section>`;
+  main.innerHTML=`${moreBack()}<div class="segmented gym-tabs"><button data-gym-view="workouts" class="${view==='workouts'?'active':''}">Workouts</button><button data-gym-view="progress" class="${view==='progress'?'active':''}">Progress</button><button data-gym-view="history" class="${view==='history'?'active':''}">History</button></div>${body}`;bindMoreBack();
+  $$('[data-gym-view]').forEach(b=>b.onclick=()=>{state.settings.gymView=b.dataset.gymView;save();renderGym();});$$('[data-gym-group]').forEach(b=>b.onclick=()=>{state.settings.gymGroupFilter=b.dataset.gymGroup;const pool=(state.gym.exercises||[]).filter(ex=>b.dataset.gymGroup==='All'||exerciseTargets(ex).includes(b.dataset.gymGroup));if(pool.length)state.settings.selectedExerciseId=pool[0].id;save();renderGym();});if($('#gymExerciseSelect'))$('#gymExerciseSelect').onchange=e=>{state.settings.selectedExerciseId=e.target.value;save();renderGym();};if($('#gymHistoryFilter'))$('#gymHistoryFilter').onchange=e=>{state.settings.gymHistoryExercise=e.target.value;historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();};if($('#toggleGymHistory'))$('#toggleGymHistory').onclick=()=>{state.settings.gymHistoryExpanded=!historyExpanded;if(!state.settings.gymHistoryExpanded)state.settings.gymHistoryExercise='all';historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();};if($('#logGymBtn'))$('#logGymBtn').onclick=()=>openGymLogModal();if($('#startWorkoutBtn'))$('#startWorkoutBtn').onclick=()=>{if(state.gym.activeWorkout?.date===todayKey())return toast('Your workout is already in progress');openWorkoutPlanner();};$$('[data-workout-log]').forEach(b=>b.onclick=()=>openGymLogModal(null,b.dataset.workoutLog));if($('#finishWorkoutBtn'))$('#finishWorkoutBtn').onclick=finishActiveWorkout;if($('#cancelWorkoutBtn'))$('#cancelWorkoutBtn').onclick=cancelActiveWorkout;if($('#addExerciseBtn'))$('#addExerciseBtn').onclick=()=>openExerciseModal();if($('#manageExercisesBtn'))$('#manageExercisesBtn').onclick=openExerciseManager;if($('#editGymGoalBtn'))$('#editGymGoalBtn').onclick=openGymGoalModal;if($('#selectGymBtn'))$('#selectGymBtn').onclick=()=>historySelectToggle('gym',renderGym);if($('#selectWorkoutBtn'))$('#selectWorkoutBtn').onclick=()=>historySelectToggle('workout',renderGym);$$('[data-edit-gym]').forEach(b=>b.onclick=()=>openGymLogModal(b.dataset.editGym));$$('[data-del-gym]').forEach(b=>b.onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===b.dataset.delGym);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});});$$('[data-del-session]').forEach(b=>b.onclick=()=>{const k=b.dataset.delSession,existed=state.gym.sessions.includes(k);state.gym.sessions=state.gym.sessions.filter(x=>x!==k);if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);save();renderGym();toast('Workout day removed','Undo',()=>{state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(existed&&!state.gym.sessions.includes(k))state.gym.sessions.push(k);save();renderGym();});});bindHistorySelection('gym',renderGym,ids=>{const set=new Set(ids),removed=state.gym.logs.map((item,index)=>({item,index})).filter(x=>set.has(x.item.id));state.gym.logs=state.gym.logs.filter(x=>!set.has(x.id));historySelected.gym.clear();historySelectMode.gym=false;save();renderGym();toast(`${removed.length} exercise logs deleted`,'Undo',()=>{restoreDeletedObjects(state.gym.logs,removed);save();renderGym();});});bindHistorySelection('workout',renderGym,ids=>{const set=new Set(ids),removed=state.gym.sessions.filter(k=>set.has(k));state.gym.sessions=state.gym.sessions.filter(k=>!set.has(k));removed.forEach(k=>{if(!state.gym.sessionExcluded.includes(k))state.gym.sessionExcluded.push(k);});historySelected.workout.clear();historySelectMode.workout=false;save();renderGym();toast(`${removed.length} workout days removed`,'Undo',()=>{removed.forEach(k=>{state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k))state.gym.sessions.push(k);});save();renderGym();});});localizeTree(main);
 }
-
-function gymChartHTML(logs){
-  if(logs.length<2)return `<div class="chart-empty">Log this exercise at least twice to see a progress chart.</div>`;
-  const pts=logs.slice(-12),vals=pts.map(x=>Number(x.weight||0)),min=Math.min(...vals),max=Math.max(...vals),span=Math.max(1,max-min),w=320,h=130,pad=18;
-  const coords=pts.map((x,i)=>({x:pad+(w-pad*2)*(i/Math.max(1,pts.length-1)),y:h-pad-(h-pad*2)*((Number(x.weight)-min)/span),v:Number(x.weight),date:x.date}));
-  const path=coords.map((p,i)=>`${i?'L':'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-  return `<div class="gym-chart-wrap"><svg class="gym-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Weight progress chart"><path class="chart-line" d="${path}"/>${coords.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="4"><title>${p.v} kg · ${escapeHTML(p.date)}</title></circle>`).join('')}<text x="${pad}" y="14">${max} kg</text><text x="${pad}" y="${h-3}">${min} kg</text></svg></div>`;
-}
+function gymChartHTML(logs){if(logs.length<2)return `<div class="chart-empty">Log this exercise at least twice to see a progress chart.</div>`;const pts=logs.slice(-12),vals=pts.map(x=>Number(x.weight||0)),min=Math.min(...vals),max=Math.max(...vals),span=Math.max(1,max-min),w=320,h=130,pad=18,coords=pts.map((x,i)=>({x:pad+(w-pad*2)*(i/Math.max(1,pts.length-1)),y:h-pad-(h-pad*2)*((Number(x.weight)-min)/span),v:Number(x.weight),date:x.date})),path=coords.map((p,i)=>`${i?'L':'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');return `<div class="gym-chart-wrap"><svg class="gym-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Weight progress chart"><path class="chart-line" d="${path}"/>${coords.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="4"><title>${p.v} kg · ${escapeHTML(p.date)}</title></circle>`).join('')}<text x="${pad}" y="14">${max} kg</text><text x="${pad}" y="${h-3}">${min} kg</text></svg></div>`;}
 function openGymLogModal(id=null,presetExerciseId=null){
-  const existing=id?(state.gym.logs||[]).find(x=>x.id===id):null;
-  const ex=state.gym.exercises.find(x=>x.id===(existing?.exerciseId||presetExerciseId||state.settings.selectedExerciseId))||state.gym.exercises[0];
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>${existing?'Edit':'Log'} an exercise</h2><div class="stack"><label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label><div class="form-grid"><label><span class="label">Weight (kg)</span><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal" value="${existing?Number(existing.weight):''}"></label><label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${existing?.date||todayKey()}"></label></div><div class="form-grid"><label><span class="label">Sets</span><input class="input" id="gymSets" type="number" min="1" max="20" value="${existing?Number(existing.sets||3):3}"></label><label><span class="label">Reps</span><input class="input" id="gymReps" type="number" min="1" max="100" value="${existing?Number(existing.reps||10):10}"></label></div></div><button class="primary full" id="saveGymLog" style="margin-top:14px">Save log</button>${existing?'<button class="danger-btn full" id="deleteGymLog" style="margin-top:8px">Delete log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#saveGymLog').onclick=()=>{const weight=Number($('#gymWeight').value);if(!(weight>0))return toast('Enter the weight you used');const exerciseId=$('#gymLogExercise').value,date=$('#gymDate').value||todayKey();const priorPR=exercisePR(exerciseId,existing?.id||null);const data={exerciseId,weight,sets:clamp(Number($('#gymSets').value||3),1,20),reps:clamp(Number($('#gymReps').value||10),1,100),date,createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.gym.logs.push({id:uid('gymlog'),...data});state.gym.sessionExcluded=state.gym.sessionExcluded.filter(k=>k!==date);state.settings.selectedExerciseId=exerciseId;if(!existing)markActiveWorkoutExercise(exerciseId);save();modal.close();renderGym();toast(weight>priorPR?`New PR: ${weight} kg`:(existing?'Gym log updated':'Gym progress saved'));};
-  if(existing)$('#deleteGymLog').onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===existing.id);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();modal.close();renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});};
-  $('#cancelModal').onclick=()=>modal.close();
+  const active=state.gym.activeWorkout?.date===todayKey()?state.gym.activeWorkout:null,workoutExisting=!id&&presetExerciseId&&active?sessionWorkoutLog(active.id,presetExerciseId):null,existing=id?(state.gym.logs||[]).find(x=>x.id===id):workoutExisting,lockedExercise=!!(presetExerciseId&&active),initialId=existing?.exerciseId||presetExerciseId||state.settings.selectedExerciseId,ex=state.gym.exercises.find(x=>x.id===initialId)||state.gym.exercises[0];
+  const drawQuickWeights=(exerciseId,current=existing)=>smartWeightOptions(exerciseId,current).map(v=>`<button type="button" class="quick-value" data-quick-weight="${v}">${v}</button>`).join('');
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>${existing?'Update':'Log'} exercise</h2><div class="stack">${lockedExercise?`<div class="locked-exercise-name"><small>Exercise</small><b>${escapeHTML(ex?.name||'Exercise')}</b></div>`:`<label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label>`}<label><span class="label">Weight (kg)</span><div class="quick-value-row" id="quickWeightRow">${drawQuickWeights(ex?.id)}</div><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal" value="${existing?Number(existing.weight):''}" placeholder="Type another weight"></label><div class="quick-log-grid"><label><span class="label">Sets</span><div class="quick-value-row compact">${[2,3,4,5].map(v=>`<button type="button" class="quick-value ${Number(existing?.sets||3)===v?'active':''}" data-quick-sets="${v}">${v}</button>`).join('')}</div><input class="input" id="gymSets" type="number" min="1" max="20" value="${Number(existing?.sets||3)}"></label><label><span class="label">Reps</span><div class="quick-value-row compact">${[6,8,10,12,15].map(v=>`<button type="button" class="quick-value ${Number(existing?.reps||10)===v?'active':''}" data-quick-reps="${v}">${v}</button>`).join('')}</div><input class="input" id="gymReps" type="number" min="1" max="100" value="${Number(existing?.reps||10)}"></label></div>${lockedExercise?'':`<label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${existing?.date||todayKey()}"></label>`}</div><button class="primary full" id="saveGymLog" style="margin-top:14px">${existing?'Update log':'Save log'}</button>${existing&&!workoutExisting?'<button class="danger-btn full" id="deleteGymLog" style="margin-top:8px">Delete log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
+  const bindQuick=()=>{$$('[data-quick-weight]',modalContent).forEach(b=>b.onclick=()=>{$('#gymWeight').value=b.dataset.quickWeight;$$('[data-quick-weight]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});$$('[data-quick-sets]',modalContent).forEach(b=>b.onclick=()=>{$('#gymSets').value=b.dataset.quickSets;$$('[data-quick-sets]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});$$('[data-quick-reps]',modalContent).forEach(b=>b.onclick=()=>{$('#gymReps').value=b.dataset.quickReps;$$('[data-quick-reps]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});};bindQuick();
+  if($('#gymLogExercise'))$('#gymLogExercise').onchange=e=>{$('#quickWeightRow').innerHTML=drawQuickWeights(e.target.value,null);bindQuick();};
+  $('#saveGymLog').onclick=()=>{const exerciseId=lockedExercise?ex.id:$('#gymLogExercise').value,weight=Number($('#gymWeight').value);if(!(weight>0))return toast('Choose or type the weight you used');const date=lockedExercise?todayKey():($('#gymDate').value||todayKey()),priorPR=exercisePR(exerciseId,existing?.id||null),data={exerciseId,weight,sets:clamp(Number($('#gymSets').value||3),1,20),reps:clamp(Number($('#gymReps').value||10),1,100),date,createdAt:existing?.createdAt||Date.now(),workoutId:lockedExercise?active.id:(existing?.workoutId||null)};if(existing)Object.assign(existing,data);else state.gym.logs.push({id:uid('gymlog'),...data});state.gym.sessionExcluded=state.gym.sessionExcluded.filter(k=>k!==date);state.settings.selectedExerciseId=exerciseId;if(lockedExercise)markActiveWorkoutExercise(exerciseId);save();modal.close();renderGym();toast(weight>priorPR?`New PR: ${weight} kg`:(existing?'Gym log updated':'Gym progress saved'));};
+  if(existing&&!workoutExisting&&$('#deleteGymLog'))$('#deleteGymLog').onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===existing.id);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();modal.close();renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
 }
 function openExerciseModal(id=null){
-  const existing=id?(state.gym.exercises||[]).find(x=>x.id===id):null;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>${existing?'Edit exercise':'Add an exercise'}</h2><div class="stack"><label><span class="label">Exercise name</span><input class="input" id="exerciseName" value="${escapeAttr(existing?.name||'')}" placeholder="e.g. Incline dumbbell press"></label><label><span class="label">Muscle group</span><select id="exerciseGroup">${[...new Set([existing?.group,...GYM_GROUPS].filter(Boolean))].map(g=>`<option value="${escapeAttr(g)}" ${g===(existing?.group||'Other')?'selected':''}>${escapeHTML(g)}</option>`).join('')}</select></label></div><button class="primary full" id="saveExercise" style="margin-top:14px">${existing?'Save':'Add exercise'}</button>${existing?'<button class="danger-btn full" id="deleteExercise" style="margin-top:8px">Delete exercise</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#saveExercise').onclick=()=>{const name=$('#exerciseName').value.trim();if(!name)return toast('Add an exercise name');if(existing){existing.name=name;existing.group=$('#exerciseGroup').value||'Other';existing.targets=[existing.group];}else{const x={id:uid('exercise'),name,group:$('#exerciseGroup').value||'Other',targets:[$('#exerciseGroup').value||'Other']};state.gym.exercises.push(x);state.settings.selectedExerciseId=x.id;}save();modal.close();renderGym();toast(existing?'Exercise updated':'Exercise added');};
-  if(existing&&$('#deleteExercise'))$('#deleteExercise').onclick=()=>{const exIndex=state.gym.exercises.findIndex(x=>x.id===existing.id);const removedExercise={...existing};const removedLogs=(state.gym.logs||[]).map((item,index)=>({item,index})).filter(x=>x.item.exerciseId===existing.id);state.gym.exercises.splice(exIndex,1);state.gym.logs=state.gym.logs.filter(l=>l.exerciseId!==existing.id);state.settings.selectedExerciseId=state.gym.exercises[0]?.id||'';save();modal.close();renderGym();toast('Exercise deleted','Undo',()=>{state.gym.exercises.splice(Math.max(0,Math.min(exIndex,state.gym.exercises.length)),0,removedExercise);restoreDeletedObjects(state.gym.logs,removedLogs);state.settings.selectedExerciseId=removedExercise.id;save();renderGym();});};
-  $('#cancelModal').onclick=()=>modal.close();
-  localizeTree(modalContent);
+  const existing=id?(state.gym.exercises||[]).find(x=>x.id===id):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>${existing?'Edit exercise':'Add an exercise'}</h2><div class="stack"><label><span class="label">Exercise name</span><input class="input" id="exerciseName" value="${escapeAttr(existing?.name||'')}" placeholder="e.g. Incline dumbbell press"></label><label><span class="label">Muscle group</span><select id="exerciseGroup">${[...new Set([existing?.group,...GYM_GROUPS].filter(Boolean))].map(g=>`<option value="${escapeAttr(g)}" ${g===(existing?.group||'Other')?'selected':''}>${escapeHTML(g)}</option>`).join('')}</select></label></div><button class="primary full" id="saveExercise" style="margin-top:14px">${existing?'Save':'Add exercise'}</button>${existing?'<button class="danger-btn full" id="deleteExercise" style="margin-top:8px">Delete exercise</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveExercise').onclick=()=>{const name=$('#exerciseName').value.trim();if(!name)return toast('Add an exercise name');if(existing){existing.name=name;existing.group=$('#exerciseGroup').value||'Other';existing.targets=[existing.group];}else{const x={id:uid('exercise'),name,group:$('#exerciseGroup').value||'Other',targets:[$('#exerciseGroup').value||'Other']};state.gym.exercises.push(x);state.settings.selectedExerciseId=x.id;}save();modal.close();renderGym();toast(existing?'Exercise updated':'Exercise added');};if(existing&&$('#deleteExercise'))$('#deleteExercise').onclick=()=>{const exIndex=state.gym.exercises.findIndex(x=>x.id===existing.id),removedExercise={...existing},removedLogs=(state.gym.logs||[]).map((item,index)=>({item,index})).filter(x=>x.item.exerciseId===existing.id),presetSnapshot=JSON.parse(JSON.stringify(state.gym.workoutPresets||{})),activeWorkoutSnapshot=state.gym.activeWorkout?JSON.parse(JSON.stringify(state.gym.activeWorkout)):null;state.gym.exercises.splice(exIndex,1);state.gym.logs=state.gym.logs.filter(l=>l.exerciseId!==existing.id);Object.keys(state.gym.workoutPresets||{}).forEach(k=>state.gym.workoutPresets[k]=(state.gym.workoutPresets[k]||[]).filter(id=>id!==existing.id));if(state.gym.activeWorkout){state.gym.activeWorkout.exerciseIds=(state.gym.activeWorkout.exerciseIds||[]).filter(id=>id!==existing.id);state.gym.activeWorkout.completedExerciseIds=(state.gym.activeWorkout.completedExerciseIds||[]).filter(id=>id!==existing.id);}state.settings.selectedExerciseId=state.gym.exercises[0]?.id||'';save();modal.close();renderGym();toast('Exercise deleted','Undo',()=>{state.gym.exercises.splice(Math.max(0,Math.min(exIndex,state.gym.exercises.length)),0,removedExercise);restoreDeletedObjects(state.gym.logs,removedLogs);state.gym.workoutPresets=presetSnapshot;if(activeWorkoutSnapshot)state.gym.activeWorkout=activeWorkoutSnapshot;state.settings.selectedExerciseId=removedExercise.id;save();renderGym();});};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
 }
-function openExerciseManager(){
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>Manage exercises</h2><div class="exercise-manage-list">${state.gym.exercises.length?state.gym.exercises.map(ex=>`<div class="exercise-manage-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></div><button class="secondary small-btn" data-edit-exercise="${escapeAttr(ex.id)}">Edit</button></div>`).join(''):'<div class="empty-state">No exercises yet.</div>'}</div><button class="primary full" id="managerAddExercise" style="margin-top:12px">+ Add exercise</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Close</button>`;
-  modal.showModal();$$('[data-edit-exercise]').forEach(b=>b.onclick=()=>{modal.close();openExerciseModal(b.dataset.editExercise);});$('#managerAddExercise').onclick=()=>{modal.close();openExerciseModal();};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
-}
-function openGymGoalModal(){
-  const current=clamp(Number(state.gym.weeklyGoal||3),1,7);
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>Weekly goal</h2><p class="muted">Choose how many workout days you want in a normal week. This is a target, not a fixed program.</p><div class="goal-picker">${Array.from({length:7},(_,i)=>i+1).map(n=>`<button class="goal-number ${n===current?'active':''}" data-goal="${n}">${n}</button>`).join('')}</div><button class="secondary full" id="cancelModal" style="margin-top:12px">Cancel</button>`;
-  modal.showModal();$$('[data-goal]').forEach(b=>b.onclick=()=>{state.gym.weeklyGoal=clamp(Number(b.dataset.goal),1,7);save();modal.close();renderGym();toast(`Weekly goal set to ${state.gym.weeklyGoal}`);});$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
-}
+function openExerciseManager(){modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>Manage exercises</h2><div class="exercise-manage-list">${state.gym.exercises.length?state.gym.exercises.map(ex=>`<div class="exercise-manage-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></div><button class="secondary small-btn" data-edit-exercise="${escapeAttr(ex.id)}">Edit</button></div>`).join(''):'<div class="empty-state">No exercises yet.</div>'}</div><button class="primary full" id="managerAddExercise" style="margin-top:12px">+ Add exercise</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Close</button>`;modal.showModal();$$('[data-edit-exercise]').forEach(b=>b.onclick=()=>{modal.close();openExerciseModal(b.dataset.editExercise);});$('#managerAddExercise').onclick=()=>{modal.close();openExerciseModal();};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);}
+function openGymGoalModal(){const current=clamp(Number(state.gym.weeklyGoal||3),1,7);modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>Weekly goal</h2><p class="muted">Choose how many workout days you want in a normal week. This is a target, not a fixed program.</p><div class="goal-picker">${Array.from({length:7},(_,i)=>i+1).map(n=>`<button class="goal-number ${n===current?'active':''}" data-goal="${n}">${n}</button>`).join('')}</div><button class="secondary full" id="cancelModal" style="margin-top:12px">Cancel</button>`;modal.showModal();$$('[data-goal]').forEach(b=>b.onclick=()=>{state.gym.weeklyGoal=clamp(Number(b.dataset.goal),1,7);save();modal.close();renderGym();toast(`Weekly goal set to ${state.gym.weeklyGoal}`);});$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);}
+
 function daysUntilDate(key){if(!key)return null;const d=parseDateKey(key),t=parseDateKey(todayKey());return Math.round((d-t)/86400000);}
 function dueMeta(key){const d=daysUntilDate(key);if(d==null)return {main:'—',sub:'No date set',tone:'muted'};if(d<0)return {main:formatDateShort(parseDateKey(key)),sub:`${Math.abs(d)} day${Math.abs(d)===1?'':'s'} overdue`,tone:'danger'};if(d===0)return {main:formatDateShort(parseDateKey(key)),sub:'Due today',tone:'warn'};return {main:formatDateShort(parseDateKey(key)),sub:`${d} day${d===1?'':'s'} left`,tone:d<=14?'warn':'good'};}
 function renderCar(){
@@ -1564,7 +1600,7 @@ if('serviceWorker' in navigator){
         reloading=true;
         window.location.reload();
       });
-      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.2.0',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.3.0',{updateViaCache:'none'});
       if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});
       reg.addEventListener('updatefound',()=>{
         const worker=reg.installing;

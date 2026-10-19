@@ -1,12 +1,12 @@
-RESET v3.2.0 — PERSONAL EDITION
+RESET v3.3.0 — PERSONAL EDITION
 
-This is the local-only personal Reset app.
+Update your existing GitHub Pages app:
+1. Export one backup from Reset first.
+2. Upload everything inside this life-reset-app folder to the existing reset-life-app GitHub repository.
+3. Commit to main and wait for GitHub Pages to deploy.
+4. Fully close Reset on iPhone and reopen it.
+5. Settings should show v3.3.0.
 
-UPDATE
-1. Export one JSON backup from your current app.
-2. Upload all files in this life-reset-app folder to the existing GitHub Pages repository.
-3. Wait for deployment, fully close the Home Screen app and reopen it.
-4. Settings should show v3.2.0.
+If the Home Screen app still shows an older version, open the GitHub Pages URL in Safari, refresh once, then fully close and reopen Reset.
 
-DATA
-There are no accounts, cloud database, AI, ads, analytics, or online currency/exchange-rate services. App data stays local in browser storage, with the existing local IndexedDB backup copy and manual JSON export.
+All data stays local on your device.

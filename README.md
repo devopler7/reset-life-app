@@ -1,18 +1,20 @@
-# Reset v3.2.0 — Personal Edition
+# Reset v3.3.0 — Personal Edition
 
-A local-first personal dashboard for Today, Week, University, Money, Gym, Health, Car, Projects and Progress.
+Reset is a local-first personal life dashboard designed for iPhone Home Screen use. It keeps the dark OLED design while combining Today, Week, University, Money, Gym, Health, Sleep, Car, Projects and Progress in one app.
 
-## v3.2 changes
-- Gym history now shows every logged exercise, with an optional exercise filter.
-- Added Standing Calf Raise, Ab Crunch Machine, Glute Kickback, Rear Delt Fly and Hanging Knee Raise without changing existing exercise IDs or logs.
-- Muscle-group filters added to Strength Progress.
-- Start Workout now lets you choose Full Body or a training focus and builds a simple exercise plan from your exercise library.
-- Active workouts track completed exercises before you finish the session.
-- Today Move button alignment polished.
-- Added Other task category and an optional fixed-time flag for one-off meetings/appointments.
-- Week now supports one-day future planning: change wake time for one date only and rebuild that future day without changing the recurring routine.
-- Future rebuilds can keep manual swaps/time changes.
-- Added Perfect Week achievement for completing every scheduled item Monday through Sunday.
-- Progress ranges and spending metrics were cleaned up.
+## v3.3 highlights
+- Full gym workout builder with Full Body, Upper Body, Lower Body and Custom presets.
+- Full Body defaults to the 10-exercise program selected for regular 3x/week use, while every exercise remains optional/editable.
+- Fast gym logging with smart weight chips, quick sets/reps, duplicate-safe active-workout logging, complete history and grouped personal bests.
+- Wake and Sleep are permanent day anchors with one-day overrides, including sleep after midnight.
+- Week can rebuild today or future days before they arrive without changing the recurring routine.
+- Missed flexible items can be restored; fixed events can be marked missed or cancelled for that day.
+- New Sleep Life Tool with last-night duration, averages, target, consistency, chart and editable history.
+- Perfect Week progression and cleaner Progress layout.
+- Existing Money, University, Car, Projects, Arabic RTL and local backup behavior are retained.
 
-All existing v3.1.1 data migrates forward automatically.
+## Privacy / storage
+Reset has no account, cloud database, analytics, AI service or external API. Personal data stays in local browser storage with an automatic IndexedDB safety copy. A manual JSON export/import remains available in Settings.
+
+## Updating
+Back up from Settings, upload all files in this folder to the existing GitHub Pages repository, wait for deployment, then fully close and reopen the Home Screen app. If iPhone still shows an older cached build, refresh the GitHub Pages URL once in Safari and reopen Reset.

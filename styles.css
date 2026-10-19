@@ -811,3 +811,49 @@ html[dir="rtl"] .transaction-amount,html[dir="rtl"] .history-month-card>div{text
   color:#f5f5f7;
   border:1px solid #343438;
 }
+
+/* =========================================================
+   Reset 3.3 — workout builder, day anchors, sleep tool
+   ========================================================= */
+.anchor-item .timeline-body{
+  background:linear-gradient(135deg,rgba(10,132,255,.08),rgba(100,210,255,.025));
+  border-color:rgba(10,132,255,.20)!important;
+}
+.anchor-item .timeline-dot{background:#0a84ff!important;box-shadow:0 0 0 3px rgba(10,132,255,.10)}
+.anchor-badge{color:#64d2ff!important;border-color:rgba(100,210,255,.24)!important;background:rgba(100,210,255,.08)!important}
+.timeline-time small{display:block;color:#64d2ff;font-size:7px;font-weight:900;line-height:1;margin-top:2px}
+
+/* Keep the hero action icons/text optically centered on iPhone. */
+.now-actions>button{min-width:0}
+#heroMoveBtn,#heroDoneBtn{height:44px;min-height:44px;padding-inline:12px}
+#heroMoveBtn{gap:6px!important}
+#heroMoveBtn .ui-icon,#heroDoneBtn .ui-icon{display:block;transform:none;vertical-align:middle}
+
+.workout-four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible;padding-bottom:10px}
+.workout-four .focus-chip{width:100%;padding:0 7px;white-space:nowrap}
+.workout-builder-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:4px 0 10px}
+.workout-builder-head small,.workout-builder-head b{display:block}.workout-builder-head small{font-size:8px;color:#6e6e73;letter-spacing:.09em;font-weight:850}.workout-builder-head b{font-size:13px;margin-top:2px}
+.exercise-pick-grid{display:grid;gap:7px;max-height:min(52vh,520px);overflow:auto;padding:1px;margin-bottom:12px;-webkit-overflow-scrolling:touch}
+.exercise-pick{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr);align-items:center;gap:9px;border:1px solid #2d2d31;background:#111317;border-radius:13px;padding:10px 11px;min-height:54px;cursor:pointer}
+.exercise-pick.selected{border-color:rgba(10,132,255,.48);background:#0d1d2d}
+.exercise-pick>input{position:absolute;opacity:0;pointer-events:none}.exercise-pick-check{width:24px;height:24px;border:1px solid #3d3d42;border-radius:8px;display:grid;place-items:center;color:#fff}.exercise-pick.selected .exercise-pick-check{background:#0a84ff;border-color:#0a84ff}.exercise-pick-check .ui-icon{width:14px;height:14px}.exercise-pick b,.exercise-pick small{display:block}.exercise-pick b{font-size:11px}.exercise-pick small{font-size:9px;color:#8e8e93;margin-top:2px}
+.locked-exercise-name{border:1px solid #2e2e32;background:#111317;border-radius:13px;padding:11px 12px}.locked-exercise-name small,.locked-exercise-name b{display:block}.locked-exercise-name small{font-size:9px;color:#8e8e93}.locked-exercise-name b{margin-top:2px;font-size:14px}
+.quick-log-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.quick-value-row{display:flex;gap:6px;overflow-x:auto;padding:4px 0 7px;scrollbar-width:none}.quick-value-row::-webkit-scrollbar{display:none}.quick-value{flex:0 0 auto;border:1px solid #343438;background:#15171a;color:#d1d1d6;border-radius:10px;min-width:44px;min-height:34px;padding:0 9px;font-size:10px;font-weight:800}.quick-value.active{background:#0a84ff;border-color:#0a84ff;color:#fff}.quick-value-row.compact .quick-value{min-width:36px;padding:0 7px}
+.pr-groups{padding-block:4px}.pr-section+.pr-section{border-top:1px solid #27272a;margin-top:7px;padding-top:7px}.pr-section-title{display:flex;justify-content:space-between;align-items:center;padding:7px 3px}.pr-section-title b{font-size:11px}.pr-section-title span{font-size:9px;color:#8e8e93}.pr-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 3px;border-top:1px solid #222225}.pr-row b,.pr-row small{display:block}.pr-row b{font-size:11px}.pr-row small{font-size:8px;color:#8e8e93;margin-top:2px}.pr-row strong{font-size:13px;white-space:nowrap}.compact-empty{padding:9px!important;min-height:auto!important}
+
+/* Progress metric alignment: icon has its own column and never collides with text. */
+.progress-color-grid:not(.gym-metrics) .pmetric{grid-template-columns:32px minmax(0,1fr);grid-template-rows:auto auto;column-gap:8px;row-gap:1px;align-content:start}
+.progress-color-grid:not(.gym-metrics) .pmetric>span{grid-column:1;grid-row:1/3;margin:0;width:28px;height:28px}
+.progress-color-grid:not(.gym-metrics) .pmetric>small,.progress-color-grid:not(.gym-metrics) .pmetric>b{grid-column:2;min-width:0;margin-left:0}
+.progress-color-grid:not(.gym-metrics) .pmetric>small{grid-row:1;align-self:center;line-height:1.2}
+.progress-color-grid:not(.gym-metrics) .pmetric>b{grid-row:2;align-self:start;line-height:1.05;margin-top:4px}
+
+/* Sleep life tool */
+.tool-icon.cyan{background:#0c3038;color:#64d2ff}
+.sleep-hero{border:1px solid #294049;background:linear-gradient(145deg,#0c2229,#101317);border-radius:20px;padding:16px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.sleep-hero h2{font-size:32px;letter-spacing:-.04em;margin:4px 0 2px}.sleep-hero p{margin:0;color:#a1a1a6;font-size:11px}.sleep-status-pill{border:1px solid #36515b;border-radius:999px;padding:6px 9px;font-size:9px;font-weight:850;white-space:nowrap}.sleep-hero.good .sleep-status-pill{background:#0d3921;border-color:#1c6337;color:#30d158}.sleep-hero.warn .sleep-status-pill{background:#3a290a;border-color:#674812;color:#ffcc00}.sleep-hero.neutral .sleep-status-pill{background:#202024;border-color:#3a3a3e;color:#a1a1a6}
+.sleep-metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}.sleep-metric-grid article{background:#111317;border:1px solid #29292d;border-radius:14px;padding:11px;min-width:0}.sleep-metric-grid small,.sleep-metric-grid b,.sleep-metric-grid span{display:block}.sleep-metric-grid small{font-size:8px;color:#8e8e93;line-height:1.25}.sleep-metric-grid b{font-size:15px;margin-top:5px;white-space:nowrap}.sleep-metric-grid span{font-size:8px;color:#6e6e73;margin-top:3px}.sleep-metric-grid .text-button{padding:4px 0 0;min-height:auto}
+.sleep-chart-card{overflow:hidden}.sleep-chart{height:160px;display:flex;align-items:flex-end;gap:7px;padding:28px 4px 19px;position:relative}.sleep-bar-wrap{height:100%;flex:1;min-width:9px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;z-index:1}.sleep-bar{width:min(18px,85%);min-height:7px;border-radius:6px 6px 3px 3px;background:#64d2ff}.sleep-bar.good{background:#30d158}.sleep-bar.warn{background:#ff9f0a}.sleep-bar-wrap small{font-size:7px;color:#6e6e73}.sleep-target-line{position:absolute;left:0;right:0;bottom:calc(19px + var(--target));height:1px;border-top:1px dashed rgba(100,210,255,.45);z-index:0}.sleep-target-line span{position:absolute;right:2px;top:-14px;font-size:7px;color:#64d2ff;background:#111317;padding-left:5px}.sleep-consistency-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}.sleep-consistency-grid article{display:grid;grid-template-columns:32px minmax(0,1fr);gap:9px;align-items:center;background:#111317;border:1px solid #29292d;border-radius:14px;padding:11px}.sleep-consistency-grid article>span{width:30px;height:30px;border-radius:10px;background:#0c3038;color:#64d2ff;display:grid;place-items:center}.sleep-consistency-grid .ui-icon{width:16px;height:16px}.sleep-consistency-grid small,.sleep-consistency-grid b,.sleep-consistency-grid em{display:block}.sleep-consistency-grid small{font-size:8px;color:#8e8e93}.sleep-consistency-grid b{font-size:13px;margin-top:2px}.sleep-consistency-grid em{font-size:8px;color:#6e6e73;font-style:normal;margin-top:2px}.sleep-history-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #252528}.sleep-history-row:last-child{border-bottom:0}.sleep-history-icon{width:32px;height:32px;border-radius:11px;display:grid;place-items:center;background:#202024;color:#8e8e93}.sleep-history-icon.good{background:#0d3420;color:#30d158}.sleep-history-icon.warn{background:#382709;color:#ff9f0a}.sleep-history-icon .ui-icon{width:16px;height:16px}.sleep-history-row b,.sleep-history-row small{display:block}.sleep-history-row b{font-size:11px}.sleep-history-row small{font-size:8px;color:#8e8e93;margin-top:2px}.sleep-target-options{margin-bottom:10px}
+
+@media(max-width:390px){
+  .workout-four{grid-template-columns:1fr 1fr}.exercise-pick-grid{max-height:48vh}.quick-log-grid{grid-template-columns:1fr}.sleep-metric-grid{grid-template-columns:1fr 1fr}.sleep-metric-grid article:last-child{grid-column:1/-1}.sleep-consistency-grid{grid-template-columns:1fr}.sleep-hero h2{font-size:29px}
+}
