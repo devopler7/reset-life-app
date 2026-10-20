@@ -1,6 +1,6 @@
-const CACHE = 'reset-life-v3.6.0';
+const CACHE = 'reset-life-v3.6.1';
 const ASSETS = [
-  './', './index.html', './styles.css?v=3.6.0', './app.js?v=3.6.0', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=3.6.1', './app.js?v=3.6.1', './manifest.webmanifest',
   './VERSION.txt', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'
 ];
 

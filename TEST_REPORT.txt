@@ -1,54 +1,24 @@
-RESET v3.6.0 TEST REPORT
+RESET v3.6.1 TEST REPORT
 
-Release focus
--------------
-This patch was tested specifically around the new editable Plan Day workflow, Task/Reminder creation, intentional overlaps, cancelled fixed events, collision handling and responsive iPhone layouts.
+Scope
+- Focused hotfix for flexible-task swap semantics and rebuild persistence.
+- Based directly on Reset v3.6.0.
 
-Static/runtime checks
----------------------
-- app.js passes Node.js syntax validation.
-- App booted in a Chromium browser harness with no uncaught JavaScript errors.
-- Version wiring confirmed as v3.6.0 in app code, HTML, VERSION.txt and service-worker cache assets.
+Checks performed on the release source
+- JavaScript syntax: PASS
+- Service-worker syntax: PASS
+- Version wiring checked in app.js, index.html, VERSION.txt and service-worker cache: PASS
+- 15 targeted scheduler/migration assertions: 15/15 PASS
+- Reproduced the reported pattern with Focused university catch-up, Lunch and Shower + grooming at different durations: PASS
+- Swap repacks the affected block with no overlap: PASS
+- A second rebuild with manual moves preserved returns the same order/times: PASS
+- Five consecutive rebuilds remain idempotent in the reproduced scenario: PASS
+- Cancelled fixed events do not block the swap: PASS
+- Active fixed events still block direct moves into their time: PASS
+- Exact event boundaries (end == next start) remain valid: PASS
+- Reset my moves / Reset to routine clears stored manual order: PASS
+- Migration from v3.6.0 keeps existing records and accepts the new manual-order field: PASS
+- 209 cross-day flexible-task swap combinations exercised in a VM logic harness: 0 accepted-swap overlap/idempotence failures. Semantically invalid swaps are rejected before modifying the day.
 
-Targeted browser regression suite: 15/15 passed
-------------------------------------------------
-- Today opens the Task / Reminder picker.
-- Reminder saves with non-blocking semantics.
-- Reminder badge renders on the timeline.
-- Needs attention identifies the exact overlapping item names.
-- Intentional fixed-event overlap suppresses false attention.
-- A reminder overlapping a class does not create an overlap issue.
-- Plan Day rows are actionable rather than read-only.
-- Plan Day exposes Add for one-off items/reminders.
-- Flexible Plan Day items expose move/swap controls.
-- Fixed Plan Day items expose cancel-for-day controls.
-- Cancelled fixed events no longer block a move.
-- Restored fixed events protect their original time again.
-- Back-to-back boundaries are not misclassified as overlaps.
-- No browser console/page errors occurred.
-
-Plan Day action suite: 9/9 passed
---------------------------------
-- Plan Day move persists a manual time override.
-- Saving a move returns to Plan Day.
-- Cancel-for-day state persists.
-- Cancelled items expose Restore.
-- Restore clears the cancellation state.
-- A reminder added from Plan Day saves correctly.
-- Adding an item returns to Plan Day.
-- Stress case with 200 overlapping reminders: zero reminder items were scheduled, moved, marked unplaced or reported as conflicts.
-- No browser errors occurred during the action suite.
-
-Responsive checks: 12/12 passed
--------------------------------
-Today, Add Item, and Plan Day were checked at 320, 375, 390 and 430 px viewport widths. No horizontal overflow was detected and no page errors occurred.
-
-Manual visual inspection
-------------------------
-- Task / Reminder picker reviewed at 390 px.
-- Plan Day conflict panel and actionable item rows reviewed at 390 px.
-- Reminder and overlap controls use the existing Reset dark-card/icon language.
-
-Limitations
------------
-Automated browser testing cannot perfectly reproduce physical iPhone Home Screen/Safari behavior, touch latency, keyboard behavior, or GitHub Pages deployment caching. A short real-device smoke test after deployment is still recommended.
+Important
+- The automated environment cannot reproduce physical iPhone Home Screen/Safari touch behaviour exactly. The real device remains the final smoke test.

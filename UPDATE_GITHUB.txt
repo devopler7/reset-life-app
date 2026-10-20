@@ -1,12 +1,12 @@
-RESET v3.6.0 UPDATE
+RESET v3.6.1 UPDATE
 
-1. Export a Reset JSON backup first.
-2. In GitHub, open the reset-life-app repository on the main branch.
-3. Upload all files/folders INSIDE life-reset-app to the repository root and commit.
-4. Do not create a nested life-reset-app folder in the repository.
-5. Wait for Actions / Pages deployment to finish. A queued hosted runner can occasionally take longer than the build itself.
-6. Refresh the GitHub Pages URL once in Safari if the old version is still served.
-7. Fully close the installed Home Screen app and reopen it.
-8. Verify Settings -> App version = v3.6.0.
+1. Export a backup from Reset.
+2. Unzip this package.
+3. Open the life-reset-app folder.
+4. Upload its CONTENTS to the root of your existing GitHub repository.
+5. Commit the changes.
+6. Wait for the newest Pages deployment to show a green check.
+7. Fully close and reopen the Home Screen app.
+8. Verify Settings -> App version = v3.6.1.
 
-If the website says v3.6.0 but Home Screen is still older, close it from the app switcher, refresh the Pages URL in Safari, then reopen Reset.
+If the website says v3.6.1 but Home Screen is still older, close it from the app switcher, refresh the Pages URL once in Safari, then reopen Reset.

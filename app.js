@@ -1,6 +1,6 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 15;
-const APP_DISPLAY_VERSION = '3.6.0';
+const APP_VERSION = 16;
+const APP_DISPLAY_VERSION = '3.6.1';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -2339,7 +2339,7 @@ if('serviceWorker' in navigator){
         reloading=true;
         window.location.reload();
       });
-      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.6.0',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.6.1',{updateViaCache:'none'});
       if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});
       reg.addEventListener('updatefound',()=>{
         const worker=reg.installing;
@@ -2374,4 +2374,182 @@ document.addEventListener('touchend',event=>{
 document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
 let lastClockDateKey=todayKey();
 setInterval(()=>{const nowKey=todayKey();if(nowKey!==lastClockDateKey){lastClockDateKey=nowKey;if(state.settings.activeTab==='today')renderToday(false);else if(state.settings.activeTab==='week')renderWeek();else render();return;}if(state.settings.activeTab==='today')renderToday(true);},60000);
+/* ===== Reset v3.6.1 swap/order hotfix ===== */
+function swapEligibleItems(date){
+  const key=todayKey(date);
+  return itemsForMode(itemsForDate(date),modeForDate(key))
+    .filter(i=>!isDayAnchor(i)&&!itemIsFixed(i)&&!itemIsNonBlocking(i)&&!isClosedStatus(getStatus(i,key)))
+    .sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b)||String(a.title).localeCompare(String(b.title)));
+}
+function setManualPreferredOverrideAbs(item,key,absoluteStart){
+  const rec=ensureRecord(key),occ=occurrenceKey(item),dur=itemDurationForMove(item),existing=rec.timeOverrides[occ]||{};
+  rec.timeOverrides[occ]={...existing,start:minutesToTime(absoluteStart),end:minutesToTime(absoluteStart+dur),dayOffset:Math.floor(absoluteStart/1440),manual:true,adaptive:false,manualPreferredStart:minutesToTime(absoluteStart)};
+  removeUnscheduledOccurrence(key,occ);
+}
+var __manualSwapError='';
+function manualOrderSemanticError(date,list){
+  const byOcc=new Map(itemsForDate(date).map(i=>[occurrenceKey(i),i]));
+  const meals=list.map((occ,pos)=>({pos,item:byOcc.get(occ)})).filter(x=>x.item&&mealRank(x.item)>0).sort((a,b)=>mealRank(a.item)-mealRank(b.item));
+  for(let i=1;i<meals.length;i++){if(meals[i].pos<meals[i-1].pos)return `${meals[i].item.title} needs to stay after ${meals[i-1].item.title}`;}
+  const groom=list.findIndex(occ=>byOcc.get(occ)?.id==='groom'),breakfast=list.findIndex(occ=>byOcc.get(occ)?.id==='breakfast');
+  if(groom>=0&&breakfast>=0&&groom>breakfast)return 'Shower + grooming needs to stay before Breakfast';
+  return '';
+}
+function recordSwapIntent(item,other,date){
+  __manualSwapError='';
+  const key=todayKey(date),rec=ensureRecord(key),ordered=swapEligibleItems(date),aOcc=occurrenceKey(item),bOcc=occurrenceKey(other);
+  const list=ordered.map(occurrenceKey),ai=list.indexOf(aOcc),bi=list.indexOf(bOcc);
+  if(ai<0||bi<0){__manualSwapError='Those tasks cannot be swapped right now';return false;}
+  const aStart=itemSortMinutes(item),bStart=itemSortMinutes(other);
+  [list[ai],list[bi]]=[list[bi],list[ai]];
+  const semanticError=manualOrderSemanticError(date,list);if(semanticError){__manualSwapError=semanticError;return false;}
+  rec.manualOrder=list;
+  setManualPreferredOverrideAbs(item,key,bStart);
+  setManualPreferredOverrideAbs(other,key,aStart);
+  return true;
+}
+function rebuildAfterManualSwap(date){
+  const key=todayKey(date),isToday=key===todayKey();
+  const plan=buildDaySchedulePlan(date,{kind:isToday?'today':'future',preserveManual:true,wakeTime:dayWakeTime(date),sleepTime:daySleepTime(date)});
+  if(isToday)applyAdaptiveRestart(plan);else applyFutureDayPlan(plan);
+  return plan;
+}
+
+function buildDaySchedulePlan(date,{kind='future',preserveManual=true,wakeTime=null,sleepTime=null}={}){
+  const key=todayKey(date),rec=ensureRecord(key),manualMap=rec.timeOverrides||{},mode=modeForDate(key);
+  const baseRaw=itemsForMode(itemsForDate(date,{ignoreOverrides:true}),mode);
+  const wakeBase=baseRaw.find(i=>i.id==='wake'),sleepBase=baseRaw.find(i=>i.id==='sleep');
+  const recurringWake=minutesFromTime(wakeBase?.start||state.profile.wakeTarget||'08:00');
+  const chosenWakeTime=wakeTime||manualMap[wakeBase?occurrenceKey(wakeBase):'']?.start||wakeBase?.start||state.profile.wakeTarget||'08:00';
+  const chosenWake=minutesFromTime(chosenWakeTime);
+  const chosenSleepTime=sleepTime||manualMap[sleepBase?occurrenceKey(sleepBase):'']?.start||sleepBase?.start||state.profile.sleepTarget||'23:30';
+  const chosenSleepOff=sleepDayOffsetForTime(chosenSleepTime),sleepLimit=minutesFromTime(chosenSleepTime)+1440*chosenSleepOff;
+  const actualWake=(kind==='today'?actualMinutesForRecord(rec.actualWakeAt,key,false):null);
+  const schedulingWake=actualWake!=null?actualWake:chosenWake;
+  const wakeDur=durationMinutes(wakeBase||{start:chosenWakeTime,end:minutesToTime(chosenWake+10)});
+  const now=kind==='today'?roundUpMinutes(currentMinutes(),5):schedulingWake+wakeDur;
+  const floor=kind==='today'?Math.max(now,schedulingWake+wakeDur):schedulingWake+wakeDur;
+  const overrides={};
+  if(wakeBase){const occ=occurrenceKey(wakeBase),routine=minutesToTime(minutesFromTime(wakeBase.start)),normalized=minutesToTime(chosenWake);if(normalized!==routine||manualMap[occ]?.dayAnchor){const dur=durationMinutes(wakeBase);overrides[occ]={start:normalized,end:minutesToTime(chosenWake+dur),dayOffset:0,manual:true,adaptive:false,dayAnchor:true};}}
+  if(sleepBase){const occ=occurrenceKey(sleepBase),routine=minutesToTime(minutesFromTime(sleepBase.start)),normalized=minutesToTime(minutesFromTime(chosenSleepTime));if(normalized!==routine||manualMap[occ]?.dayAnchor){const dur=durationMinutes(sleepBase),abs=minutesFromTime(normalized)+1440*chosenSleepOff;overrides[occ]={start:normalized,end:minutesToTime(abs+dur),dayOffset:chosenSleepOff,manual:true,adaptive:false,dayAnchor:true};}}
+  Object.entries(manualMap).forEach(([occ,ov])=>{const item=baseRaw.find(x=>occurrenceKey(x)===occ);if(item&&getStatus(item,key)==='done'&&!isDayAnchor(item))overrides[occ]={...ov};});
+  let baseItems=baseRaw.map(i=>{const ov=preserveManual?manualMap[occurrenceKey(i)]:null;return ov?.manual&&!ov?.dayAnchor?{...i,...ov}:i;});
+  const fixed=baseItems.filter(i=>!isDayAnchor(i)&&itemIsFixed(i)&&!['cancelled','dropped','deferred'].includes(getStatus(i,key)));
+  const missedFixed=kind==='today'?fixed.filter(i=>getStatus(i,key)==='pending'&&itemEndSortMinutes(i)<currentMinutes()):[];
+  const blocked=[];
+  fixed.forEach(i=>{if(!itemAllowsOverlap(i)&&(itemEndSortMinutes(i)>floor||kind!=='today'))blocked.push({start:itemSortMinutes(i),end:itemEndSortMinutes(i),item:i});});
+  const statusesToSkip=new Set(['done','cancelled','deferred','dropped']);
+  const movable=baseItems.filter(i=>!isDayAnchor(i)&&!itemIsFixed(i)&&!itemIsNonBlocking(i)&&!statusesToSkip.has(getStatus(i,key)));
+  const wakeShift=schedulingWake-recurringWake;
+  const manualPreferredMinutes=(item)=>{
+    const ov=manualMap[occurrenceKey(item)];
+    if(!preserveManual||!ov?.manual||ov?.dayAnchor)return null;
+    return minutesFromTime(ov.manualPreferredStart||ov.start||item.start)+1440*Number(ov.dayOffset||0);
+  };
+  const basePref=(item)=>{
+    const preferred=manualPreferredMinutes(item),manual=preferred!=null;
+    let desired=manual?preferred:itemSortMinutes(item);
+    if(!manual&&['groom','breakfast'].includes(item.id))desired+=wakeShift;
+    if(desired<schedulingWake+wakeDur)desired=floor;
+    if(kind==='today'&&itemEndSortMinutes(item)<floor)desired=floor;
+    return Math.max(floor,desired);
+  };
+  const mealDesired=new Map();let semanticMealEnd=null;
+  [...movable].filter(i=>mealRank(i)>0).sort((a,b)=>mealRank(a)-mealRank(b)||basePref(a)-basePref(b)).forEach(item=>{
+    let desired=basePref(item);if(semanticMealEnd!=null)desired=Math.max(desired,semanticMealEnd+120);
+    mealDesired.set(occurrenceKey(item),desired);semanticMealEnd=desired+durationMinutes(item);
+  });
+  const pref=(item)=>mealDesired.has(occurrenceKey(item))?mealDesired.get(occurrenceKey(item)):basePref(item);
+  const originalMinutes=(item)=>{const original=baseRaw.find(x=>occurrenceKey(x)===occurrenceKey(item));return original?itemSortMinutes(original):itemSortMinutes(item);};
+  const validMovable=new Set(movable.map(occurrenceKey));
+  const storedOrder=preserveManual&&Array.isArray(rec.manualOrder)?rec.manualOrder.filter(occ=>validMovable.has(occ)):[];
+  const orderIndex=new Map(storedOrder.map((occ,index)=>[occ,index]));
+  movable.sort((a,b)=>{
+    const ar=morningRank(a),br=morningRank(b);if(ar&&br)return ar-br;
+    const am=mealRank(a),bm=mealRank(b);if(am&&bm)return am-bm;
+    const ao=orderIndex.get(occurrenceKey(a)),bo=orderIndex.get(occurrenceKey(b));
+    if(ao!=null&&bo!=null)return ao-bo;
+    return pref(a)-pref(b)||originalMinutes(a)-originalMinutes(b)||String(a.title).localeCompare(String(b.title));
+  });
+  const moved=[],unplaced=[];let lastMealEnd=null,sequenceCursor=null;
+  for(const item of movable){
+    const occ=occurrenceKey(item),normalDuration=durationMinutes(item),overdue=kind==='today'&&(itemEndSortMinutes(item)<floor||getStatus(item,key)==='missed');
+    const duration=overdue?Math.max(5,Math.min(normalDuration,Number(item.minMinutes||normalDuration))):normalDuration;
+    let desired=pref(item);
+    const inManualSequence=orderIndex.has(occ);
+    if(inManualSequence&&sequenceCursor!=null)desired=Math.max(desired,sequenceCursor);
+    const mr=mealRank(item);if(mr&&lastMealEnd!=null)desired=Math.max(desired,lastMealEnd+120);
+    let slot=findOpenSlot(desired,duration,blocked,sleepLimit);
+    const wasManual=!!manualMap[occ]?.manual&&!manualMap[occ]?.dayAnchor;
+    if(slot==null&&kind==='future'&&!inManualSequence)slot=findOpenSlotBackward(sleepLimit,duration,blocked,(mr||wasManual)?desired:floor);
+    if(slot==null){unplaced.push(item);if(wasManual)overrides[occ]={...manualMap[occ]};continue;}
+    const newStart=slot,newEnd=slot+duration;blocked.push({start:newStart,end:newEnd,item});if(mr)lastMealEnd=newEnd;if(inManualSequence)sequenceCursor=newEnd;
+    const original=baseRaw.find(x=>occurrenceKey(x)===occ);
+    const changed=!original||newStart!==itemSortMinutes(original)||duration!==normalDuration||overdue||(preserveManual&&wasManual)||inManualSequence||(['groom','breakfast'].includes(item.id)&&wakeShift!==0);
+    if(changed){const ov={start:minutesToTime(newStart),end:minutesToTime(newEnd),dayOffset:Math.floor(newStart/1440),adaptive:true,manual:preserveManual&&(wasManual||inManualSequence)};if(preserveManual&&wasManual)ov.manualPreferredStart=manualMap[occ]?.manualPreferredStart||manualMap[occ]?.start||item.start;overrides[occ]=ov;moved.push({...item,...ov});}
+  }
+  return {key,kind,now,floor,overrides,moved,missedFixed,unplaced,preserveManual,wakeTime:chosenWakeTime,sleepTime:chosenSleepTime,manualCount:Object.values(manualMap).filter(x=>x?.manual&&!x?.dayAnchor).length,manualOrder:preserveManual?storedOrder:[]};
+}
+function applyAdaptiveRestart(plan){
+  const rec=ensureRecord(plan.key);rec.timeOverrides=plan.overrides;rec.manualOrder=Array.isArray(plan.manualOrder)?[...plan.manualOrder]:[];rec.unscheduledItems=plan.unplaced.map(occurrenceKey);rec.schedulerAttention=plan.unplaced.map(i=>`${i.title} could not fit before sleep`);
+  for(const item of plan.missedFixed){if(getStatus(item,plan.key)!=='done'&&getStatus(item,plan.key)!=='cancelled')rec.itemStatus[occurrenceKey(item)]='missed';}
+  for(const item of plan.moved){if(rec.itemStatus[occurrenceKey(item)]==='missed')delete rec.itemStatus[occurrenceKey(item)];}
+  Object.keys(rec.itemStatus).forEach(k=>{if(rec.itemStatus[k]!=='missed')return;const item=itemsForDate(parseDateKey(plan.key),{ignoreOverrides:true}).find(x=>occurrenceKey(x)===k);if(item&&!itemIsFixed(item)&&!rec.unscheduledItems.includes(k))delete rec.itemStatus[k];});
+  rec.resetCount=(rec.resetCount||0)+1;rec.restartAt=new Date().toISOString();save();
+}
+function applyFutureDayPlan(plan){const rec=ensureRecord(plan.key);rec.timeOverrides=plan.overrides;rec.manualOrder=Array.isArray(plan.manualOrder)?[...plan.manualOrder]:[];rec.unscheduledItems=plan.unplaced.map(occurrenceKey);rec.schedulerAttention=plan.unplaced.map(i=>`${i.title} could not fit before sleep`);rec.futurePlannedAt=new Date().toISOString();save();}
+function clearItemTimeOverride(item,key){const rec=ensureRecord(key),occ=occurrenceKey(item);delete rec.timeOverrides[occ];if(Array.isArray(rec.manualOrder))rec.manualOrder=rec.manualOrder.filter(x=>x!==occ);removeUnscheduledOccurrence(key,occ);save();}
+
+function openMoveItemModal(item,date){
+  const key=todayKey(date);
+  if(itemManualMoveLocked(item))return toast('This item is locked to its planned time');
+  const others=itemsForDate(date).filter(x=>occurrenceKey(x)!==occurrenceKey(item)&&!itemManualMoveLocked(x)&&!itemIsNonBlocking(x)&&!isClosedStatus(getStatus(x,key))).sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b));
+  const hasOverride=!!state.records[key]?.timeOverrides?.[occurrenceKey(item)];
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">MOVE TASK</p><h2>${escapeHTML(item.title)}</h2><p class="muted tiny">Move to an exact time, or swap positions with another flexible task. Swaps automatically repack the surrounding timeline.</p><div class="stack"><label><span class="label">Move to a different time</span><input class="input" id="moveTime" type="time" value="${escapeAttr(item.start)}"></label>${others.length?`<label><span class="label">Or swap positions with</span><select id="swapTask"><option value="">No swap</option>${others.map(x=>`<option value="${escapeAttr(occurrenceKey(x))}">${escapeHTML(x.title)} · ${escapeHTML(formatClock(x.start))}</option>`).join('')}</select></label>`:''}</div><button class="primary full" id="saveMove" style="margin-top:14px">Save move</button><button class="secondary full" id="moveTomorrow" style="margin-top:8px">Move to tomorrow</button>${hasOverride?'<button class="secondary full" id="resetMove" style="margin-top:8px">Reset to planned time</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modal.showModal();
+  $('#saveMove').onclick=()=>{
+    const swapOcc=$('#swapTask')?.value||'';
+    if(swapOcc){
+      const other=itemsForDate(date).find(x=>occurrenceKey(x)===swapOcc);if(!other)return toast('That task is no longer available');
+      const before=daySnapshot(key);createSafetySnapshot(`Before swapping tasks on ${key}`);
+      if(!recordSwapIntent(item,other,date))return toast(__manualSwapError||'Those tasks cannot be swapped right now');
+      const plan=rebuildAfterManualSwap(date);modal.close();render();
+      if(plan.unplaced.length)toast('Swapped, but part of the day needs attention','Undo',()=>restoreDaySnapshot(key,before));else toast('Tasks swapped and timeline repacked','Undo',()=>restoreDaySnapshot(key,before));
+      return;
+    }
+    const time=$('#moveTime').value;if(!time)return toast('Choose a time');
+    if(moveWouldHitLocked(item,date,time))return toast('That time overlaps a locked item');
+    const before=daySnapshot(key);setItemTimeOverride(item,key,time);modal.close();render();toast('Task moved','Undo',()=>restoreDaySnapshot(key,before));
+  };
+  $('#moveTomorrow').onclick=()=>{const nextKey=todayKey(addDays(parseDateKey(key),1)),beforeRec=deepClone(state.records[key]||null),beforeNext=deepClone(state.records[nextKey]||null),beforeOneOff=deepClone(state.oneOffTasks);if(moveItemToTomorrow(item,key)){modal.close();render();toast('Moved to tomorrow','Undo',()=>{if(beforeRec)state.records[key]=beforeRec;else delete state.records[key];if(beforeNext)state.records[nextKey]=beforeNext;else delete state.records[nextKey];state.oneOffTasks=beforeOneOff;save();render();});}};
+  if($('#resetMove'))$('#resetMove').onclick=()=>{const before=daySnapshot(key);clearItemTimeOverride(item,key);modal.close();render();toast('Planned time restored','Undo',()=>restoreDaySnapshot(key,before));};
+  $('#cancelModal').onclick=()=>modal.close();
+}
+
+function openPlanItemEditor(item,date){
+  const key=todayKey(date),status=getStatus(item,key),fixed=itemIsFixed(item),reminder=itemIsNonBlocking(item),oneoff=item.source==='oneoff',active=!['cancelled','dropped','deferred'].includes(status);
+  const others=itemsForDate(date).filter(x=>occurrenceKey(x)!==occurrenceKey(item)&&!itemManualMoveLocked(x)&&!itemIsNonBlocking(x)&&!isClosedStatus(getStatus(x,key))).sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b));
+  modalContent.innerHTML=`<div class="sheet-handle"></div><div class="day-plan-modal-head"><button class="round-icon" id="backToPlan" aria-label="Back">${svgIcon('chevronLeft')}</button><div><p class="eyebrow">PLAN ITEM</p><h2>${escapeHTML(item.title)}</h2><p>${reminder?'Non-blocking reminder':fixed?'Fixed event':'Flexible task'} · ${escapeHTML(timeWindow(item))}</p></div><span></span></div>
+    ${!fixed&&active?`<section class="day-settings-card"><h3>Move or swap</h3><div class="stack"><label><span class="label">Move to time</span><input class="input" id="planMoveTime" type="time" value="${escapeAttr(item.start)}"></label>${others.length?`<label><span class="label">Or swap positions with</span><select id="planSwapTask"><option value="">No swap</option>${others.map(x=>`<option value="${escapeAttr(occurrenceKey(x))}">${escapeHTML(x.title)} · ${escapeHTML(formatClock(x.start))}</option>`).join('')}</select></label>`:''}</div><button class="primary full" id="savePlanMove" style="margin-top:12px">Save move</button></section>`:''}
+    <section class="day-plan-section compact-plan-actions"><div class="day-plan-section-head"><span>${svgIcon('more')}</span><div><h3>Actions</h3><p>Changes apply only to ${escapeHTML(formatDateShort(date))}.</p></div></div>
+      ${oneoff?`<button class="secondary full" id="editPlanOneOff">${svgIcon('settings')} Edit details</button>`:''}
+      ${status==='cancelled'?`<button class="secondary full" id="restorePlanItem">${svgIcon('refresh')} Restore to this day</button>`:active?`<button class="secondary full" id="cancelPlanItem">${svgIcon('close')} Cancel for this day</button>`:''}
+      ${oneoff?`<button class="danger-btn full" id="deletePlanOneOff">Delete from this day</button>`:''}
+    </section>`;
+  if(!modal.open)modal.showModal();
+  $('#backToPlan').onclick=()=>openDayAnchorPlanner(date);
+  if($('#savePlanMove'))$('#savePlanMove').onclick=()=>{const swapOcc=$('#planSwapTask')?.value||'',before=daySnapshot(key);if(swapOcc){const other=itemsForDate(date).find(x=>occurrenceKey(x)===swapOcc);if(!other)return toast('That task is no longer available');createSafetySnapshot(`Before swapping tasks on ${key}`);if(!recordSwapIntent(item,other,date))return toast(__manualSwapError||'Those tasks cannot be swapped right now');const plan=rebuildAfterManualSwap(date);openDayAnchorPlanner(date);toast(plan.unplaced.length?'Swapped, but this day still needs attention':'Tasks swapped and day repacked','Undo',()=>restoreDaySnapshot(key,before));return;}const time=$('#planMoveTime').value;if(!time)return toast('Choose a time');if(moveWouldHitLocked(item,date,time))return toast('That time overlaps an active locked item');setItemTimeOverride(item,key,time);save();openDayAnchorPlanner(date);toast(reminder?'Reminder moved':'Task moved','Undo',()=>restoreDaySnapshot(key,before));};
+  if($('#editPlanOneOff'))$('#editPlanOneOff').onclick=()=>{modal.close();openOneOffTaskModal(item.id,{returnToPlan:key});};
+  if($('#cancelPlanItem'))$('#cancelPlanItem').onclick=()=>{const before=daySnapshot(key);setStatus(item,key,'cancelled');save();openDayAnchorPlanner(date);toast('Cancelled for this day','Undo',()=>restoreDaySnapshot(key,before));};
+  if($('#restorePlanItem'))$('#restorePlanItem').onclick=()=>{const before=daySnapshot(key);setStatus(item,key,'pending');save();openDayAnchorPlanner(date);toast(fixed?'Restored to its fixed time':'Restored','Undo',()=>restoreDaySnapshot(key,before));};
+  if($('#deletePlanOneOff'))$('#deletePlanOneOff').onclick=()=>{const idx=state.oneOffTasks.findIndex(x=>x.id===item.id);if(idx<0)return;const removed=deepClone(state.oneOffTasks[idx]);state.oneOffTasks.splice(idx,1);save();openDayAnchorPlanner(date);toast(reminder?'Reminder deleted':'Item deleted','Undo',()=>{state.oneOffTasks.splice(Math.min(idx,state.oneOffTasks.length),0,removed);save();openDayAnchorPlanner(date);});};
+}
+
+function resetDateToRoutine(date){
+  const key=todayKey(date),rec=ensureRecord(key);createSafetySnapshot(`Before resetting ${key} to routine`);
+  const keep={actualWakeAt:rec.actualWakeAt,actualSleepAt:rec.actualSleepAt,actualWakeOffsetMin:rec.actualWakeOffsetMin,actualSleepOffsetMin:rec.actualSleepOffsetMin,lastActualWakeAt:rec.lastActualWakeAt,lastActualSleepAt:rec.lastActualSleepAt,lastActualWakeOffsetMin:rec.lastActualWakeOffsetMin,lastActualSleepOffsetMin:rec.lastActualSleepOffsetMin},doneStatuses=Object.fromEntries(Object.entries(rec.itemStatus||{}).filter(([,v])=>v==='done'));
+  state.oneOffTasks=state.oneOffTasks.filter(x=>x.date!==key);rec.timeOverrides={};rec.manualOrder=[];rec.itemStatus=doneStatuses;rec.unscheduledItems=[];rec.schedulerAttention=[];rec.autoMissedByWake=[];rec.explicitAnchors={};rec.dayNote='';delete rec.futurePlannedAt;delete rec.dayPlanType;Object.entries(keep).forEach(([k,v])=>{if(v!==undefined&&v!=='')rec[k]=v;else delete rec[k];});save();
+}
+/* ===== end Reset v3.6.1 swap/order hotfix ===== */
+
 initializeApp();
