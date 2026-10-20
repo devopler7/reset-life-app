@@ -1,4 +1,4 @@
-RESET v3.5.0 UPDATE
+RESET v3.6.0 UPDATE
 
 1. Export a Reset JSON backup first.
 2. In GitHub, open the reset-life-app repository on the main branch.
@@ -7,6 +7,6 @@ RESET v3.5.0 UPDATE
 5. Wait for Actions / Pages deployment to finish. A queued hosted runner can occasionally take longer than the build itself.
 6. Refresh the GitHub Pages URL once in Safari if the old version is still served.
 7. Fully close the installed Home Screen app and reopen it.
-8. Verify Settings -> App version = v3.5.0.
+8. Verify Settings -> App version = v3.6.0.
 
-If the website says v3.5.0 but Home Screen is still older, close it from the app switcher, refresh the Pages URL in Safari, then reopen Reset.
+If the website says v3.6.0 but Home Screen is still older, close it from the app switcher, refresh the Pages URL in Safari, then reopen Reset.

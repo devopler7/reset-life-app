@@ -1,4 +1,4 @@
-RESET v3.5.0 — PERSONAL EDITION
+RESET v3.6.0 — PERSONAL EDITION
 
 UPDATE CHECKLIST
 1. Open your current Reset app and export a JSON backup from Settings.
@@ -7,7 +7,7 @@ UPDATE CHECKLIST
 4. Upload EVERYTHING INSIDE that folder to the ROOT of your existing GitHub repo.
 5. Commit the upload and wait for the newest GitHub Pages deployment to show a green check.
 6. Open the GitHub Pages site once in Safari if needed, then fully close and reopen the Home Screen app.
-7. Open Settings and confirm App version says v3.5.0.
+7. Open Settings and confirm App version says v3.6.0.
 
 IMPORTANT
 - Do not upload the outer ZIP itself as the website.

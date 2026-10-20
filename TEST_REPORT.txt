@@ -1,88 +1,54 @@
-RESET v3.5.0 TEST REPORT
-Date: 20 October 2026
+RESET v3.6.0 TEST REPORT
 
-SCOPE
-This release was tested as a browser-based PWA build. Automated browser testing used headless Chromium with mobile-sized viewports. Adelaide timezone was also used for sleep/DST checks. These tests do not claim to be a physical iPhone/Safari device test.
+Release focus
+-------------
+This patch was tested specifically around the new editable Plan Day workflow, Task/Reminder creation, intentional overlaps, cancelled fixed events, collision handling and responsive iPhone layouts.
 
-DETERMINISTIC BROWSER REGRESSION SUITE
-53 / 53 checks passed.
+Static/runtime checks
+---------------------
+- app.js passes Node.js syntax validation.
+- App booted in a Chromium browser harness with no uncaught JavaScript errors.
+- Version wiring confirmed as v3.6.0 in app code, HTML, VERSION.txt and service-worker cache assets.
 
-The suite covered:
-- clean boot and v3.5.0 version wiring
-- no runtime JavaScript errors during the interaction suite
-- planned Wake remaining separate from an actual 11:40 AM Wake
-- uncheck/recheck restoring the previous actual Wake rather than using the later current time
-- explicit one-day Wake override remaining independent from actual Wake
-- legacy v3.3/v3.4 actual-as-planned Wake migration repair
-- genuine non-matching planned Wake overrides preserved during migration
-- planned Sleep remaining separate from actual after-midnight sleep logging
-- Sleep completion state changes not silently rewriting the planned anchor
-- intentional fixed-event cancellation not creating a Needs attention problem
-- fixed-event restoration returning to the original fixed time
-- Week attention summary counting days, not raw problem/task count
-- late-wake hard boundary behavior
-- Breakfast -> Lunch -> Dinner order and minimum spacing
-- fixed events remaining at their original times during rebuild
-- repeated rebuild idempotency
-- Gym selector scroll-position retention at the bottom of the list
-- two consecutive bottom-of-list Gym selections without scroll jump
-- fast in-place Gym selection handler
-- numeric-only Sets and Reps inputs
-- redesigned Weekly Routine day tabs, fixed/flexible sections and Wake/Sleep controls
-- Data Health detection/repair for duplicate/invalid gym data
-- local safety snapshot creation
-- Plan Day note field
-- large-history render smoke tests
-- responsive horizontal-overflow checks at 320, 375, 390 and 430 px for Week, Weekly Routine and Workout Builder
-- Settings Data Health and recovery controls
+Targeted browser regression suite: 15/15 passed
+------------------------------------------------
+- Today opens the Task / Reminder picker.
+- Reminder saves with non-blocking semantics.
+- Reminder badge renders on the timeline.
+- Needs attention identifies the exact overlapping item names.
+- Intentional fixed-event overlap suppresses false attention.
+- A reminder overlapping a class does not create an overlap issue.
+- Plan Day rows are actionable rather than read-only.
+- Plan Day exposes Add for one-off items/reminders.
+- Flexible Plan Day items expose move/swap controls.
+- Fixed Plan Day items expose cancel-for-day controls.
+- Cancelled fixed events no longer block a move.
+- Restored fixed events protect their original time again.
+- Back-to-back boundaries are not misclassified as overlaps.
+- No browser console/page errors occurred.
 
-RANDOMIZED SCHEDULER STRESS
-5,000 randomized future-day scenarios were generated.
-10,000 rebuild calculations were compared for repeatability.
-1,512 randomized intentional-cancellation cases were included.
-0 scheduler invariant failures were found in the final run.
+Plan Day action suite: 9/9 passed
+--------------------------------
+- Plan Day move persists a manual time override.
+- Saving a move returns to Plan Day.
+- Cancel-for-day state persists.
+- Cancelled items expose Restore.
+- Restore clears the cancellation state.
+- A reminder added from Plan Day saves correctly.
+- Adding an item returns to Plan Day.
+- Stress case with 200 overlapping reminders: zero reminder items were scheduled, moved, marked unplaced or reported as conflicts.
+- No browser errors occurred during the action suite.
 
-Stress invariants included:
-- flexible tasks do not cross the effective Wake boundary
-- flexible tasks do not run past planned Sleep
-- fixed non-anchor events do not move
-- intentional cancellations do not become attention errors
-- Breakfast, Lunch and Dinner remain ordered and sensibly spaced
-- repeating a rebuild with no new changes produces the same overrides
+Responsive checks: 12/12 passed
+-------------------------------
+Today, Add Item, and Plan Day were checked at 320, 375, 390 and 430 px viewport widths. No horizontal overflow was detected and no page errors occurred.
 
-A randomized test initially exposed three cases where an old manual Dinner move could violate meal order. The scheduler was changed so manual choices are respected unless they break a semantic routine rule, then the entire 5,000-scenario stress run was repeated with 0 failures.
+Manual visual inspection
+------------------------
+- Task / Reminder picker reviewed at 390 px.
+- Plan Day conflict panel and actionable item rows reviewed at 390 px.
+- Reminder and overlap controls use the existing Reset dark-card/icon language.
 
-INTERACTION / PERFORMANCE STRESS
-- 103 rapid cross-page/modal interaction actions: 0 JavaScript errors.
-- Synthetic large-data set: 10,000 money transactions, 6,000 gym logs and 1,500 weight logs.
-- Final Chromium render sample maximums in that run:
-  Money 14.6 ms
-  Gym 3.9 ms
-  Health 280.3 ms
-  Week 100.2 ms
-  Today 52.9 ms
-
-These timings are synthetic browser measurements on the test environment, not promises of exact iPhone performance.
-
-ADELAIDE TIME / DST
-A browser context using Australia/Adelaide verified:
-- DST-aware elapsed-duration calculation across the October clock change
-- after-midnight Sleep remains associated with the previous night
-- planned Sleep/Wake anchors remain separate from actual logged times
-- no runtime errors in the timezone test
-
-MIGRATION / RECOVERY
-Representative Money, Gym, Project and Car data were preserved while upgrading an old v3.4-style state to app-state version 14.
-A pre-migration local recovery snapshot was also verified.
-The removed language preference does not return after migration.
-
-STATIC / PWA CHECKS
-- app.js syntax: passed
-- service-worker.js syntax: passed
-- manifest JSON: valid
-- icon files verified at 180x180, 192x192 and 512x512
-- runtime files use the v3.5.0 cache/version wiring
-- no old v3.4/v3.3 runtime version strings remain in deployable runtime files
-
-LIMITATION
-A physical iPhone Home Screen install, real iOS keyboard behavior and Safari service-worker lifecycle cannot be perfectly reproduced in this environment. The installed iPhone app should therefore receive a short real-device smoke test after deployment.
+Limitations
+-----------
+Automated browser testing cannot perfectly reproduce physical iPhone Home Screen/Safari behavior, touch latency, keyboard behavior, or GitHub Pages deployment caching. A short real-device smoke test after deployment is still recommended.
