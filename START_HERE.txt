@@ -1,12 +1,21 @@
-RESET v3.6.1 — PERSONAL EDITION
+RESET v3.6.2 - COMPLETE UPDATE
 
-UPDATE
-1. Export a JSON backup from your current Reset first.
-2. Open your GitHub reset-life-app repository.
-3. Upload every file and the icons folder from inside this life-reset-app folder to the repository root.
-4. Commit the upload.
-5. Wait for the newest GitHub Pages deployment to finish successfully.
-6. Fully close Reset from the iPhone app switcher and reopen it.
-7. Open Settings and confirm App version says v3.6.1.
+1. Export a fresh JSON backup from your current app.
+2. Unzip this package and open life-reset-app.
+3. Upload EVERYTHING INSIDE life-reset-app to the ROOT of your existing GitHub Pages repository, including the icons folder.
+4. Commit the upload and wait for the newest Pages deployment to finish.
+5. Fully close and reopen Reset.
+6. Open Settings and confirm v3.6.2.
 
-This hotfix changes task swap/rebuild behaviour. Your stored records, money, gym, sleep and other local data are preserved.
+Your existing on-device records are upgraded automatically. The requested 17-19 October corrections apply once to the matching existing setup. No JSON backup import is needed.
+
+New controls:
+- Week > Weekly routine > Manage routine > All recurring items (collapsed by default).
+- Select a tracked past date > Correct this past day.
+- Remove recurring item > Keep its history / Delete its task history too.
+
+If an old version remains, refresh the Pages URL once in Safari, close it, then reopen Reset.
+
+The package contains app code only. Your personal JSON backup is not included.
+
+Local regression checks passed. Physical iPhone scrolling and browser layout were not verified here. See TEST_REPORT.txt.

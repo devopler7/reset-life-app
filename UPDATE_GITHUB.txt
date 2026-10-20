@@ -1,12 +1,21 @@
-RESET v3.6.1 UPDATE
+RESET v3.6.2 - COMPLETE UPDATE
 
-1. Export a backup from Reset.
-2. Unzip this package.
-3. Open the life-reset-app folder.
-4. Upload its CONTENTS to the root of your existing GitHub repository.
-5. Commit the changes.
-6. Wait for the newest Pages deployment to show a green check.
-7. Fully close and reopen the Home Screen app.
-8. Verify Settings -> App version = v3.6.1.
+1. Export a fresh JSON backup from your current app.
+2. Unzip this package and open life-reset-app.
+3. Upload EVERYTHING INSIDE life-reset-app to the ROOT of your existing GitHub Pages repository, including the icons folder.
+4. Commit the upload and wait for the newest Pages deployment to finish.
+5. Fully close and reopen Reset.
+6. Open Settings and confirm v3.6.2.
 
-If the website says v3.6.1 but Home Screen is still older, close it from the app switcher, refresh the Pages URL once in Safari, then reopen Reset.
+Your existing on-device records are upgraded automatically. The requested 17-19 October corrections apply once to the matching existing setup. No JSON backup import is needed.
+
+New controls:
+- Week > Weekly routine > Manage routine > All recurring items (collapsed by default).
+- Select a tracked past date > Correct this past day.
+- Remove recurring item > Keep its history / Delete its task history too.
+
+If an old version remains, refresh the Pages URL once in Safari, close it, then reopen Reset.
+
+The package contains app code only. Your personal JSON backup is not included.
+
+Local regression checks passed. Physical iPhone scrolling and browser layout were not verified here. See TEST_REPORT.txt.

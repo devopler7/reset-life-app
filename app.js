@@ -1,6 +1,6 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 16;
-const APP_DISPLAY_VERSION = '3.6.1';
+const APP_VERSION = 17;
+const APP_DISPLAY_VERSION = '3.6.2';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -251,7 +251,7 @@ function defaultState() {
   };
 }
 
-function migrateState(parsed) {
+function migrateLegacyState(parsed) {
   const base = defaultState();
   const next = {...base, ...parsed};
   next.version = APP_VERSION;
@@ -422,6 +422,8 @@ function loadState() {
     }
     return migrateState(parsed);
   } catch(e) {
+    initialLocalStateFound=false;window.__resetUnreadableLocal=true;
+    try{const raw=localStorage.getItem(APP_KEY);if(raw)localStorage.setItem(APP_KEY+'-unreadable-backup',raw);}catch(ignored){}
     return defaultState();
   }
 }
@@ -460,6 +462,7 @@ async function durableClear() {
   try { const db=await openDurableDB(); if(!db) return; const tx=db.transaction('snapshots','readwrite'); tx.objectStore('snapshots').clear(); } catch(e){}
 }
 function save() {
+  sealPastDays();refreshHistoricalSummaries();
   if(!state.meta) state.meta={};
   state.meta.lastSavedAt=new Date().toISOString();
   try { localStorage.setItem(APP_KEY, JSON.stringify(state)); } catch(e) {}
@@ -484,17 +487,16 @@ async function requestPersistentStorage() {
   } catch(e){return {supported:false,persisted:false};}
 }
 async function initializeApp() {
-  if(!initialLocalStateFound) {
-    const snap=await durableRead();
-    if(snap?.state){state=migrateState(snap.state);try{localStorage.setItem(APP_KEY,JSON.stringify(state));}catch(e){}}
+  const snap=await durableRead();
+  if(snap?.state&&(!initialLocalStateFound||Date.parse(snap.state.meta?.lastSavedAt||0)>Date.parse(state.meta?.lastSavedAt||0))){
+    try{state=migrateState(snap.state);try{localStorage.setItem(APP_KEY,JSON.stringify(state));}catch(e){}}catch(e){}
   }
-  if(state.settings.mode==='bad' && state.settings.modeSetDate!==todayKey()) state.settings.mode='normal';
-  appInitialized=true;
-  applyLanguageState();ensureLanguageObserver();
-  requestPersistentStorage().then(updateStorageProtectionLabel);
-  render();
-  durableWrite();
+  if(state.settings.mode==='bad'&&state.settings.modeSetDate!==todayKey())state.settings.mode='normal';
+  state=migrateState(state);appInitialized=true;
+  applyLanguageState();ensureLanguageObserver();requestPersistentStorage().then(updateStorageProtectionLabel);render();flushStateSave();durableWrite();
+  if(window.__resetUnreadableLocal)toast('Stored data needed recovery. Check your records and keep a JSON backup.');
 }
+
 function updateStorageProtectionLabel(result) {
   const el=$('#storageProtectionStatus'); if(!el)return;
   if(result?.persisted) el.textContent='Protected';
@@ -520,6 +522,8 @@ function setStatus(item,key,status) {
     if(item.id==='sleep'){delete rec.actualSleepAt;delete rec.actualSleepOffsetMin;}
   } else rec.itemStatus[occurrenceKey(item)]=status;
   if(status==='done' && item.category==='Fitness' && /gym/i.test(item.title||'')) state.gym.sessionExcluded=(state.gym.sessionExcluded||[]).filter(k=>k!==key);
+  if(status==='done'){rec.completedAt??={};rec.completedAt[occurrenceKey(item)]??=new Date().toISOString();rec.unscheduledItems=(rec.unscheduledItems||[]).filter(x=>x!==occurrenceKey(item));if(!rec.unscheduledItems.length)rec.schedulerAttention=[];}
+  else if(rec.completedAt)delete rec.completedAt[occurrenceKey(item)];
   save();
 }
 function applyDailyOverride(item,key,ignoreOverrides=false) {
@@ -527,7 +531,7 @@ function applyDailyOverride(item,key,ignoreOverrides=false) {
   const override=state.records[key]?.timeOverrides?.[occurrenceKey(item)];
   return override ? {...item,...override,adjusted:true} : item;
 }
-function itemsForDate(date, options={}) {
+function itemsForDateLegacy(date, options={}) {
   const key=todayKey(date); const dow=date.getDay();
   const recurring=state.schedule
     .filter(x=>x.active!==false && Array.isArray(x.days) && x.days.includes(dow) && dateInRange(key,x))
@@ -551,7 +555,7 @@ function itemIncludedForMode(item,mode) {
 }
 function itemsForMode(items,mode=currentMode()){return items.filter(i=>itemIncludedForMode(i,mode));}
 function modeForDate(key){return state.records[key]?.mode || 'normal';}
-function dayCompletion(date) {
+function dayCompletionLegacy(date) {
   const key=todayKey(date); const items=itemsForMode(itemsForDate(date),modeForDate(key)).filter(i=>getStatus(i,key)!=='cancelled'&&itemCountsForProgress(i));
   if(!items.length) return 0;
   const done=items.filter(i=>getStatus(i,key)==='done').length;
@@ -608,6 +612,7 @@ function streak() {
 function toast(msg,actionLabel='',actionFn=null) {
   let el=$('.toast');
   if(!el){el=document.createElement('div');el.className='toast';document.body.appendChild(el);}
+  moveToastToActiveSheet();
   clearTimeout(window.__toast); el.classList.remove('actionable');
   if(actionLabel && typeof actionFn==='function'){
     el.innerHTML=`<span>${escapeHTML(msg)}</span><button type="button">${escapeHTML(actionLabel)}</button>`;
@@ -623,6 +628,171 @@ const pageTitle=$('#pageTitle');
 const dateLabel=$('#dateLabel');
 const modal=$('#modal');
 const modalContent=$('#modalContent');
+
+/* ===== Shared sheet scrolling ===== */
+const sheetScrollState = { page: null, releaseFrame: 0, stack: [], onDismiss: null };
+function pageScrollY() { return sheetScrollState.page?.y ?? window.scrollY; }
+function pageScrollTo(...args) {
+  if (!sheetScrollState.page) return window.scrollTo(...args);
+  const options = typeof args[0] === 'object' ? args[0] : {left: args[0], top: args[1]};
+  if (Number.isFinite(options.top)) sheetScrollState.page.y = Math.max(0, options.top);
+  if (Number.isFinite(options.left)) sheetScrollState.page.x = Math.max(0, options.left);
+  document.body.style.top = `${-sheetScrollState.page.y}px`;
+  document.body.style.left = `${-sheetScrollState.page.x}px`;
+}
+function openSheets() {
+  sheetScrollState.stack = sheetScrollState.stack.filter(dialog => dialog.open);
+  return [...$$('dialog.sheet[open]').filter(dialog => !sheetScrollState.stack.includes(dialog)), ...sheetScrollState.stack];
+}
+function moveToastToActiveSheet() {
+  const el = $('.toast');
+  if (el) (openSheets().at(-1) || document.body).appendChild(el);
+}
+function lockPageForSheet() {
+  cancelAnimationFrame(sheetScrollState.releaseFrame);
+  if (sheetScrollState.page) return;
+  const body = document.body, root = document.documentElement;
+  const properties = ['position', 'top', 'left', 'width', 'overflow', 'padding-right'];
+  sheetScrollState.page = {
+    x: window.scrollX, y: window.scrollY,
+    bodyStyles: properties.map(name => [name, body.style.getPropertyValue(name), body.style.getPropertyPriority(name)]),
+    rootOverflow: root.style.getPropertyValue('overflow'),
+    rootOverflowPriority: root.style.getPropertyPriority('overflow'),
+    rootScrollBehavior: root.style.getPropertyValue('scroll-behavior'),
+    rootScrollPriority: root.style.getPropertyPriority('scroll-behavior')
+  };
+  const scrollbar = window.innerWidth - root.clientWidth;
+  if (scrollbar > 0) body.style.paddingRight = `${parseFloat(getComputedStyle(body).paddingRight || 0) + scrollbar}px`;
+  body.style.position = 'fixed';
+  body.style.top = `${-sheetScrollState.page.y}px`;
+  body.style.left = `${-sheetScrollState.page.x}px`;
+  body.style.width = '100%';
+  body.style.overflow = 'hidden';
+  root.style.overflow = 'hidden';
+  root.style.scrollBehavior = 'auto';
+}
+function releasePageAfterSheets() {
+  cancelAnimationFrame(sheetScrollState.releaseFrame);
+  sheetScrollState.releaseFrame = requestAnimationFrame(() => {
+    if (openSheets().length || !sheetScrollState.page) return;
+    const saved = sheetScrollState.page, body = document.body, root = document.documentElement;
+    sheetScrollState.page = null;
+    for (const [name, value, priority] of saved.bodyStyles) {
+      if (value) body.style.setProperty(name, value, priority);
+      else body.style.removeProperty(name);
+    }
+    if (saved.rootOverflow) root.style.setProperty('overflow', saved.rootOverflow, saved.rootOverflowPriority);
+    else root.style.removeProperty('overflow');
+    window.scrollTo({left: saved.x, top: saved.y, behavior: 'auto'});
+    if (saved.rootScrollBehavior) root.style.setProperty('scroll-behavior', saved.rootScrollBehavior, saved.rootScrollPriority);
+    else root.style.removeProperty('scroll-behavior');
+    moveToastToActiveSheet();
+  });
+}
+function updateSheetViewport() {
+  const viewport = window.visualViewport, root = document.documentElement;
+  root.style.setProperty('--sheet-viewport-height', `${viewport?.height || window.innerHeight}px`);
+  root.style.setProperty('--sheet-viewport-top', `${viewport?.offsetTop || 0}px`);
+  requestAnimationFrame(keepSheetFieldVisible);
+}
+function keepSheetFieldVisible() {
+  const field = document.activeElement;
+  if (!field?.matches('input:not([type=checkbox]):not([type=range]),select,textarea')) return;
+  const card = field.closest('dialog[open] .sheet-card');
+  if (!card) return;
+  const bounds = card.getBoundingClientRect(), rect = field.getBoundingClientRect();
+  if (rect.bottom > bounds.bottom - 16) card.scrollTop += rect.bottom - bounds.bottom + 16;
+  else if (rect.top < bounds.top + 16) card.scrollTop -= bounds.top + 16 - rect.top;
+}
+function prepareModalView() {
+  sheetScrollState.onDismiss = null;
+  if (modal.contains(document.activeElement)) document.activeElement.blur();
+  modalContent.scrollTop = 0;
+  modalContent.scrollLeft = 0;
+  modal.scrollTop = 0;
+  if (modal.open) modalContent.focus({preventScroll: true});
+}
+function openAppSheet(dialog) {
+  lockPageForSheet();
+  updateSheetViewport();
+  try {
+    if (!dialog.open) {
+      const card = $('.sheet-card', dialog);
+      if (card) {card.scrollTop = 0; card.scrollLeft = 0;}
+      dialog.showModal();
+      sheetScrollState.stack = sheetScrollState.stack.filter(sheet => sheet !== dialog);
+      sheetScrollState.stack.push(dialog);
+    }
+  } catch (error) {
+    releasePageAfterSheets();
+    throw error;
+  }
+  moveToastToActiveSheet();
+}
+function closeAppSheet(dialog) {
+  if (dialog === modal) sheetScrollState.onDismiss = null;
+  if (dialog.contains(document.activeElement)) document.activeElement.blur();
+  if (dialog.open) dialog.close();
+  moveToastToActiveSheet();
+  releasePageAfterSheets();
+}
+function returnToRoutineManager() {
+  const day = routineManagerReturnDay, top = routineManagerReturnScroll;
+  routineManagerReturnDay = null;
+  routineManagerReturnScroll = 0;
+  if (day !== null) openScheduleManager(day, top, true);
+  else {weekEditContext = null; closeAppSheet(modal);}
+}
+function dismissAppSheet(dialog) {
+  if (dialog === modal && sheetScrollState.onDismiss) {
+    const action = sheetScrollState.onDismiss;
+    sheetScrollState.onDismiss = null;
+    action();
+    return;
+  }
+  if (dialog === modal && $('#schedTitle', modalContent) && routineManagerReturnDay !== null) {
+    returnToRoutineManager();
+    return;
+  }
+  if (dialog === modal) {
+    routineManagerReturnDay = null;
+    routineManagerReturnScroll = 0;
+    weekEditContext = null;
+  }
+  closeAppSheet(dialog);
+}
+function initializeSheetScrolling() {
+  for (const dialog of $$('dialog.sheet')) {
+    const card = $('.sheet-card', dialog);
+    card.tabIndex = -1;
+    card.setAttribute('autofocus', '');
+    // Cancellation must remain possible even if a form contains invalid fields.
+    dialog.addEventListener('cancel', event => {event.preventDefault(); dismissAppSheet(dialog);});
+    dialog.addEventListener('close', () => {moveToastToActiveSheet(); releasePageAfterSheets();});
+    let backdropStart = null;
+    dialog.addEventListener('pointerdown', event => {
+      backdropStart = event.target === dialog ? {x: event.clientX, y: event.clientY} : null;
+    }, {passive: true});
+    dialog.addEventListener('click', event => {
+      if (event.target === dialog && backdropStart && Math.hypot(event.clientX - backdropStart.x, event.clientY - backdropStart.y) < 10) dismissAppSheet(dialog);
+      backdropStart = null;
+    });
+    // Native method=dialog settings buttons bypass closeAppSheet.
+    dialog.addEventListener('submit', event => {
+      if (event.target.getAttribute('method') === 'dialog') {
+        event.preventDefault();
+        closeAppSheet(dialog);
+      }
+    });
+  }
+  window.addEventListener('resize', updateSheetViewport, {passive: true});
+  window.visualViewport?.addEventListener('resize', updateSheetViewport, {passive: true});
+  window.visualViewport?.addEventListener('scroll', updateSheetViewport, {passive: true});
+  document.addEventListener('focusin', () => requestAnimationFrame(keepSheetFieldVisible));
+  updateSheetViewport();
+}
+/* ===== End shared sheet scrolling ===== */
+
 
 function setHeader(title, date=new Date()) {
   pageTitle.textContent=ui(title);
@@ -688,7 +858,7 @@ function countdownText(item,mode) {
 }
 
 function renderToday(preserveScroll=false) {
-  const scroll=window.scrollY;
+  const scroll=pageScrollY();
   const date=new Date(); const key=todayKey(date); const rec=ensureRecord(key);rec.mode=currentMode();
   const allItems=itemsForDate(date); const items=itemsForMode(allItems,currentMode()); const parked=allItems.filter(i=>!itemIncludedForMode(i,currentMode()));
   const effectiveItems=items.filter(i=>getStatus(i,key)!=='cancelled');
@@ -722,7 +892,7 @@ function renderToday(preserveScroll=false) {
   if($('#logLastSleepBtn')&&lastSleep)$('#logLastSleepBtn').onclick=()=>openSleepLogModal(lastSleep.key);if($('#wrapDayBtn'))$('#wrapDayBtn').onclick=()=>openEndOfDayCleanup(date);
   if($('#heroDoneBtn')&&hero){$('#heroDoneBtn').onclick=()=>{const completed=hero;setStatus(completed,key,'done');renderToday();toast('Marked done','Undo',()=>{setStatus(completed,key,'pending');renderToday();});requestAnimationFrame(()=>maybeCelebrateDayFinish(date));};}
   if($('#heroMoveBtn')&&hero)$('#heroMoveBtn').onclick=()=>openMoveItemModal(hero,date);
-  localizeTree(main);if(preserveScroll)requestAnimationFrame(()=>window.scrollTo(0,scroll));
+  localizeTree(main);if(preserveScroll)requestAnimationFrame(()=>pageScrollTo(0,scroll));
 }
 
 function timelineItemHTML(item,date,showActions=false) {
@@ -784,7 +954,7 @@ function bindTimeline(date) {
         const wakeClock=rec.actualWakeAt.slice(11,16);setDayWakeOverride(parseDateKey(key),wakeClock);markMissedBeforeWake(key,rec.actualWakeAt);setStatus(item,key,'done');
       }else{delete rec.actualWakeAt;setStatus(item,key,'pending');}
     }else setStatus(item,key,cb.checked?'done':'pending');
-    const y=window.scrollY;render();requestAnimationFrame(()=>{window.scrollTo(0,y);if(cb.checked)maybeCelebrateDayFinish(date);});
+    const y=pageScrollY();render();requestAnimationFrame(()=>{pageScrollTo(0,y);if(cb.checked)maybeCelebrateDayFinish(date);});
   }));
   $$('[data-edit-item]').forEach(btn=>btn.addEventListener('click',()=>{const [source,id]=btn.dataset.editItem.split(':');if(source==='schedule')openScheduleItemModal(id);else openOneOffTaskModal(id);}));
   $$('[data-plan-anchors]').forEach(btn=>btn.addEventListener('click',()=>openDayAnchorPlanner(parseDateKey(btn.dataset.planAnchors))));
@@ -804,11 +974,11 @@ function openSleepLogModal(targetKey) {
     else if(targetKey===todayKey()&&currentMinutes()>=itemSortMinutes(item)%1440)defaultValue=localDateTimeInput(now);
     else{const planned=new Date(targetDate),off=Number(item.dayOffset||0);planned.setDate(planned.getDate()+off);const [h,m]=(item.start||state.profile.sleepTarget||'23:30').split(':').map(Number);planned.setHours(h,m,0,0);defaultValue=localDateTimeInput(planned);}
   }
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Log when you actually went to sleep</h2><p class="muted">This belongs to the night of ${escapeHTML(formatDateShort(targetDate))}, even if you slept after midnight.</p><label><span class="label">Actual sleep time</span><input class="input" id="actualSleepInput" type="datetime-local" value="${escapeAttr(defaultValue)}"></label><button class="primary full" id="saveSleepLog" style="margin-top:14px">Save sleep time</button>${rec.actualSleepAt?'<button class="danger-btn full" id="clearSleepLog" style="margin-top:8px">Clear sleep log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#saveSleepLog').onclick=()=>{const value=$('#actualSleepInput').value;if(!value||!value.includes('T'))return toast('Choose the actual sleep time');const actualKey=value.slice(0,10);if(actualKey!==targetKey&&actualKey!==nextKey)return toast('Use that evening or the following morning');rec.actualSleepAt=value;setDaySleepOverride(targetDate,value.slice(11,16));setStatus(item,targetKey,'done');save();modal.close();render();toast(`Sleep logged at ${actualSleepClock(value)}`);requestAnimationFrame(()=>maybeCelebrateDayFinish(targetDate));};
-  if($('#clearSleepLog'))$('#clearSleepLog').onclick=()=>{delete rec.actualSleepAt;setStatus(item,targetKey,'pending');save();modal.close();render();toast('Sleep log cleared');};
-  $('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Log when you actually went to sleep</h2><p class="muted">This belongs to the night of ${escapeHTML(formatDateShort(targetDate))}, even if you slept after midnight.</p><label><span class="label">Actual sleep time</span><input class="input" id="actualSleepInput" type="datetime-local" value="${escapeAttr(defaultValue)}"></label><button class="primary full" id="saveSleepLog" style="margin-top:14px">Save sleep time</button>${rec.actualSleepAt?'<button class="danger-btn full" id="clearSleepLog" style="margin-top:8px">Clear sleep log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
+  $('#saveSleepLog').onclick=()=>{const value=$('#actualSleepInput').value;if(!value||!value.includes('T'))return toast('Choose the actual sleep time');const actualKey=value.slice(0,10);if(actualKey!==targetKey&&actualKey!==nextKey)return toast('Use that evening or the following morning');rec.actualSleepAt=value;setDaySleepOverride(targetDate,value.slice(11,16));setStatus(item,targetKey,'done');save();closeAppSheet(modal);render();toast(`Sleep logged at ${actualSleepClock(value)}`);requestAnimationFrame(()=>maybeCelebrateDayFinish(targetDate));};
+  if($('#clearSleepLog'))$('#clearSleepLog').onclick=()=>{delete rec.actualSleepAt;setStatus(item,targetKey,'pending');save();closeAppSheet(modal);render();toast('Sleep log cleared');};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);localizeTree(modalContent);
 }
 
 function suggestTimeForNewTask(date) {
@@ -827,34 +997,34 @@ function openMoveItemModal(item,date){
   if(itemManualMoveLocked(item)) return toast('This item is locked to its planned time');
   const others=itemsForDate(date).filter(x=>occurrenceKey(x)!==occurrenceKey(item) && !itemManualMoveLocked(x) && !isClosedStatus(getStatus(x,key))).sort((a,b)=>minutesFromTime(a.start)-minutesFromTime(b.start));
   const hasOverride=!!state.records[key]?.timeOverrides?.[occurrenceKey(item)];
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">MOVE TASK</p><h2>${escapeHTML(item.title)}</h2><p class="muted tiny">Flexible tasks can move. Classes, wake-up, morning reset and sleep stay locked.</p><div class="stack"><label><span class="label">Move to a different time</span><input class="input" id="moveTime" type="time" value="${escapeAttr(item.start)}"></label>${others.length?`<label><span class="label">Or swap times with</span><select id="swapTask"><option value="">No swap</option>${others.map(x=>`<option value="${escapeAttr(occurrenceKey(x))}">${escapeHTML(x.title)} · ${escapeHTML(formatClock(x.start))}</option>`).join('')}</select></label>`:''}</div><button class="primary full" id="saveMove" style="margin-top:14px">Save move</button><button class="secondary full" id="moveTomorrow" style="margin-top:8px">Move to tomorrow</button>${hasOverride?'<button class="secondary full" id="resetMove" style="margin-top:8px">Reset to planned time</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">MOVE TASK</p><h2>${escapeHTML(item.title)}</h2><p class="muted tiny">Flexible tasks can move. Classes, wake-up, morning reset and sleep stay locked.</p><div class="stack"><label><span class="label">Move to a different time</span><input class="input" id="moveTime" type="time" value="${escapeAttr(item.start)}"></label>${others.length?`<label><span class="label">Or swap times with</span><select id="swapTask"><option value="">No swap</option>${others.map(x=>`<option value="${escapeAttr(occurrenceKey(x))}">${escapeHTML(x.title)} · ${escapeHTML(formatClock(x.start))}</option>`).join('')}</select></label>`:''}</div><button class="primary full" id="saveMove" style="margin-top:14px">Save move</button><button class="secondary full" id="moveTomorrow" style="margin-top:8px">Move to tomorrow</button>${hasOverride?'<button class="secondary full" id="resetMove" style="margin-top:8px">Reset to planned time</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
   $('#saveMove').onclick=()=>{
     const swapOcc=$('#swapTask')?.value||'';
     if(swapOcc){
       const other=itemsForDate(date).find(x=>occurrenceKey(x)===swapOcc); if(!other)return toast('That task is no longer available');
       const aStart=item.start, bStart=other.start;
       if(moveWouldHitLocked(item,date,bStart)||moveWouldHitLocked(other,date,aStart)) return toast('That swap would overlap a locked item');
-      const before=daySnapshot(key);setItemTimeOverride(item,key,bStart); setItemTimeOverride(other,key,aStart); save(); modal.close(); render(); toast('Tasks swapped','Undo',()=>restoreDaySnapshot(key,before)); return;
+      const before=daySnapshot(key);setItemTimeOverride(item,key,bStart); setItemTimeOverride(other,key,aStart); save(); closeAppSheet(modal); render(); toast('Tasks swapped','Undo',()=>restoreDaySnapshot(key,before)); return;
     }
     const time=$('#moveTime').value; if(!time)return toast('Choose a time');
     if(moveWouldHitLocked(item,date,time)) return toast('That time overlaps a locked item');
-    const before=daySnapshot(key);setItemTimeOverride(item,key,time); modal.close(); render(); toast('Task moved','Undo',()=>restoreDaySnapshot(key,before));
+    const before=daySnapshot(key);setItemTimeOverride(item,key,time); closeAppSheet(modal); render(); toast('Task moved','Undo',()=>restoreDaySnapshot(key,before));
   };
-  $('#moveTomorrow').onclick=()=>{const nextKey=todayKey(addDays(parseDateKey(key),1)),beforeRec=deepClone(state.records[key]||null),beforeNext=deepClone(state.records[nextKey]||null),beforeOneOff=deepClone(state.oneOffTasks);if(moveItemToTomorrow(item,key)){modal.close();render();toast('Moved to tomorrow','Undo',()=>{if(beforeRec)state.records[key]=beforeRec;else delete state.records[key];if(beforeNext)state.records[nextKey]=beforeNext;else delete state.records[nextKey];state.oneOffTasks=beforeOneOff;save();render();});}};
-  if($('#resetMove')) $('#resetMove').onclick=()=>{const before=daySnapshot(key);clearItemTimeOverride(item,key);modal.close();render();toast('Planned time restored','Undo',()=>restoreDaySnapshot(key,before));};
-  $('#cancelModal').onclick=()=>modal.close();
+  $('#moveTomorrow').onclick=()=>{const nextKey=todayKey(addDays(parseDateKey(key),1)),beforeRec=deepClone(state.records[key]||null),beforeNext=deepClone(state.records[nextKey]||null),beforeOneOff=deepClone(state.oneOffTasks);if(moveItemToTomorrow(item,key)){closeAppSheet(modal);render();toast('Moved to tomorrow','Undo',()=>{if(beforeRec)state.records[key]=beforeRec;else delete state.records[key];if(beforeNext)state.records[nextKey]=beforeNext;else delete state.records[nextKey];state.oneOffTasks=beforeOneOff;save();render();});}};
+  if($('#resetMove')) $('#resetMove').onclick=()=>{const before=daySnapshot(key);clearItemTimeOverride(item,key);closeAppSheet(modal);render();toast('Planned time restored','Undo',()=>restoreDaySnapshot(key,before));};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 function openEndOfDayCleanup(date=new Date()){
   const key=todayKey(date); const pending=itemsForMode(itemsForDate(date),modeForDate(key)).filter(i=>!itemManualMoveLocked(i) && !isClosedStatus(getStatus(i,key)));
   if(!pending.length)return toast('No flexible tasks need cleaning up');
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">END OF DAY</p><h2>Clean up unfinished tasks</h2><p class="muted">Choose what happens to each flexible item. Nothing locked is touched.</p><div class="cleanup-list">${pending.map((i,idx)=>`<div class="cleanup-row"><div><b>${escapeHTML(i.title)}</b><small>${escapeHTML(timeWindow(i))}</small></div><select data-cleanup="${escapeAttr(occurrenceKey(i))}"><option value="keep">Keep today</option><option value="tomorrow">Move to tomorrow</option><option value="drop">Drop for today</option></select></div>`).join('')}</div><button class="primary full" id="applyCleanup" style="margin-top:14px">Apply</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">END OF DAY</p><h2>Clean up unfinished tasks</h2><p class="muted">Choose what happens to each flexible item. Nothing locked is touched.</p><div class="cleanup-list">${pending.map((i,idx)=>`<div class="cleanup-row"><div><b>${escapeHTML(i.title)}</b><small>${escapeHTML(timeWindow(i))}</small></div><select data-cleanup="${escapeAttr(occurrenceKey(i))}"><option value="keep">Keep today</option><option value="tomorrow">Move to tomorrow</option><option value="drop">Drop for today</option></select></div>`).join('')}</div><button class="primary full" id="applyCleanup" style="margin-top:14px">Apply</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
   $('#applyCleanup').onclick=()=>{
     $$('[data-cleanup]',modalContent).forEach(sel=>{const choice=sel.value;if(choice==='keep')return;const current=itemsForDate(date).find(i=>occurrenceKey(i)===sel.dataset.cleanup);if(!current)return;if(choice==='tomorrow')moveItemToTomorrow(current,key);if(choice==='drop')setStatus(current,key,'dropped');});
-    save();modal.close();renderToday();requestAnimationFrame(()=>maybeCelebrateDayFinish(date));toast('Day cleaned up');
+    save();closeAppSheet(modal);renderToday();requestAnimationFrame(()=>maybeCelebrateDayFinish(date));toast('Day cleaned up');
   };
-  $('#cancelModal').onclick=()=>modal.close();
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 function renderWeek() {
@@ -995,7 +1165,7 @@ function daysUntilPayday() {
   if(pay<today){m+=1;if(m>11){m=0;y+=1;}const last=new Date(y,m+1,0).getDate();pay=new Date(y,m,Math.min(day,last),12,0,0,0);}
   return Math.round((pay-today)/86400000);
 }
-function appStartDate(){
+function appStartDateLegacy(){
   const raw=String(state.meta?.createdAt||todayKey()).slice(0,10);
   try{return parseDateKey(raw);}catch(e){return new Date();}
 }
@@ -1009,7 +1179,7 @@ function dateRange(range='30'){
   if(range==='all') return datesBetween(appStartDate(),end);
   const n=range==='7'?7:30; return datesBetween(addDays(end,-(n-1)),end,n+1);
 }
-function gymSessionDates(){
+function gymSessionDatesLive(){
   const set=new Set((state.gym.sessions||[]).map(String));
   Object.keys(state.records).forEach(key=>{
     const d=parseDateKey(key);itemsForDate(d).filter(i=>i.category==='Fitness'&&/gym/i.test(i.title||'')).forEach(i=>{if(getStatus(i,key)==='done')set.add(key);});
@@ -1018,11 +1188,11 @@ function gymSessionDates(){
   (state.gym.sessionExcluded||[]).forEach(k=>set.delete(String(k)));
   return set;
 }
-function mealDayIsComplete(date){
+function mealDayIsCompleteLive(date){
   const key=todayKey(date); const meals=itemsForDate(date).filter(i=>i.category==='Food');
   return meals.length>=3 && meals.every(i=>getStatus(i,key)==='done');
 }
-function pastClassOccurrences(dates){
+function pastClassOccurrencesLive(dates){
   const now=new Date(); const nowKey=todayKey(now); const nowMin=currentMinutes(); const out=[];
   dates.forEach(date=>{const key=todayKey(date);itemsForDate(date,{ignoreOverrides:true}).filter(i=>i.isClass).forEach(i=>{
     const ended=key<nowKey || (key===nowKey && minutesFromTime(i.end||i.start)<nowMin);
@@ -1058,10 +1228,10 @@ function previousWeekMetrics(){const thisStart=startOfWeek(new Date());const sta
 function previous30Metrics(){const end=addDays(new Date(),-30);end.setHours(12,0,0,0);return metricsForDates(datesBetween(addDays(end,-29),end,31));}
 function signedDelta(current,previous,suffix=''){const d=current-previous;return `${d>0?'+':''}${d}${suffix}`;}
 function totalProjectSessions(){return (state.projects||[]).reduce((a,p)=>a+Number(p.sessions||0),0);}
-function perfectClassDaysCount(){
+function perfectClassDaysCountLegacy(){
   return dateRange('all').filter(d=>{const key=todayKey(d);const items=itemsForDate(d,{ignoreOverrides:true}).filter(i=>i.isClass&&getStatus(i,key)!=='cancelled');if(!items.length)return false;const ended=key<todayKey()||items.every(i=>itemEndSortMinutes(i)<currentMinutes());return ended&&items.every(i=>getStatus(i,key)==='done');}).length;
 }
-function perfectWeeksCount(){
+function perfectWeeksCountLegacy(){
   const appStart=startOfWeek(appStartDate()), currentStart=startOfWeek(new Date()); let count=0;
   for(let ws=new Date(appStart); ws<=currentStart; ws=addDays(ws,7)){
     const days=Array.from({length:7},(_,i)=>addDays(ws,i));
@@ -1094,7 +1264,7 @@ function achievementData(){
     ['project_15','Builder','Log 15 focused project sessions.',projects,15],
     ['strength_20','Stronger','Improve one tracked lift by at least 20%.',strength,20],
     ['good_50','Reset 50','Finish 50 good days at 70% or better.',all.goodDays,50],
-    ['perfect_week','Perfect Week','Finish every scheduled item Monday through Sunday.',perfectWeeks,1]
+    ['perfect_week','Perfect Week','Finish every tracked day in a completed week.',perfectWeeks,1]
   ];
   return specs.map(([id,title,desc,value,baseTarget])=>{
     const tiers=[baseTarget,baseTarget*2,baseTarget*4,baseTarget*8];
@@ -1120,7 +1290,7 @@ function lightweightInsights(){
   if(m30.mealDays||p30.mealDays) out.push(`Three-meal days: ${m30.mealDays} in the last 30 days versus ${p30.mealDays} in the previous 30.`);
   const currentSpend=transactionsForMonth(monthKey()).reduce((a,t)=>a+Number(t.amount||0),0); const prevDate=new Date();prevDate.setMonth(prevDate.getMonth()-1);const prevSpend=transactionsForMonth(monthKey(prevDate)).reduce((a,t)=>a+Number(t.amount||0),0);if(currentSpend||prevSpend)out.push(`Spending this month is ${fmtMoney(currentSpend)}${prevSpend?` versus ${fmtMoney(prevSpend)} last month`:''}.`);
   const tracked=Object.keys(state.records).filter(k=>state.records[k]?.itemStatus&&Object.keys(state.records[k].itemStatus).length).length;
-  if(tracked>=7){const byDay=Array.from({length:7},()=>[]);Object.keys(state.records).forEach(k=>{const d=parseDateKey(k);byDay[d.getDay()].push(dayCompletion(d));});const avgs=byDay.map(a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):-1);const best=Math.max(...avgs);if(best>=0)out.push(`${DAY_LONG[avgs.indexOf(best)]} is your strongest tracked day at about ${best}% completion.`);}
+  if(tracked>=7){const byDay=Array.from({length:7},()=>[]);Object.keys(state.records).filter(k=>isTrackedDate(k)&&k<=todayKey()&&Object.keys(state.records[k]?.itemStatus||{}).length).forEach(k=>{const d=parseDateKey(k);byDay[d.getDay()].push(dayCompletion(d));});const avgs=byDay.map(a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):-1);const best=Math.max(...avgs);if(best>=0)out.push(`${DAY_LONG[avgs.indexOf(best)]} is your strongest tracked day at about ${best}% completion.`);}
   const sleep30=sleepAverageForDays(30);if(sleep30.count>=3)out.push(`Average sleep is ${formatDurationHours(sleep30.average)} over ${sleep30.count} logged night${sleep30.count===1?'':'s'} in the last 30 days.`);
   const perfectWeeks=perfectWeeksCount();if(perfectWeeks)out.push(`You have completed ${perfectWeeks} perfect week${perfectWeeks===1?'':'s'} with every scheduled item finished.`);
   if(!out.length)out.push('Keep using Reset and useful patterns will appear here automatically.');
@@ -1131,7 +1301,7 @@ function renderMore() {
   if(view==='gym')return renderGym();if(view==='health')return renderHealth();if(view==='sleep')return renderSleep();if(view==='car')return renderCar();if(view==='projects')return renderProjects();if(view==='progress')return renderProgress();if(view.startsWith('project:'))return renderProjectDetail(view.slice(8));
   setHeader('More');const unlocked=achievementData().filter(a=>a.unlocked).length;
   main.innerHTML=`<div class="section-title first-section"><h2>Life Tools</h2></div><section class="tool-grid mock-tools">${toolCard('gym','Gym','Workout','dumbbell',`${gymSessionDates().size} sessions`)}${toolCard('health','Health','Body weight and simple progress','heart',`${state.health.weightLogs.length} entries`)}${toolCard('sleep','Sleep','Duration, timing and consistency.','moon',sleepToolMeta())}${toolCard('car','Car','Fuel, service & rego','car',state.car.model||'Vehicle')}${toolCard('projects','Projects','Track your progress','folder',`${state.projects.filter(p=>!p.archived).length} active`)}</section><div class="section-title"><h2>Progress</h2></div><section class="progress-link-grid single-progress-link"><button class="progress-link" data-more-view="progress"><span class="tool-icon blue">${svgIcon('chart')}</span><span><b>Progress & achievements</b><small>Insights, trends and long-term goals</small></span><em>${unlocked} earned</em></button></section>`;
-  $$('[data-more-view]').forEach(b=>b.onclick=()=>{const v=b.dataset.moreView;moreHomeScrollY=window.scrollY;state.settings.moreView=v;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});localizeTree(main);
+  $$('[data-more-view]').forEach(b=>b.onclick=()=>{const v=b.dataset.moreView;moreHomeScrollY=pageScrollY();state.settings.moreView=v;save();renderMore();pageScrollTo({top:0,behavior:'auto'});});localizeTree(main);
 }
 function renderProgress(){
   setHeader('Progress');
@@ -1145,7 +1315,7 @@ function latestWeightText(){const x=[...(state.health.weightLogs||[])].sort((a,b
 function toolCard(view,title,desc,icon,meta=''){const tone=({gym:'blue',health:'purple',sleep:'cyan',money:'green',car:'orange',projects:'violet'})[view]||'blue';return `<button class="tool-card" data-more-view="${escapeAttr(view)}"><span class="tool-icon ${tone}">${svgIcon(icon)}</span><span class="tool-card-copy"><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small>${meta?`<em>${escapeHTML(meta)}</em>`:''}</span></button>`;}
 function toolLink(view,title,desc){return `<button class="tool-link" data-more-view="${escapeAttr(view)}"><span><b>${escapeHTML(title)}</b><small>${escapeHTML(desc)}</small></span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`;}
 function moreBack(label='More'){return `<button class="back-link" id="moreBackBtn">${svgIcon('chevronLeft')}<span>${escapeHTML(label)}</span></button>`;}
-function bindMoreBack(){const b=$('#moreBackBtn');if(b)b.onclick=()=>{const y=moreHomeScrollY;state.settings.moreView='home';save();renderMore();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));};}
+function bindMoreBack(){const b=$('#moreBackBtn');if(b)b.onclick=()=>{const y=moreHomeScrollY;state.settings.moreView='home';save();renderMore();requestAnimationFrame(()=>pageScrollTo({top:y,behavior:'auto'}));};}
 function itemIsFixed(item) { return isDayAnchor(item) || item.fixed===true || item.isClass===true; }
 function itemIsNonBlocking(item){ return item?.nonBlocking===true || item?.itemType==='reminder'; }
 function itemAllowsOverlap(item){ return itemIsNonBlocking(item) || item?.allowOverlap===true; }
@@ -1230,8 +1400,8 @@ function applyAdaptiveRestart(plan) {
 }
 function openRestartModal() {
   const keepPlan=buildAdaptiveRestartPlan(new Date(),true),resetPlan=buildAdaptiveRestartPlan(new Date(),false),manualCount=keepPlan.manualCount,p=manualCount?keepPlan:resetPlan,missCount=p.missedFixed.length;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ADAPTIVE RESTART</p><h2>Rebuild the rest of today.</h2><p class="muted">Wake and sleep anchors stay fixed for this day. Classes and appointments are never moved.${missCount?` ${missCount} fixed event${missCount===1?' is':'s are'} already past and will stay visible as missed.`:''}</p>${manualCount?`<div class="card flat restart-preview"><b>${manualCount} manual move${manualCount===1?'':'s'} detected</b><small>Choose whether Reset should keep the order/timing choices you made or return to the original schedule before rebuilding.</small></div><button class="primary full" id="restartKeepMoves" style="margin-top:12px">Rebuild + keep my moves</button><button class="secondary full" id="restartResetMoves" style="margin-top:8px">Reset my moves + rebuild</button>`:`<div class="card flat restart-preview"><b>Adaptive rebuild</b><small>Overdue flexible tasks move forward around fixed events.</small></div><button class="primary full" id="restartResetMoves" style="margin-top:12px">Rebuild today</button>`}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();if($('#restartKeepMoves'))$('#restartKeepMoves').onclick=()=>{applyAdaptiveRestart(keepPlan);modal.close();toast('Today rebuilt and your manual order was kept');renderToday();};$('#restartResetMoves').onclick=()=>{applyAdaptiveRestart(resetPlan);modal.close();toast(manualCount?'Today rebuilt from the original schedule':'Today rebuilt around the current time');renderToday();};$('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ADAPTIVE RESTART</p><h2>Rebuild the rest of today.</h2><p class="muted">Wake and sleep anchors stay fixed for this day. Classes and appointments are never moved.${missCount?` ${missCount} fixed event${missCount===1?' is':'s are'} already past and will stay visible as missed.`:''}</p>${manualCount?`<div class="card flat restart-preview"><b>${manualCount} manual move${manualCount===1?'':'s'} detected</b><small>Choose whether Reset should keep the order/timing choices you made or return to the original schedule before rebuilding.</small></div><button class="primary full" id="restartKeepMoves" style="margin-top:12px">Rebuild + keep my moves</button><button class="secondary full" id="restartResetMoves" style="margin-top:8px">Reset my moves + rebuild</button>`:`<div class="card flat restart-preview"><b>Adaptive rebuild</b><small>Overdue flexible tasks move forward around fixed events.</small></div><button class="primary full" id="restartResetMoves" style="margin-top:12px">Rebuild today</button>`}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);if($('#restartKeepMoves'))$('#restartKeepMoves').onclick=()=>{applyAdaptiveRestart(keepPlan);closeAppSheet(modal);toast('Today rebuilt and your manual order was kept');renderToday();};$('#restartResetMoves').onclick=()=>{applyAdaptiveRestart(resetPlan);closeAppSheet(modal);toast(manualCount?'Today rebuilt from the original schedule':'Today rebuilt around the current time');renderToday();};$('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 function dailyWakeItem(date){return itemsForDate(date,{ignoreOverrides:true}).find(i=>i.id==='wake')||null;}
 function dailySleepItem(date){return itemsForDate(date,{ignoreOverrides:true}).find(i=>i.id==='sleep')||null;}
@@ -1269,33 +1439,33 @@ function applyFutureDayPlan(plan){const rec=ensureRecord(plan.key);rec.timeOverr
 function openDayAnchorPlanner(date){
   const key=todayKey(date);if(key<todayKey())return toast('Past day anchors can be corrected from their history instead');
   const currentWake=dayWakeTime(date),currentSleep=daySleepTime(date),manualCount=Object.values(ensureRecord(key).timeOverrides||{}).filter(x=>x?.manual&&!x?.dayAnchor).length,isToday=key===todayKey();
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DAY PLAN</p><h2>${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}</h2><p class="muted">Wake and sleep change only for this date. Your recurring routine stays untouched.</p><div class="stack"><label><span class="label">Wake time for this day</span><input class="input" id="futureWakeTime" type="time" value="${escapeAttr(currentWake)}"></label><label><span class="label">Sleep time for this night</span><input class="input" id="futureSleepTime" type="time" value="${escapeAttr(currentSleep)}"><small class="field-help">Times before noon are treated as after midnight on the following calendar day.</small></label><label class="switch-row"><input type="checkbox" id="keepFutureMoves" ${manualCount?'checked':''}><span><b>Keep my moves</b><small>Keep swaps and manual time changes while rebuilding around the new anchors.</small></span></label></div><button class="primary full" id="rebuildFutureDay" style="margin-top:14px">Save + rebuild day</button><button class="secondary full" id="saveAnchorsOnly" style="margin-top:8px">Save anchors only</button><button class="secondary full" id="resetFutureDay" style="margin-top:8px">Reset day to routine</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DAY PLAN</p><h2>${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}</h2><p class="muted">Wake and sleep change only for this date. Your recurring routine stays untouched.</p><div class="stack"><label><span class="label">Wake time for this day</span><input class="input" id="futureWakeTime" type="time" value="${escapeAttr(currentWake)}"></label><label><span class="label">Sleep time for this night</span><input class="input" id="futureSleepTime" type="time" value="${escapeAttr(currentSleep)}"><small class="field-help">Times before noon are treated as after midnight on the following calendar day.</small></label><label class="switch-row"><input type="checkbox" id="keepFutureMoves" ${manualCount?'checked':''}><span><b>Keep my moves</b><small>Keep swaps and manual time changes while rebuilding around the new anchors.</small></span></label></div><button class="primary full" id="rebuildFutureDay" style="margin-top:14px">Save + rebuild day</button><button class="secondary full" id="saveAnchorsOnly" style="margin-top:8px">Save anchors only</button><button class="secondary full" id="resetFutureDay" style="margin-top:8px">Reset day to routine</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
   const saveAnchors=()=>{const wake=$('#futureWakeTime').value||currentWake,sleep=$('#futureSleepTime').value||currentSleep;setDayWakeOverride(date,wake);setDaySleepOverride(date,sleep);save();return {wake,sleep};};
-  $('#rebuildFutureDay').onclick=()=>{const {wake,sleep}=saveAnchors(),keep=$('#keepFutureMoves').checked;if(isToday){const rec=ensureRecord(key),beforeWake=!rec.actualWakeAt&&currentMinutes()<minutesFromTime(wake);if(beforeWake){const plan=buildFutureDayPlan(date,keep,wake,sleep);applyFutureDayPlan(plan);}else{const plan=buildAdaptiveRestartPlan(new Date(),keep);applyAdaptiveRestart(plan);}}else{const plan=buildFutureDayPlan(date,keep,wake,sleep);applyFutureDayPlan(plan);}modal.close();render();toast(isToday?'Today rebuilt':'Day rebuilt');};
-  $('#saveAnchorsOnly').onclick=()=>{saveAnchors();modal.close();render();toast('Day anchors saved');};
-  $('#resetFutureDay').onclick=()=>{const rec=ensureRecord(key);rec.timeOverrides={};delete rec.futurePlannedAt;save();modal.close();render();toast('Day restored to recurring routine');};
-  $('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
+  $('#rebuildFutureDay').onclick=()=>{const {wake,sleep}=saveAnchors(),keep=$('#keepFutureMoves').checked;if(isToday){const rec=ensureRecord(key),beforeWake=!rec.actualWakeAt&&currentMinutes()<minutesFromTime(wake);if(beforeWake){const plan=buildFutureDayPlan(date,keep,wake,sleep);applyFutureDayPlan(plan);}else{const plan=buildAdaptiveRestartPlan(new Date(),keep);applyAdaptiveRestart(plan);}}else{const plan=buildFutureDayPlan(date,keep,wake,sleep);applyFutureDayPlan(plan);}closeAppSheet(modal);render();toast(isToday?'Today rebuilt':'Day rebuilt');};
+  $('#saveAnchorsOnly').onclick=()=>{saveAnchors();closeAppSheet(modal);render();toast('Day anchors saved');};
+  $('#resetFutureDay').onclick=()=>{const rec=ensureRecord(key);rec.timeOverrides={};delete rec.futurePlannedAt;save();closeAppSheet(modal);render();toast('Day restored to recurring routine');};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);localizeTree(modalContent);
 }
 function openFutureDayPlanner(date){openDayAnchorPlanner(date);}
 
-function captureWeekEditContext(){if(state.settings.activeTab==='week')weekEditContext={date:state.settings.selectedWeekDate||todayKey(),scrollY:window.scrollY};else weekEditContext=null;}
-function renderAfterEditor(){if(state.settings.activeTab==='week'&&weekEditContext){const ctx=weekEditContext;weekEditContext=null;state.settings.selectedWeekDate=ctx.date;save();renderWeek();requestAnimationFrame(()=>window.scrollTo({top:ctx.scrollY,behavior:'auto'}));}else{weekEditContext=null;render();}}
+function captureWeekEditContext(){if(state.settings.activeTab==='week')weekEditContext={date:state.settings.selectedWeekDate||todayKey(),scrollY:pageScrollY()};else weekEditContext=null;}
+function renderAfterEditor(){if(state.settings.activeTab==='week'&&weekEditContext){const ctx=weekEditContext;weekEditContext=null;state.settings.selectedWeekDate=ctx.date;save();renderWeek();requestAnimationFrame(()=>pageScrollTo({top:ctx.scrollY,behavior:'auto'}));}else{weekEditContext=null;render();}}
 
 function openScheduleManager() {
   const sorted=[...state.schedule].sort((a,b)=>minutesFromTime(a.start)-minutesFromTime(b.start));
-  modalContent.innerHTML=`<div class="sheet-handle"></div><div class="row between center"><div><p class="eyebrow">WEEKLY ROUTINE</p><h2>Recurring schedule</h2></div><button class="icon-button" id="closeModal" aria-label="Close">${svgIcon('close')}</button></div><p class="muted tiny">Your university timetable is preloaded. Fixed items stay in place during an adaptive restart. You can still edit or add recurring items.</p><div class="stack" style="margin-top:14px">${sorted.map(s=>`<button class="more-link" data-routine-edit="${s.id}"><span><b>${escapeHTML(s.title)}</b><small>${escapeHTML(s.days.map(d=>DAY_SHORT[d]).join(', '))} · ${escapeHTML(timeWindow(s))}</small></span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`).join('')}</div><button class="primary full" id="addRoutineInside" style="margin-top:14px">+ Add recurring item</button>`;
-  modal.showModal();
-  $('#closeModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><div class="row between center"><div><p class="eyebrow">WEEKLY ROUTINE</p><h2>Recurring schedule</h2></div><button class="icon-button" id="closeModal" aria-label="Close">${svgIcon('close')}</button></div><p class="muted tiny">Your university timetable is preloaded. Fixed items stay in place during an adaptive restart. You can still edit or add recurring items.</p><div class="stack" style="margin-top:14px">${sorted.map(s=>`<button class="more-link" data-routine-edit="${s.id}"><span><b>${escapeHTML(s.title)}</b><small>${escapeHTML(s.days.map(d=>DAY_SHORT[d]).join(', '))} · ${escapeHTML(timeWindow(s))}</small></span><span class="tool-chevron">${svgIcon('chevronRight')}</span></button>`).join('')}</div><button class="primary full" id="addRoutineInside" style="margin-top:14px">+ Add recurring item</button>`;
+  openAppSheet(modal);
+  $('#closeModal').onclick=()=>closeAppSheet(modal);
   $('#addRoutineInside').onclick=()=>openScheduleItemModal();
   $$('[data-routine-edit]').forEach(b=>b.onclick=()=>openScheduleItemModal(b.dataset.routineEdit));
 }
 
-function openScheduleItemModal(id=null,preset={}) {
+function openScheduleItemModalBase(id=null,preset={}) {
   captureWeekEditContext();
   const existing=id?state.schedule.find(x=>x.id===id):null;
-  const item=existing || {title:'',days:preset.days||[1,2,3,4,5],start:preset.start||'09:00',end:preset.end||'10:00',category:preset.category||'Life',detail:'',active:true,fixed:false,startDate:'',endDate:''};
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">RECURRING ITEM</p><h2>${existing?'Edit weekly item':'Add weekly item'}</h2><div class="stack">
+  const item=existing || {...preset,title:preset.title||'',days:preset.days||[1,2,3,4,5],start:preset.start||'09:00',end:preset.end||'10:00',category:preset.category||'Life',detail:preset.detail||'',active:true,fixed:!!preset.fixed,startDate:preset.startDate||'',endDate:preset.endDate||''};
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">RECURRING ITEM</p><h2>${existing?'Edit weekly item':'Add weekly item'}</h2><div class="stack">
     <label><span class="label">Title</span><input class="input" id="schedTitle" value="${escapeAttr(item.title)}" placeholder="e.g. Reservoir Engineering lecture"></label>
     <div class="form-grid"><label><span class="label">Start</span><input class="input" id="schedStart" type="time" value="${item.start}"></label><label><span class="label">End</span><input class="input" id="schedEnd" type="time" value="${item.end||item.start}"></label></div>
     <label><span class="label">Category</span><select id="schedCategory">${CATEGORIES.map(c=>`<option ${c===item.category?'selected':''}>${c}</option>`).join('')}</select></label>
@@ -1304,31 +1474,40 @@ function openScheduleItemModal(id=null,preset={}) {
     <div><span class="label">Repeat on</span><div class="day-picker">${DAY_PICK.map((d,i)=>`<label class="day-toggle"><input type="checkbox" data-repeat-day="${i}" ${item.days.includes(i)?'checked':''}><span>${d}</span></label>`).join('')}</div></div>
     <label><span class="label">Note</span><textarea id="schedDetail" placeholder="What exactly should you do?">${escapeHTML(item.detail||'')}</textarea></label>
   </div><button class="primary full" id="saveSchedule" style="margin-top:14px">Save recurring item</button>${existing&&!isDayAnchor(item)?'<button class="danger-btn full" id="deleteSchedule" style="margin-top:8px">Delete recurring item</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
+  openAppSheet(modal);
+  const anchorDuration=isDayAnchor(item)?Math.max(1,durationMinutes(item)):null;
+  if(anchorDuration!==null){
+    const start=$('#schedStart'),end=$('#schedEnd');
+    end.readOnly=true;
+    const updateEnd=()=>{if(start.value)end.value=minutesToTime(minutesFromTime(start.value)+anchorDuration);};
+    start.addEventListener('input',updateEnd);start.addEventListener('change',updateEnd);
+    const help=document.createElement('small');help.className='field-help';help.textContent='End time follows this anchor automatically.';end.parentElement.appendChild(help);
+  }
   $('#saveSchedule').onclick=()=>{
     const title=$('#schedTitle').value.trim(); const days=$$('[data-repeat-day]').filter(x=>x.checked).map(x=>Number(x.dataset.repeatDay));
     if(!title)return toast('Add a title'); if(!days.length)return toast('Choose at least one day');
-    const startTime=$('#schedStart').value||'09:00', endTime=$('#schedEnd').value||'10:00', startDate=$('#schedStartDate').value||'', endDate=$('#schedEndDate').value||'';
-    if(minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');
+    const startTime=$('#schedStart').value||'09:00', endTime=anchorDuration!==null?minutesToTime(minutesFromTime(startTime)+anchorDuration):($('#schedEnd').value||'10:00'), startDate=$('#schedStartDate').value||'', endDate=$('#schedEndDate').value||'';
+    if(anchorDuration===null&&minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');
     if(startDate&&endDate&&endDate<startDate)return toast('End date must be after start date');
-    const anchor=isDayAnchor(item);const data={title,days,start:startTime,end:endTime,category:$('#schedCategory').value,detail:$('#schedDetail').value.trim(),active:true,fixed:anchor?true:$('#schedFixed').checked,startDate,endDate};
+    const anchor=isDayAnchor(item);const data={title,days,start:startTime,end:endTime,category:$('#schedCategory').value,detail:$('#schedDetail').value.trim(),active:existing?existing.active!==false:true,isClass:!!item.isClass,fixed:anchor?true:$('#schedFixed').checked,startDate,endDate};
     if(anchor){data.manualLocked=true;data.anchor=item.anchor;}
     createSafetySnapshot('Before weekly routine change');
     const before=existing?structuredClone(existing):null;
-    if(existing){Object.assign(existing,data);if(existing.id==='wake')state.profile.wakeTarget=data.start;if(existing.id==='sleep')state.profile.sleepTarget=data.start;}else state.schedule.push({id:uid('sched'),...data});save();modal.close();toast('Weekly schedule updated',existing?'Undo':null,existing?()=>{Object.assign(existing,before);if(existing.id==='wake')state.profile.wakeTarget=existing.start;if(existing.id==='sleep')state.profile.sleepTarget=existing.start;save();renderAfterEditor();}:null);renderAfterEditor();
+    if(existing){Object.assign(existing,data);if(existing.id==='wake')state.profile.wakeTarget=data.start;if(existing.id==='sleep')state.profile.sleepTarget=data.start;}else state.schedule.push({id:uid('sched'),...data});save();closeAppSheet(modal);toast('Weekly schedule updated',existing?'Undo':null,existing?()=>{Object.assign(existing,before);if(existing.id==='wake')state.profile.wakeTarget=existing.start;if(existing.id==='sleep')state.profile.sleepTarget=existing.start;save();renderAfterEditor();}:null);renderAfterEditor();
   };
-  if(existing&&!isDayAnchor(item)&&$('#deleteSchedule'))$('#deleteSchedule').onclick=()=>{createSafetySnapshot('Before deleting recurring item');const idx=state.schedule.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=structuredClone(state.schedule[idx]);state.schedule.splice(idx,1);save();modal.close();renderAfterEditor();toast('Recurring item deleted','Undo',()=>{state.schedule.splice(Math.min(idx,state.schedule.length),0,removed);save();renderAfterEditor();});};
-  $('#cancelModal').onclick=()=>{modal.close();if(routineManagerReturnDay!==null){const day=routineManagerReturnDay;routineManagerReturnDay=null;requestAnimationFrame(()=>openScheduleManager(day));}};
+  if(existing&&!isDayAnchor(item)&&$('#deleteSchedule'))$('#deleteSchedule').onclick=()=>{createSafetySnapshot('Before deleting recurring item');const idx=state.schedule.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=structuredClone(state.schedule[idx]);state.schedule.splice(idx,1);save();closeAppSheet(modal);renderAfterEditor();toast('Recurring item deleted','Undo',()=>{state.schedule.splice(Math.min(idx,state.schedule.length),0,removed);save();renderAfterEditor();});};
+  $('#cancelModal').onclick=()=>returnToRoutineManager();
 }
 
 function openOneOffTaskModal(id=null,preset={}) {
   const returnToPlan=preset.returnToPlan||null;
+  if(returnToPlan&&$('#futureWakeTime',modalContent))planReturnScroll=modalContent.scrollTop;
   if(!returnToPlan)captureWeekEditContext();
   const existing=id?state.oneOffTasks.find(x=>x.id===id):null;
   const baseType=(existing?.itemType)||(existing?.nonBlocking?'reminder':preset.itemType)||'task';
   const item=existing || {title:preset.title||'',date:preset.date||todayKey(),start:preset.start||'12:00',end:preset.end||'',category:preset.category||'Life',detail:preset.detail||'',fixed:!!preset.fixed,itemType:baseType,nonBlocking:baseType==='reminder',allowOverlap:!!preset.allowOverlap};
-  const finishEditor=()=>{if(returnToPlan){openDayAnchorPlanner(parseDateKey(returnToPlan));}else renderAfterEditor();};
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ADD TO DAY</p><h2>${existing?'Edit item':'Task or reminder'}</h2>
+  const finishEditor=()=>{if(returnToPlan){returnToDayPlan(parseDateKey(returnToPlan));}else renderAfterEditor();};
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ADD TO DAY</p><h2>${existing?'Edit item':'Task or reminder'}</h2>
     <div class="item-type-picker" role="group" aria-label="Item type"><button type="button" data-one-type="task" class="${baseType==='task'?'active':''}">${svgIcon('check')}<span><b>Task / event</b><small>Can reserve time and be rebuilt.</small></span></button><button type="button" data-one-type="reminder" class="${baseType==='reminder'?'active':''}">${svgIcon('bell')}<span><b>Reminder</b><small>Shows on the timeline without blocking time.</small></span></button></div>
     <div class="stack">
       <label><span class="label" id="oneTitleLabel">${baseType==='reminder'?'Reminder':'Task / event'}</span><input class="input" id="oneTitle" value="${escapeAttr(item.title)}" placeholder="${baseType==='reminder'?'e.g. Call the dentist':'e.g. Meeting or buy groceries'}"></label>
@@ -1339,53 +1518,54 @@ function openOneOffTaskModal(id=null,preset={}) {
       <div class="reminder-info ${baseType==='reminder'?'':'hidden'}" id="oneReminderInfo">${svgIcon('bell')}<span><b>Non-blocking reminder</b><small>It can overlap classes, meetings or tasks and will never trigger Needs attention or force Rebuild to move anything.</small></span></div>
       <label><span class="label">Note</span><textarea id="oneDetail" placeholder="Keep it specific.">${escapeHTML(item.detail||'')}</textarea></label>
     </div><button class="primary full" id="saveOneTask" style="margin-top:14px">Save ${baseType==='reminder'?'reminder':'item'}</button>${existing?'<button class="danger-btn full" id="deleteOneTask" style="margin-top:8px">Delete from this day</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
+  openAppSheet(modal);
+  sheetScrollState.onDismiss=returnToPlan?()=>returnToDayPlan(parseDateKey(returnToPlan)):null;
   let selectedType=baseType;
   const refreshTypeUI=()=>{const reminder=selectedType==='reminder';$$('[data-one-type]',modalContent).forEach(b=>b.classList.toggle('active',b.dataset.oneType===selectedType));$('#oneTaskOptions').classList.toggle('hidden',reminder);$('#oneReminderInfo').classList.toggle('hidden',!reminder);$('#oneTitleLabel').textContent=reminder?'Reminder':'Task / event';$('#oneTitle').placeholder=reminder?'e.g. Call the dentist':'e.g. Meeting or buy groceries';$('#saveOneTask').textContent=`Save ${reminder?'reminder':'item'}`;if(!reminder)$('#oneOverlapRow').classList.toggle('hidden',!$('#oneFixed').checked);};
   $$('[data-one-type]',modalContent).forEach(b=>b.onclick=()=>{selectedType=b.dataset.oneType;refreshTypeUI();});
   $('#oneFixed').onchange=()=>$('#oneOverlapRow').classList.toggle('hidden',!$('#oneFixed').checked);
-  $('#saveOneTask').onclick=()=>{const title=$('#oneTitle').value.trim();if(!title)return toast(`Add a ${selectedType==='reminder'?'reminder':'task'} name`);const startTime=$('#oneStart').value||'12:00',endTime=$('#oneEnd').value||'';if(endTime&&minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');const reminder=selectedType==='reminder',fixed=reminder?false:$('#oneFixed').checked;const data={title,date:$('#oneDate').value||todayKey(),start:startTime,end:endTime,category:$('#oneCategory').value,detail:$('#oneDetail').value.trim(),fixed,itemType:selectedType,nonBlocking:reminder,allowOverlap:reminder?true:(fixed&&$('#oneAllowOverlap').checked)},before=existing?deepClone(existing):null;if(existing)Object.assign(existing,data);else state.oneOffTasks.push({id:uid('one'),...data});save();modal.close();toast(existing?(reminder?'Reminder updated':'Item updated'):(reminder?'Reminder added':'Item scheduled'),existing?'Undo':null,existing?()=>{Object.assign(existing,before);save();finishEditor();}:null);finishEditor();};
-  if(existing)$('#deleteOneTask').onclick=()=>{const idx=state.oneOffTasks.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=deepClone(state.oneOffTasks[idx]);state.oneOffTasks.splice(idx,1);save();modal.close();finishEditor();toast(removed.itemType==='reminder'||removed.nonBlocking?'Reminder deleted':'Item deleted','Undo',()=>{state.oneOffTasks.splice(Math.min(idx,state.oneOffTasks.length),0,removed);save();finishEditor();});};
-  $('#cancelModal').onclick=()=>{modal.close();if(returnToPlan)requestAnimationFrame(()=>openDayAnchorPlanner(parseDateKey(returnToPlan)));};
+  $('#saveOneTask').onclick=()=>{const title=$('#oneTitle').value.trim();if(!title)return toast(`Add a ${selectedType==='reminder'?'reminder':'task'} name`);const startTime=$('#oneStart').value||'12:00',endTime=$('#oneEnd').value||'';if(endTime&&minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');const reminder=selectedType==='reminder',fixed=reminder?false:$('#oneFixed').checked;const data={title,date:$('#oneDate').value||todayKey(),start:startTime,end:endTime,category:$('#oneCategory').value,detail:$('#oneDetail').value.trim(),fixed,itemType:selectedType,nonBlocking:reminder,allowOverlap:reminder?true:(fixed&&$('#oneAllowOverlap').checked)},before=existing?deepClone(existing):null;if(existing)Object.assign(existing,data);else state.oneOffTasks.push({id:uid('one'),...data});save();closeAppSheet(modal);toast(existing?(reminder?'Reminder updated':'Item updated'):(reminder?'Reminder added':'Item scheduled'),existing?'Undo':null,existing?()=>{Object.assign(existing,before);save();finishEditor();}:null);finishEditor();};
+  if(existing)$('#deleteOneTask').onclick=()=>{const idx=state.oneOffTasks.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=deepClone(state.oneOffTasks[idx]);state.oneOffTasks.splice(idx,1);save();closeAppSheet(modal);finishEditor();toast(removed.itemType==='reminder'||removed.nonBlocking?'Reminder deleted':'Item deleted','Undo',()=>{state.oneOffTasks.splice(Math.min(idx,state.oneOffTasks.length),0,removed);save();finishEditor();});};
+  $('#cancelModal').onclick=()=>{if(returnToPlan)returnToDayPlan(parseDateKey(returnToPlan));else closeAppSheet(modal);};
 }
 
 function openCourseModal(id=null) {
   const c=id?state.courses.find(x=>x.id===id):null;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">UNIVERSITY</p><h2>${c?'Edit course':'Add course'}</h2><div class="stack"><label><span class="label">Course name</span><input class="input" id="courseName" value="${c?escapeAttr(c.name):''}" placeholder="e.g. Production Engineering"></label><div class="form-grid"><label><span class="label">You are at week</span><input class="input" id="courseCurrent" type="number" min="0" value="${c?c.currentWeek:1}"></label><label><span class="label">Teaching week</span><input class="input" id="courseTeaching" type="number" min="1" value="${c?c.teachingWeek:10}"></label></div><label><span class="label">Note</span><input class="input" id="courseNote" value="${c?escapeAttr(c.note||''):''}" placeholder="What is blocking you?"></label></div><button class="primary full" id="saveCourse" style="margin-top:14px">Save course</button>${c?'<button class="danger-btn full" id="deleteCourse" style="margin-top:8px">Delete course</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#saveCourse').onclick=()=>{const data={name:$('#courseName').value.trim()||'Untitled course',currentWeek:Number($('#courseCurrent').value||0),teachingWeek:Number($('#courseTeaching').value||10),note:$('#courseNote').value.trim()};if(c)Object.assign(c,data);else state.courses.push({id:uid('course'),...data});save();modal.close();renderUniversity();};
-  if(c)$('#deleteCourse').onclick=()=>{state.courses=state.courses.filter(x=>x.id!==c.id);save();modal.close();renderUniversity();};
-  $('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">UNIVERSITY</p><h2>${c?'Edit course':'Add course'}</h2><div class="stack"><label><span class="label">Course name</span><input class="input" id="courseName" value="${c?escapeAttr(c.name):''}" placeholder="e.g. Production Engineering"></label><div class="form-grid"><label><span class="label">You are at week</span><input class="input" id="courseCurrent" type="number" min="0" value="${c?c.currentWeek:1}"></label><label><span class="label">Teaching week</span><input class="input" id="courseTeaching" type="number" min="1" value="${c?c.teachingWeek:10}"></label></div><label><span class="label">Note</span><input class="input" id="courseNote" value="${c?escapeAttr(c.note||''):''}" placeholder="What is blocking you?"></label></div><button class="primary full" id="saveCourse" style="margin-top:14px">Save course</button>${c?'<button class="danger-btn full" id="deleteCourse" style="margin-top:8px">Delete course</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
+  $('#saveCourse').onclick=()=>{const data={name:$('#courseName').value.trim()||'Untitled course',currentWeek:Number($('#courseCurrent').value||0),teachingWeek:Number($('#courseTeaching').value||10),note:$('#courseNote').value.trim()};if(c)Object.assign(c,data);else state.courses.push({id:uid('course'),...data});save();closeAppSheet(modal);renderUniversity();};
+  if(c)$('#deleteCourse').onclick=()=>{state.courses=state.courses.filter(x=>x.id!==c.id);save();closeAppSheet(modal);renderUniversity();};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 function openUniTaskModal(id=null) {
   const existing=id?state.uniTasks.find(x=>x.id===id):null;
   const t=existing||{title:'',course:'General',priority:'Important',dueDate:'',estimate:''};
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CATCH-UP QUEUE</p><h2>${existing?'Edit task':'Add task'}</h2><div class="stack"><label><span class="label">Task</span><input class="input" id="uniTitle" value="${escapeAttr(t.title)}" placeholder="e.g. Topic 4 tutorial + notes"></label><label><span class="label">Course</span><select id="uniCourse"><option value="General">General</option>${state.courses.map(c=>`<option ${c.name===t.course?'selected':''}>${escapeHTML(c.name)}</option>`).join('')}</select></label><div class="form-grid"><label><span class="label">Priority</span><select id="uniPriority"><option ${t.priority==='Urgent'?'selected':''}>Urgent</option><option ${t.priority==='Important'?'selected':''}>Important</option><option ${t.priority==='Later'?'selected':''}>Later</option></select></label><label><span class="label">Due date</span><input class="input" id="uniDue" type="date" value="${t.dueDate||''}"></label></div><label><span class="label">Estimated time</span><input class="input" id="uniEstimate" value="${escapeAttr(t.estimate||'')}" placeholder="e.g. 60–90 min"></label></div><button class="primary full" id="saveUniTask" style="margin-top:14px">Save task</button>${existing?'<button class="danger-btn full" id="deleteUniTask" style="margin-top:8px">Delete task</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#saveUniTask').onclick=()=>{const title=$('#uniTitle').value.trim();if(!title)return toast('Add a task name');const data={title,course:$('#uniCourse').value,priority:$('#uniPriority').value,dueDate:$('#uniDue').value||'',estimate:$('#uniEstimate').value.trim()};if(existing)Object.assign(existing,data);else state.uniTasks.push({id:uid('unitask'),done:false,...data});save();modal.close();renderUniversity();};
-  if(existing)$('#deleteUniTask').onclick=()=>{state.uniTasks=state.uniTasks.filter(x=>x.id!==existing.id);save();modal.close();renderUniversity();};
-  $('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CATCH-UP QUEUE</p><h2>${existing?'Edit task':'Add task'}</h2><div class="stack"><label><span class="label">Task</span><input class="input" id="uniTitle" value="${escapeAttr(t.title)}" placeholder="e.g. Topic 4 tutorial + notes"></label><label><span class="label">Course</span><select id="uniCourse"><option value="General">General</option>${state.courses.map(c=>`<option ${c.name===t.course?'selected':''}>${escapeHTML(c.name)}</option>`).join('')}</select></label><div class="form-grid"><label><span class="label">Priority</span><select id="uniPriority"><option ${t.priority==='Urgent'?'selected':''}>Urgent</option><option ${t.priority==='Important'?'selected':''}>Important</option><option ${t.priority==='Later'?'selected':''}>Later</option></select></label><label><span class="label">Due date</span><input class="input" id="uniDue" type="date" value="${t.dueDate||''}"></label></div><label><span class="label">Estimated time</span><input class="input" id="uniEstimate" value="${escapeAttr(t.estimate||'')}" placeholder="e.g. 60–90 min"></label></div><button class="primary full" id="saveUniTask" style="margin-top:14px">Save task</button>${existing?'<button class="danger-btn full" id="deleteUniTask" style="margin-top:8px">Delete task</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
+  $('#saveUniTask').onclick=()=>{const title=$('#uniTitle').value.trim();if(!title)return toast('Add a task name');const data={title,course:$('#uniCourse').value,priority:$('#uniPriority').value,dueDate:$('#uniDue').value||'',estimate:$('#uniEstimate').value.trim()};if(existing)Object.assign(existing,data);else state.uniTasks.push({id:uid('unitask'),done:false,...data});save();closeAppSheet(modal);renderUniversity();};
+  if(existing)$('#deleteUniTask').onclick=()=>{state.uniTasks=state.uniTasks.filter(x=>x.id!==existing.id);save();closeAppSheet(modal);renderUniversity();};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 function openMoneyModal() {
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">MONEY PLAN</p><h2>Edit monthly allocation</h2><div class="form-grid"><label><span class="label">Monthly income (SAR)</span><input class="input" id="incomeInput" type="number" min="0" value="${state.money.income}"></label><label><span class="label">Payday day of month</span><input class="input" id="paydayInput" type="number" min="1" max="31" value="${state.profile.paydayDay||29}"></label></div><hr><div id="bucketEditor" class="stack">${state.money.buckets.map(bucketEditorRow).join('')}</div><button class="secondary full" id="addBucketBtn" style="margin-top:10px">+ Add allocation bucket</button><button class="primary full" id="saveMoney" style="margin-top:14px">Save money plan</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">MONEY PLAN</p><h2>Edit monthly allocation</h2><div class="form-grid"><label><span class="label">Monthly income (SAR)</span><input class="input" id="incomeInput" type="number" min="0" value="${state.money.income}"></label><label><span class="label">Payday day of month</span><input class="input" id="paydayInput" type="number" min="1" max="31" value="${state.profile.paydayDay||29}"></label></div><hr><div id="bucketEditor" class="stack">${state.money.buckets.map(bucketEditorRow).join('')}</div><button class="secondary full" id="addBucketBtn" style="margin-top:10px">+ Add allocation bucket</button><button class="primary full" id="saveMoney" style="margin-top:14px">Save money plan</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
   $('#addBucketBtn').onclick=()=>{const wrap=document.createElement('div');wrap.innerHTML=bucketEditorRow({id:uid('bucket'),name:'New bucket',target:0});$('#bucketEditor').appendChild(wrap.firstElementChild);bindBucketDeleteButtons();};
   bindBucketDeleteButtons();
-  $('#saveMoney').onclick=()=>{const beforeMoney=deepClone(state.money),beforePayday=state.profile.paydayDay;createSafetySnapshot('Before money allocation change');state.money.income=Math.max(0,Number($('#incomeInput').value||0));state.profile.paydayDay=clamp(Number($('#paydayInput').value||29),1,31);state.money.buckets=$$('.bucket-editor').map(row=>({id:row.dataset.bucketId||uid('bucket'),name:$('.bucket-name',row).value.trim()||'Bucket',target:Math.max(0,Number($('.bucket-target',row).value||0))}));captureCurrentMoneyPlan();save();modal.close();renderMoney();toast('Money plan updated','Undo',()=>{state.money=beforeMoney;state.profile.paydayDay=beforePayday;save();renderMoney();});};
-  $('#cancelModal').onclick=()=>modal.close();
+  $('#saveMoney').onclick=()=>{const beforeMoney=deepClone(state.money),beforePayday=state.profile.paydayDay;createSafetySnapshot('Before money allocation change');state.money.income=Math.max(0,Number($('#incomeInput').value||0));state.profile.paydayDay=clamp(Number($('#paydayInput').value||29),1,31);state.money.buckets=$$('.bucket-editor').map(row=>({id:row.dataset.bucketId||uid('bucket'),name:$('.bucket-name',row).value.trim()||'Bucket',target:Math.max(0,Number($('.bucket-target',row).value||0))}));captureCurrentMoneyPlan();save();closeAppSheet(modal);renderMoney();toast('Money plan updated','Undo',()=>{state.money=beforeMoney;state.profile.paydayDay=beforePayday;save();renderMoney();});};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 function bucketEditorRow(b){return `<div class="course bucket-editor" data-bucket-id="${escapeAttr(b.id)}"><div class="row"><label style="flex:1"><span class="label">Bucket</span><input class="input bucket-name" value="${escapeAttr(b.name)}"></label><label style="width:130px"><span class="label">Monthly SAR</span><input class="input bucket-target" type="number" min="0" value="${Number(b.target||0)}"></label></div><button class="text-button danger-text bucket-delete" type="button">Remove</button></div>`;}
 function bindBucketDeleteButtons(){ $$('.bucket-delete').forEach(b=>b.onclick=()=>{if($$('.bucket-editor').length<=1)return toast('Keep at least one bucket');b.closest('.bucket-editor').remove();}); }
 
 function openExpenseModal(id=null) {
   const existing=id?state.money.transactions.find(t=>t.id===id):null;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SPENDING</p><h2>${existing?'Edit':'Log'} an expense</h2><div class="stack"><label><span class="label">Amount (SAR)</span><input class="input" id="expenseAmount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0" value="${existing?.amount??''}"></label><label><span class="label">Allocation</span><select id="expenseBucket">${state.money.buckets.map(b=>`<option value="${b.id}" ${existing?.bucketId===b.id?'selected':''}>${escapeHTML(b.name)}</option>`).join('')}</select></label><label><span class="label">Date</span><input class="input" id="expenseDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Note</span><input class="input" id="expenseNote" value="${escapeAttr(existing?.note||'')}" placeholder="e.g. takeaway, fuel, haircut"></label></div><button class="primary full" id="saveExpense" style="margin-top:14px">Save spending</button>${existing?'<button class="danger-btn full" id="deleteExpense" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#saveExpense').onclick=()=>{const amount=Number($('#expenseAmount').value||0);if(amount<=0)return toast('Enter an amount');const data={amount,bucketId:$('#expenseBucket').value,date:$('#expenseDate').value||todayKey(),note:$('#expenseNote').value.trim(),createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.money.transactions.push({id:uid('tx'),...data});save();modal.close();toast(existing?'Spending updated':'Spending logged');renderMoney();};
-  if(existing)$('#deleteExpense').onclick=()=>{const idx=state.money.transactions.findIndex(t=>t.id===existing.id);if(idx<0)return;const removed=state.money.transactions[idx];state.money.transactions.splice(idx,1);save();modal.close();renderMoney();toast('Spending entry deleted','Undo',()=>{state.money.transactions.splice(Math.min(idx,state.money.transactions.length),0,removed);save();renderMoney();});};
-  $('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SPENDING</p><h2>${existing?'Edit':'Log'} an expense</h2><div class="stack"><label><span class="label">Amount (SAR)</span><input class="input" id="expenseAmount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0" value="${existing?.amount??''}"></label><label><span class="label">Allocation</span><select id="expenseBucket">${state.money.buckets.map(b=>`<option value="${b.id}" ${existing?.bucketId===b.id?'selected':''}>${escapeHTML(b.name)}</option>`).join('')}</select></label><label><span class="label">Date</span><input class="input" id="expenseDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Note</span><input class="input" id="expenseNote" value="${escapeAttr(existing?.note||'')}" placeholder="e.g. takeaway, fuel, haircut"></label></div><button class="primary full" id="saveExpense" style="margin-top:14px">Save spending</button>${existing?'<button class="danger-btn full" id="deleteExpense" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
+  $('#saveExpense').onclick=()=>{const amount=Number($('#expenseAmount').value||0);if(amount<=0)return toast('Enter an amount');const data={amount,bucketId:$('#expenseBucket').value,date:$('#expenseDate').value||todayKey(),note:$('#expenseNote').value.trim(),createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.money.transactions.push({id:uid('tx'),...data});save();closeAppSheet(modal);toast(existing?'Spending updated':'Spending logged');renderMoney();};
+  if(existing)$('#deleteExpense').onclick=()=>{const idx=state.money.transactions.findIndex(t=>t.id===existing.id);if(idx<0)return;const removed=state.money.transactions[idx];state.money.transactions.splice(idx,1);save();closeAppSheet(modal);renderMoney();toast('Spending entry deleted','Undo',()=>{state.money.transactions.splice(Math.min(idx,state.money.transactions.length),0,removed);save();renderMoney();});};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
   localizeTree(modalContent);
 }
 
@@ -1413,11 +1593,11 @@ function renderHealth(){
 }
 function openWeightModal(id=null){
   const existing=id?(state.health.weightLogs||[]).find(x=>x.id===id):null;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">BODY WEIGHT</p><h2>${existing?'Edit':'Log'} weight</h2><div class="stack"><label><span class="label">Weight (kg)</span><input class="input" id="bodyWeight" type="number" min="20" max="300" step="0.1" inputmode="decimal" value="${existing?Number(existing.weight):''}"></label><label><span class="label">Date</span><input class="input" id="bodyWeightDate" type="date" value="${existing?.date||todayKey()}"></label></div><button class="primary full" id="saveBodyWeight" style="margin-top:14px">Save</button>${existing?'<button class="danger-btn full" id="deleteBodyWeight" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#saveBodyWeight').onclick=()=>{const weight=Number($('#bodyWeight').value);if(!(weight>=20&&weight<=300))return toast('Enter a valid weight');const data={weight,date:$('#bodyWeightDate').value||todayKey(),createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.health.weightLogs.push({id:uid('weight'),...data});save();modal.close();renderHealth();toast(existing?'Weight updated':'Weight logged');};
-  if(existing)$('#deleteBodyWeight').onclick=()=>{const idx=state.health.weightLogs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=state.health.weightLogs[idx];state.health.weightLogs.splice(idx,1);save();modal.close();renderHealth();toast('Weight entry deleted','Undo',()=>{state.health.weightLogs.splice(Math.min(idx,state.health.weightLogs.length),0,removed);save();renderHealth();});};
-  $('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">BODY WEIGHT</p><h2>${existing?'Edit':'Log'} weight</h2><div class="stack"><label><span class="label">Weight (kg)</span><input class="input" id="bodyWeight" type="number" min="20" max="300" step="0.1" inputmode="decimal" value="${existing?Number(existing.weight):''}"></label><label><span class="label">Date</span><input class="input" id="bodyWeightDate" type="date" value="${existing?.date||todayKey()}"></label></div><button class="primary full" id="saveBodyWeight" style="margin-top:14px">Save</button>${existing?'<button class="danger-btn full" id="deleteBodyWeight" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
+  $('#saveBodyWeight').onclick=()=>{const weight=Number($('#bodyWeight').value);if(!(weight>=20&&weight<=300))return toast('Enter a valid weight');const data={weight,date:$('#bodyWeightDate').value||todayKey(),createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.health.weightLogs.push({id:uid('weight'),...data});save();closeAppSheet(modal);renderHealth();toast(existing?'Weight updated':'Weight logged');};
+  if(existing)$('#deleteBodyWeight').onclick=()=>{const idx=state.health.weightLogs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=state.health.weightLogs[idx];state.health.weightLogs.splice(idx,1);save();closeAppSheet(modal);renderHealth();toast('Weight entry deleted','Undo',()=>{state.health.weightLogs.splice(Math.min(idx,state.health.weightLogs.length),0,removed);save();renderHealth();});};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 
@@ -1448,13 +1628,13 @@ function renderSleep(){
   main.innerHTML=`${moreBack()}<section class="sleep-hero ${sleepStatusClass(last.durationHours)}"><div><p class="eyebrow">LAST NIGHT</p><h2>${formatDurationHours(last.durationHours)}</h2><p>${sleepClockFromValue(last.sleepValue)} → ${sleepClockFromValue(last.wakeValue)}</p></div><span class="sleep-status-pill">${sleepStatus(last.durationHours)}</span></section><section class="sleep-metric-grid"><article><small>7-day average</small><b>${formatDurationHours(avg7.average)}</b><span>${avg7.count} logged night${avg7.count===1?'':'s'}</span></article><article><small>30-day average</small><b>${formatDurationHours(avg30.average)}</b><span>${avg30.count} logged night${avg30.count===1?'':'s'}</span></article><article><small>Target duration</small><b>${formatDurationHours(target)}</b><button class="text-button tiny" id="editSleepTarget">Edit</button></article></section><section class="card flat sleep-chart-card"><div class="row between center"><div><p class="eyebrow">DURATION</p><h3 style="margin:0">Recent nights</h3></div></div>${sleepChartHTML()}</section><section class="sleep-consistency-grid"><article><span>${svgIcon('moon')}</span><div><small>Bedtime consistency</small><b>${bed.text}</b><em>${bed.label}</em></div></article><article><span>${svgIcon('calendar')}</span><div><small>Wake consistency</small><b>${wake.text}</b><em>${wake.label}</em></div></article></section><div class="section-title"><h2>Sleep history</h2><div class="row"><button class="secondary small-btn" id="addSleepNightBtn">+ Night</button>${recent.length>7?`<button class="secondary small-btn" id="toggleSleepHistory">${expanded?'Recent':'View all'}</button>`:''}</div></div><section class="card flat">${shown.length?shown.map(r=>`<div class="sleep-history-row"><span class="sleep-history-icon ${sleepStatusClass(r.durationHours)}">${svgIcon('moon')}</span><div><b>${escapeHTML(formatDateShort(r.night))} night</b><small>${sleepClockFromValue(r.sleepValue)} → ${sleepClockFromValue(r.wakeValue)} · ${formatDurationHours(r.durationHours)}</small></div><button class="secondary small-btn" data-edit-sleep-night="${r.nightKey}">Edit</button></div>`).join(''):'<div class="empty-state">No sleep history yet. Log sleep and wake times and Reset will calculate it automatically.</div>'}</section>`;
   bindMoreBack();$('#editSleepTarget').onclick=openSleepTargetModal;$('#addSleepNightBtn').onclick=()=>openSleepNightModal(todayKey(addDays(new Date(),-1)));if($('#toggleSleepHistory'))$('#toggleSleepHistory').onclick=()=>{state.settings.sleepHistoryExpanded=!expanded;save();renderSleep();};$$('[data-edit-sleep-night]').forEach(b=>b.onclick=()=>openSleepNightModal(b.dataset.editSleepNight));localizeTree(main);
 }
-function openSleepTargetModal(){const current=clamp(Number(state.profile.sleepDurationTarget||8),4,14);modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Target duration</h2><p class="muted">This only changes your duration target. Your planned sleep and wake times stay separate.</p><div class="quick-value-row sleep-target-options">${[7,7.5,8,8.5,9].map(v=>`<button class="quick-value ${v===current?'active':''}" data-sleep-target="${v}">${v}h</button>`).join('')}</div><label><span class="label">Custom hours</span><input class="input" id="sleepTargetHours" type="number" min="4" max="14" step="0.25" value="${current}"></label><button class="primary full" id="saveSleepTarget" style="margin-top:14px">Save target</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$$('[data-sleep-target]').forEach(b=>b.onclick=()=>{$('#sleepTargetHours').value=b.dataset.sleepTarget;$$('[data-sleep-target]').forEach(x=>x.classList.toggle('active',x===b));});$('#saveSleepTarget').onclick=()=>{state.profile.sleepDurationTarget=clamp(Number($('#sleepTargetHours').value||8),4,14);save();modal.close();renderSleep();toast('Sleep target updated');};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);}
+function openSleepTargetModal(){const current=clamp(Number(state.profile.sleepDurationTarget||8),4,14);prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Target duration</h2><p class="muted">This only changes your duration target. Your planned sleep and wake times stay separate.</p><div class="quick-value-row sleep-target-options">${[7,7.5,8,8.5,9].map(v=>`<button class="quick-value ${v===current?'active':''}" data-sleep-target="${v}">${v}h</button>`).join('')}</div><label><span class="label">Custom hours</span><input class="input" id="sleepTargetHours" type="number" min="4" max="14" step="0.25" value="${current}"></label><button class="primary full" id="saveSleepTarget" style="margin-top:14px">Save target</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);$$('[data-sleep-target]').forEach(b=>b.onclick=()=>{$('#sleepTargetHours').value=b.dataset.sleepTarget;$$('[data-sleep-target]').forEach(x=>x.classList.toggle('active',x===b));});$('#saveSleepTarget').onclick=()=>{state.profile.sleepDurationTarget=clamp(Number($('#sleepTargetHours').value||8),4,14);save();closeAppSheet(modal);renderSleep();toast('Sleep target updated');};$('#cancelModal').onclick=()=>closeAppSheet(modal);localizeTree(modalContent);}
 function openSleepNightModal(nightKey){
   const r=sleepNightRecord(nightKey),night=parseDateKey(nightKey),next=addDays(night,1),nextKey=todayKey(next);const plannedSleep=daySleepTime(night),plannedWake=dayWakeTime(next);let sleepValue=r.sleepValue,wakeValue=r.wakeValue;
   if(!sleepValue){const d=new Date(night),off=sleepDayOffsetForTime(plannedSleep);d.setDate(d.getDate()+off);const [h,m]=plannedSleep.split(':').map(Number);d.setHours(h,m,0,0);sleepValue=localDateTimeInput(d);}if(!wakeValue){const d=new Date(next);const [h,m]=plannedWake.split(':').map(Number);d.setHours(h,m,0,0);wakeValue=localDateTimeInput(d);}
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP HISTORY</p><h2>${escapeHTML(formatDateShort(night))} night</h2><p class="muted">Sleep after midnight still belongs to this night.</p><div class="stack"><label><span class="label">Went to sleep</span><input class="input" id="sleepNightBed" type="datetime-local" value="${escapeAttr(sleepValue)}"></label><label><span class="label">Woke up</span><input class="input" id="sleepNightWake" type="datetime-local" value="${escapeAttr(wakeValue)}"></label></div><button class="primary full" id="saveSleepNight" style="margin-top:14px">Save night</button>${r.sleepValue||r.wakeValue?'<button class="danger-btn full" id="deleteSleepNight" style="margin-top:8px">Clear this night</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
-  $('#saveSleepNight').onclick=()=>{const bed=$('#sleepNightBed').value,wake=$('#sleepNightWake').value;if(!bed||!wake)return toast('Choose both sleep and wake times');const bd=new Date(bed),wd=new Date(wake);if(Number.isNaN(bd.getTime())||Number.isNaN(wd.getTime())||wd<=bd)return toast('Wake time must be after sleep time');const hours=(wd-bd)/36e5;if(hours>20)return toast('That sleep duration looks too long');const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);sleepRec.actualSleepAt=bed;wakeRec.actualWakeAt=wake;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'done');if(wakeItem)setStatus(wakeItem,nextKey,'done');setDaySleepOverride(night,bed.slice(11,16));setDayWakeOverride(next,wake.slice(11,16));save();modal.close();renderSleep();toast('Sleep night saved');};
-  if($('#deleteSleepNight'))$('#deleteSleepNight').onclick=()=>{const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);delete sleepRec.actualSleepAt;delete wakeRec.actualWakeAt;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'pending');if(wakeItem)setStatus(wakeItem,nextKey,'pending');save();modal.close();renderSleep();toast('Sleep night cleared');};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP HISTORY</p><h2>${escapeHTML(formatDateShort(night))} night</h2><p class="muted">Sleep after midnight still belongs to this night.</p><div class="stack"><label><span class="label">Went to sleep</span><input class="input" id="sleepNightBed" type="datetime-local" value="${escapeAttr(sleepValue)}"></label><label><span class="label">Woke up</span><input class="input" id="sleepNightWake" type="datetime-local" value="${escapeAttr(wakeValue)}"></label></div><button class="primary full" id="saveSleepNight" style="margin-top:14px">Save night</button>${r.sleepValue||r.wakeValue?'<button class="danger-btn full" id="deleteSleepNight" style="margin-top:8px">Clear this night</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);
+  $('#saveSleepNight').onclick=()=>{const bed=$('#sleepNightBed').value,wake=$('#sleepNightWake').value;if(!bed||!wake)return toast('Choose both sleep and wake times');const bd=new Date(bed),wd=new Date(wake);if(Number.isNaN(bd.getTime())||Number.isNaN(wd.getTime())||wd<=bd)return toast('Wake time must be after sleep time');const hours=(wd-bd)/36e5;if(hours>20)return toast('That sleep duration looks too long');const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);sleepRec.actualSleepAt=bed;wakeRec.actualWakeAt=wake;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'done');if(wakeItem)setStatus(wakeItem,nextKey,'done');setDaySleepOverride(night,bed.slice(11,16));setDayWakeOverride(next,wake.slice(11,16));save();closeAppSheet(modal);renderSleep();toast('Sleep night saved');};
+  if($('#deleteSleepNight'))$('#deleteSleepNight').onclick=()=>{const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);delete sleepRec.actualSleepAt;delete wakeRec.actualWakeAt;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'pending');if(wakeItem)setStatus(wakeItem,nextKey,'pending');save();closeAppSheet(modal);renderSleep();toast('Sleep night cleared');};$('#cancelModal').onclick=()=>closeAppSheet(modal);localizeTree(modalContent);
 }
 
 
@@ -1469,12 +1649,12 @@ function latestExerciseLog(exerciseId,excludeId=null){return [...(state.gym.logs
 function smartWeightOptions(exerciseId,current=null){const prior=latestExerciseLog(exerciseId,current?.id||null),base=Number(current?.weight||prior?.weight||20),step=base<20?2.5:5;return [...new Set([base-step,base-step/2,base,base+step/2,base+step].map(x=>Math.max(.5,Math.round(x*2)/2)))];}
 function openWorkoutPlanner(){
   let focus='Full Body',temp={};workoutFocuses().forEach(name=>temp[name]=new Set(validPresetIds(name)));
-  const draw=()=>{const selected=temp[focus],all=state.gym.exercises||[],defaults=defaultWorkoutPresets(),count=selected.size;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">START WORKOUT</p><h2>Build today’s workout</h2><div class="focus-chip-wrap workout-four">${workoutFocuses().map(x=>`<button class="focus-chip ${x===focus?'active':''}" data-workout-focus="${escapeAttr(x)}">${escapeHTML(x)}</button>`).join('')}</div><div class="workout-builder-head"><div><small>${escapeHTML(focus.toUpperCase())}</small><b>${count} exercise${count===1?'':'s'} selected</b></div><button class="text-button" id="resetWorkoutPreset">${focus==='Custom'?'Clear':'Reset default'}</button></div><div class="exercise-pick-grid">${all.map(ex=>`<label class="exercise-pick ${selected.has(ex.id)?'selected':''}"><input type="checkbox" data-workout-pick="${escapeAttr(ex.id)}" ${selected.has(ex.id)?'checked':''}><span class="exercise-pick-check">${selected.has(ex.id)?svgIcon('check'):''}</span><span><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></span></label>`).join('')}</div><button class="primary full" id="startPlannedWorkout" ${count?'':'disabled'}>Start ${escapeHTML(focus)} workout</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
+  const draw=()=>{const selected=temp[focus],all=state.gym.exercises||[],defaults=defaultWorkoutPresets(),count=selected.size;prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">START WORKOUT</p><h2>Build today’s workout</h2><div class="focus-chip-wrap workout-four">${workoutFocuses().map(x=>`<button class="focus-chip ${x===focus?'active':''}" data-workout-focus="${escapeAttr(x)}">${escapeHTML(x)}</button>`).join('')}</div><div class="workout-builder-head"><div><small>${escapeHTML(focus.toUpperCase())}</small><b>${count} exercise${count===1?'':'s'} selected</b></div><button class="text-button" id="resetWorkoutPreset">${focus==='Custom'?'Clear':'Reset default'}</button></div><div class="exercise-pick-grid">${all.map(ex=>`<label class="exercise-pick ${selected.has(ex.id)?'selected':''}"><input type="checkbox" data-workout-pick="${escapeAttr(ex.id)}" ${selected.has(ex.id)?'checked':''}><span class="exercise-pick-check">${selected.has(ex.id)?svgIcon('check'):''}</span><span><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></span></label>`).join('')}</div><button class="primary full" id="startPlannedWorkout" ${count?'':'disabled'}>Start ${escapeHTML(focus)} workout</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);
     $$('[data-workout-focus]',modalContent).forEach(b=>b.onclick=()=>{focus=b.dataset.workoutFocus;draw();});
     $$('[data-workout-pick]',modalContent).forEach(cb=>cb.onchange=()=>{if(cb.checked)selected.add(cb.dataset.workoutPick);else selected.delete(cb.dataset.workoutPick);draw();});
     $('#resetWorkoutPreset').onclick=()=>{temp[focus]=new Set((defaults[focus]||[]).filter(id=>exerciseById(id)));draw();};
-    $('#startPlannedWorkout').onclick=()=>{const ids=[...temp[focus]];if(!ids.length)return toast('Choose at least one exercise');if(!state.gym.workoutPresets)state.gym.workoutPresets=defaultWorkoutPresets();state.gym.workoutPresets[focus]=ids;state.gym.activeWorkout={id:uid('workout'),date:todayKey(),focus,exerciseIds:ids,completedExerciseIds:[],startedAt:new Date().toISOString()};save();modal.close();renderGym();toast(`${focus} workout started`);};
-    $('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
+    $('#startPlannedWorkout').onclick=()=>{const ids=[...temp[focus]];if(!ids.length)return toast('Choose at least one exercise');if(!state.gym.workoutPresets)state.gym.workoutPresets=defaultWorkoutPresets();state.gym.workoutPresets[focus]=ids;state.gym.activeWorkout={id:uid('workout'),date:todayKey(),focus,exerciseIds:ids,completedExerciseIds:[],startedAt:new Date().toISOString()};save();closeAppSheet(modal);renderGym();toast(`${focus} workout started`);};
+    $('#cancelModal').onclick=()=>closeAppSheet(modal);localizeTree(modalContent);
   };draw();
 }
 function activeWorkoutHTML(){
@@ -1485,8 +1665,8 @@ function activeWorkoutHTML(){
 function markActiveWorkoutExercise(exerciseId){const w=state.gym.activeWorkout;if(!w||w.date!==todayKey())return;if(!Array.isArray(w.completedExerciseIds))w.completedExerciseIds=[];if(!w.completedExerciseIds.includes(exerciseId))w.completedExerciseIds.push(exerciseId);}
 function confirmWorkoutAction(kind){
   const w=state.gym.activeWorkout;if(!w)return;const total=(w.exerciseIds||[]).length,done=(w.exerciseIds||[]).filter(id=>sessionWorkoutLog(w.id,id)).length,isFinish=kind==='finish';
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">WORKOUT</p><h2>${isFinish?'Finish this workout?':'Cancel this workout?'}</h2><p class="muted">${isFinish?(done<total?`You logged ${done} of ${total} exercises. You can still finish if you intentionally skipped the rest.`:`All ${total} exercises are logged.`):'The active workout plan will close. Exercise logs you already saved will stay in your history.'}</p><button class="${isFinish?'success-btn':'danger-btn'} full" id="confirmWorkoutAction" style="margin-top:14px">${isFinish?'Finish workout':'Cancel workout'}</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Go back</button>`;modal.showModal();
-  $('#confirmWorkoutAction').onclick=()=>{if(isFinish){const k=todayKey();state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k))state.gym.sessions.push(k);toast('Workout finished');}else toast('Workout cancelled');state.gym.activeWorkout=null;save();modal.close();renderGym();};$('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">WORKOUT</p><h2>${isFinish?'Finish this workout?':'Cancel this workout?'}</h2><p class="muted">${isFinish?(done<total?`You logged ${done} of ${total} exercises. You can still finish if you intentionally skipped the rest.`:`All ${total} exercises are logged.`):'The active workout plan will close. Exercise logs you already saved will stay in your history.'}</p><button class="${isFinish?'success-btn':'danger-btn'} full" id="confirmWorkoutAction" style="margin-top:14px">${isFinish?'Finish workout':'Cancel workout'}</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Go back</button>`;openAppSheet(modal);
+  $('#confirmWorkoutAction').onclick=()=>{if(isFinish){const k=todayKey();state.gym.sessionExcluded=state.gym.sessionExcluded.filter(x=>x!==k);if(!state.gym.sessions.includes(k))state.gym.sessions.push(k);toast('Workout finished');}else toast('Workout cancelled');state.gym.activeWorkout=null;save();closeAppSheet(modal);renderGym();};$('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 function finishActiveWorkout(){confirmWorkoutAction('finish');}
 function cancelActiveWorkout(){confirmWorkoutAction('cancel');}
@@ -1510,17 +1690,17 @@ function gymChartHTML(logs){if(logs.length<2)return `<div class="chart-empty">Lo
 function openGymLogModal(id=null,presetExerciseId=null){
   const active=state.gym.activeWorkout?.date===todayKey()?state.gym.activeWorkout:null,workoutExisting=!id&&presetExerciseId&&active?sessionWorkoutLog(active.id,presetExerciseId):null,existing=id?(state.gym.logs||[]).find(x=>x.id===id):workoutExisting,lockedExercise=!!(presetExerciseId&&active),initialId=existing?.exerciseId||presetExerciseId||state.settings.selectedExerciseId,ex=state.gym.exercises.find(x=>x.id===initialId)||state.gym.exercises[0];
   const drawQuickWeights=(exerciseId,current=existing)=>smartWeightOptions(exerciseId,current).map(v=>`<button type="button" class="quick-value" data-quick-weight="${v}">${v}</button>`).join('');
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>${existing?'Update':'Log'} exercise</h2><div class="stack">${lockedExercise?`<div class="locked-exercise-name"><small>Exercise</small><b>${escapeHTML(ex?.name||'Exercise')}</b></div>`:`<label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label>`}<label><span class="label">Weight (kg)</span><div class="quick-value-row" id="quickWeightRow">${drawQuickWeights(ex?.id)}</div><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal" value="${existing?Number(existing.weight):''}" placeholder="Type another weight"></label><div class="quick-log-grid"><label><span class="label">Sets</span><div class="quick-value-row compact">${[2,3,4,5].map(v=>`<button type="button" class="quick-value ${Number(existing?.sets||3)===v?'active':''}" data-quick-sets="${v}">${v}</button>`).join('')}</div><input class="input" id="gymSets" type="number" min="1" max="20" value="${Number(existing?.sets||3)}"></label><label><span class="label">Reps</span><div class="quick-value-row compact">${[6,8,10,12,15].map(v=>`<button type="button" class="quick-value ${Number(existing?.reps||10)===v?'active':''}" data-quick-reps="${v}">${v}</button>`).join('')}</div><input class="input" id="gymReps" type="number" min="1" max="100" value="${Number(existing?.reps||10)}"></label></div>${lockedExercise?'':`<label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${existing?.date||todayKey()}"></label>`}</div><button class="primary full" id="saveGymLog" style="margin-top:14px">${existing?'Update log':'Save log'}</button>${existing&&!workoutExisting?'<button class="danger-btn full" id="deleteGymLog" style="margin-top:8px">Delete log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>${existing?'Update':'Log'} exercise</h2><div class="stack">${lockedExercise?`<div class="locked-exercise-name"><small>Exercise</small><b>${escapeHTML(ex?.name||'Exercise')}</b></div>`:`<label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label>`}<label><span class="label">Weight (kg)</span><div class="quick-value-row" id="quickWeightRow">${drawQuickWeights(ex?.id)}</div><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal" value="${existing?Number(existing.weight):''}" placeholder="Type another weight"></label><div class="quick-log-grid"><label><span class="label">Sets</span><div class="quick-value-row compact">${[2,3,4,5].map(v=>`<button type="button" class="quick-value ${Number(existing?.sets||3)===v?'active':''}" data-quick-sets="${v}">${v}</button>`).join('')}</div><input class="input" id="gymSets" type="number" min="1" max="20" value="${Number(existing?.sets||3)}"></label><label><span class="label">Reps</span><div class="quick-value-row compact">${[6,8,10,12,15].map(v=>`<button type="button" class="quick-value ${Number(existing?.reps||10)===v?'active':''}" data-quick-reps="${v}">${v}</button>`).join('')}</div><input class="input" id="gymReps" type="number" min="1" max="100" value="${Number(existing?.reps||10)}"></label></div>${lockedExercise?'':`<label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${existing?.date||todayKey()}"></label>`}</div><button class="primary full" id="saveGymLog" style="margin-top:14px">${existing?'Update log':'Save log'}</button>${existing&&!workoutExisting?'<button class="danger-btn full" id="deleteGymLog" style="margin-top:8px">Delete log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);
   const bindQuick=()=>{$$('[data-quick-weight]',modalContent).forEach(b=>b.onclick=()=>{$('#gymWeight').value=b.dataset.quickWeight;$$('[data-quick-weight]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});$$('[data-quick-sets]',modalContent).forEach(b=>b.onclick=()=>{$('#gymSets').value=b.dataset.quickSets;$$('[data-quick-sets]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});$$('[data-quick-reps]',modalContent).forEach(b=>b.onclick=()=>{$('#gymReps').value=b.dataset.quickReps;$$('[data-quick-reps]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});};bindQuick();
   if($('#gymLogExercise'))$('#gymLogExercise').onchange=e=>{$('#quickWeightRow').innerHTML=drawQuickWeights(e.target.value,null);bindQuick();};
-  $('#saveGymLog').onclick=()=>{const exerciseId=lockedExercise?ex.id:$('#gymLogExercise').value,weight=Number($('#gymWeight').value);if(!Number.isFinite(weight)||weight<0)return toast('Choose or type a valid weight');const date=lockedExercise?todayKey():($('#gymDate').value||todayKey()),priorPR=exercisePR(exerciseId,existing?.id||null),data={exerciseId,weight,sets:clamp(Number($('#gymSets').value||3),1,20),reps:clamp(Number($('#gymReps').value||10),1,100),date,createdAt:existing?.createdAt||Date.now(),workoutId:lockedExercise?active.id:(existing?.workoutId||null)};if(existing)Object.assign(existing,data);else state.gym.logs.push({id:uid('gymlog'),...data});state.gym.sessionExcluded=state.gym.sessionExcluded.filter(k=>k!==date);state.settings.selectedExerciseId=exerciseId;if(lockedExercise)markActiveWorkoutExercise(exerciseId);save();modal.close();renderGym();toast(weight>priorPR?`New PR: ${weight} kg`:(existing?'Gym log updated':'Gym progress saved'));};
-  if(existing&&!workoutExisting&&$('#deleteGymLog'))$('#deleteGymLog').onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===existing.id);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();modal.close();renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
+  $('#saveGymLog').onclick=()=>{const exerciseId=lockedExercise?ex.id:$('#gymLogExercise').value,weight=Number($('#gymWeight').value);if(!Number.isFinite(weight)||weight<0)return toast('Choose or type a valid weight');const date=lockedExercise?todayKey():($('#gymDate').value||todayKey()),priorPR=exercisePR(exerciseId,existing?.id||null),data={exerciseId,weight,sets:clamp(Number($('#gymSets').value||3),1,20),reps:clamp(Number($('#gymReps').value||10),1,100),date,createdAt:existing?.createdAt||Date.now(),workoutId:lockedExercise?active.id:(existing?.workoutId||null)};if(existing)Object.assign(existing,data);else state.gym.logs.push({id:uid('gymlog'),...data});state.gym.sessionExcluded=state.gym.sessionExcluded.filter(k=>k!==date);state.settings.selectedExerciseId=exerciseId;if(lockedExercise)markActiveWorkoutExercise(exerciseId);save();closeAppSheet(modal);renderGym();toast(weight>priorPR?`New PR: ${weight} kg`:(existing?'Gym log updated':'Gym progress saved'));};
+  if(existing&&!workoutExisting&&$('#deleteGymLog'))$('#deleteGymLog').onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===existing.id);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();closeAppSheet(modal);renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});};$('#cancelModal').onclick=()=>closeAppSheet(modal);localizeTree(modalContent);
 }
 function openExerciseModal(id=null){
-  const existing=id?(state.gym.exercises||[]).find(x=>x.id===id):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>${existing?'Edit exercise':'Add an exercise'}</h2><div class="stack"><label><span class="label">Exercise name</span><input class="input" id="exerciseName" value="${escapeAttr(existing?.name||'')}" placeholder="e.g. Incline dumbbell press"></label><label><span class="label">Muscle group</span><select id="exerciseGroup">${[...new Set([existing?.group,...GYM_GROUPS].filter(Boolean))].map(g=>`<option value="${escapeAttr(g)}" ${g===(existing?.group||'Other')?'selected':''}>${escapeHTML(g)}</option>`).join('')}</select></label></div><button class="primary full" id="saveExercise" style="margin-top:14px">${existing?'Save':'Add exercise'}</button>${existing?'<button class="danger-btn full" id="deleteExercise" style="margin-top:8px">Delete exercise</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveExercise').onclick=()=>{const name=$('#exerciseName').value.trim();if(!name)return toast('Add an exercise name');if(existing){existing.name=name;existing.group=$('#exerciseGroup').value||'Other';existing.targets=[existing.group];}else{const x={id:uid('exercise'),name,group:$('#exerciseGroup').value||'Other',targets:[$('#exerciseGroup').value||'Other']};state.gym.exercises.push(x);state.settings.selectedExerciseId=x.id;}save();modal.close();renderGym();toast(existing?'Exercise updated':'Exercise added');};if(existing&&$('#deleteExercise'))$('#deleteExercise').onclick=()=>{const exIndex=state.gym.exercises.findIndex(x=>x.id===existing.id),removedExercise={...existing},removedLogs=(state.gym.logs||[]).map((item,index)=>({item,index})).filter(x=>x.item.exerciseId===existing.id),presetSnapshot=JSON.parse(JSON.stringify(state.gym.workoutPresets||{})),activeWorkoutSnapshot=state.gym.activeWorkout?JSON.parse(JSON.stringify(state.gym.activeWorkout)):null;state.gym.exercises.splice(exIndex,1);state.gym.logs=state.gym.logs.filter(l=>l.exerciseId!==existing.id);Object.keys(state.gym.workoutPresets||{}).forEach(k=>state.gym.workoutPresets[k]=(state.gym.workoutPresets[k]||[]).filter(id=>id!==existing.id));if(state.gym.activeWorkout){state.gym.activeWorkout.exerciseIds=(state.gym.activeWorkout.exerciseIds||[]).filter(id=>id!==existing.id);state.gym.activeWorkout.completedExerciseIds=(state.gym.activeWorkout.completedExerciseIds||[]).filter(id=>id!==existing.id);}state.settings.selectedExerciseId=state.gym.exercises[0]?.id||'';save();modal.close();renderGym();toast('Exercise deleted','Undo',()=>{state.gym.exercises.splice(Math.max(0,Math.min(exIndex,state.gym.exercises.length)),0,removedExercise);restoreDeletedObjects(state.gym.logs,removedLogs);state.gym.workoutPresets=presetSnapshot;if(activeWorkoutSnapshot)state.gym.activeWorkout=activeWorkoutSnapshot;state.settings.selectedExerciseId=removedExercise.id;save();renderGym();});};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
+  const existing=id?(state.gym.exercises||[]).find(x=>x.id===id):null;prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>${existing?'Edit exercise':'Add an exercise'}</h2><div class="stack"><label><span class="label">Exercise name</span><input class="input" id="exerciseName" value="${escapeAttr(existing?.name||'')}" placeholder="e.g. Incline dumbbell press"></label><label><span class="label">Muscle group</span><select id="exerciseGroup">${[...new Set([existing?.group,...GYM_GROUPS].filter(Boolean))].map(g=>`<option value="${escapeAttr(g)}" ${g===(existing?.group||'Other')?'selected':''}>${escapeHTML(g)}</option>`).join('')}</select></label></div><button class="primary full" id="saveExercise" style="margin-top:14px">${existing?'Save':'Add exercise'}</button>${existing?'<button class="danger-btn full" id="deleteExercise" style="margin-top:8px">Delete exercise</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);$('#saveExercise').onclick=()=>{const name=$('#exerciseName').value.trim();if(!name)return toast('Add an exercise name');if(existing){existing.name=name;existing.group=$('#exerciseGroup').value||'Other';existing.targets=[existing.group];}else{const x={id:uid('exercise'),name,group:$('#exerciseGroup').value||'Other',targets:[$('#exerciseGroup').value||'Other']};state.gym.exercises.push(x);state.settings.selectedExerciseId=x.id;}save();closeAppSheet(modal);renderGym();toast(existing?'Exercise updated':'Exercise added');};if(existing&&$('#deleteExercise'))$('#deleteExercise').onclick=()=>{const exIndex=state.gym.exercises.findIndex(x=>x.id===existing.id),removedExercise={...existing},removedLogs=(state.gym.logs||[]).map((item,index)=>({item,index})).filter(x=>x.item.exerciseId===existing.id),presetSnapshot=JSON.parse(JSON.stringify(state.gym.workoutPresets||{})),activeWorkoutSnapshot=state.gym.activeWorkout?JSON.parse(JSON.stringify(state.gym.activeWorkout)):null;state.gym.exercises.splice(exIndex,1);state.gym.logs=state.gym.logs.filter(l=>l.exerciseId!==existing.id);Object.keys(state.gym.workoutPresets||{}).forEach(k=>state.gym.workoutPresets[k]=(state.gym.workoutPresets[k]||[]).filter(id=>id!==existing.id));if(state.gym.activeWorkout){state.gym.activeWorkout.exerciseIds=(state.gym.activeWorkout.exerciseIds||[]).filter(id=>id!==existing.id);state.gym.activeWorkout.completedExerciseIds=(state.gym.activeWorkout.completedExerciseIds||[]).filter(id=>id!==existing.id);}state.settings.selectedExerciseId=state.gym.exercises[0]?.id||'';save();closeAppSheet(modal);renderGym();toast('Exercise deleted','Undo',()=>{state.gym.exercises.splice(Math.max(0,Math.min(exIndex,state.gym.exercises.length)),0,removedExercise);restoreDeletedObjects(state.gym.logs,removedLogs);state.gym.workoutPresets=presetSnapshot;if(activeWorkoutSnapshot)state.gym.activeWorkout=activeWorkoutSnapshot;state.settings.selectedExerciseId=removedExercise.id;save();renderGym();});};$('#cancelModal').onclick=()=>closeAppSheet(modal);localizeTree(modalContent);
 }
-function openExerciseManager(){modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>Manage exercises</h2><div class="exercise-manage-list">${state.gym.exercises.length?state.gym.exercises.map(ex=>`<div class="exercise-manage-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></div><button class="secondary small-btn" data-edit-exercise="${escapeAttr(ex.id)}">Edit</button></div>`).join(''):'<div class="empty-state">No exercises yet.</div>'}</div><button class="primary full" id="managerAddExercise" style="margin-top:12px">+ Add exercise</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Close</button>`;modal.showModal();$$('[data-edit-exercise]').forEach(b=>b.onclick=()=>{modal.close();openExerciseModal(b.dataset.editExercise);});$('#managerAddExercise').onclick=()=>{modal.close();openExerciseModal();};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);}
-function openGymGoalModal(){const current=clamp(Number(state.gym.weeklyGoal||3),1,7);modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>Weekly goal</h2><p class="muted">Choose how many workout days you want in a normal week. This is a target, not a fixed program.</p><div class="goal-picker">${Array.from({length:7},(_,i)=>i+1).map(n=>`<button class="goal-number ${n===current?'active':''}" data-goal="${n}">${n}</button>`).join('')}</div><button class="secondary full" id="cancelModal" style="margin-top:12px">Cancel</button>`;modal.showModal();$$('[data-goal]').forEach(b=>b.onclick=()=>{state.gym.weeklyGoal=clamp(Number(b.dataset.goal),1,7);save();modal.close();renderGym();toast(`Weekly goal set to ${state.gym.weeklyGoal}`);});$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);}
+function openExerciseManager(){prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>Manage exercises</h2><div class="exercise-manage-list">${state.gym.exercises.length?state.gym.exercises.map(ex=>`<div class="exercise-manage-row"><div><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></div><button class="secondary small-btn" data-edit-exercise="${escapeAttr(ex.id)}">Edit</button></div>`).join(''):'<div class="empty-state">No exercises yet.</div>'}</div><button class="primary full" id="managerAddExercise" style="margin-top:12px">+ Add exercise</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Close</button>`;openAppSheet(modal);$$('[data-edit-exercise]').forEach(b=>b.onclick=()=>{closeAppSheet(modal);openExerciseModal(b.dataset.editExercise);});$('#managerAddExercise').onclick=()=>{closeAppSheet(modal);openExerciseModal();};$('#cancelModal').onclick=()=>closeAppSheet(modal);localizeTree(modalContent);}
+function openGymGoalModal(){const current=clamp(Number(state.gym.weeklyGoal||3),1,7);prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM</p><h2>Weekly goal</h2><p class="muted">Choose how many workout days you want in a normal week. This is a target, not a fixed program.</p><div class="goal-picker">${Array.from({length:7},(_,i)=>i+1).map(n=>`<button class="goal-number ${n===current?'active':''}" data-goal="${n}">${n}</button>`).join('')}</div><button class="secondary full" id="cancelModal" style="margin-top:12px">Cancel</button>`;openAppSheet(modal);$$('[data-goal]').forEach(b=>b.onclick=()=>{state.gym.weeklyGoal=clamp(Number(b.dataset.goal),1,7);save();closeAppSheet(modal);renderGym();toast(`Weekly goal set to ${state.gym.weeklyGoal}`);});$('#cancelModal').onclick=()=>closeAppSheet(modal);localizeTree(modalContent);}
 
 function daysUntilDate(key){if(!key)return null;const d=parseDateKey(key),t=parseDateKey(todayKey());return Math.round((d-t)/86400000);}
 function dueMeta(key){const d=daysUntilDate(key);if(d==null)return {main:'—',sub:'No date set',tone:'muted'};if(d<0)return {main:formatDateShort(parseDateKey(key)),sub:`${Math.abs(d)} day${Math.abs(d)===1?'':'s'} overdue`,tone:'danger'};if(d===0)return {main:formatDateShort(parseDateKey(key)),sub:'Due today',tone:'warn'};return {main:formatDateShort(parseDateKey(key)),sub:`${d} day${d===1?'':'s'} left`,tone:d<=14?'warn':'good'};}
@@ -1545,17 +1725,17 @@ function renderCar(){
 }
 function openOdometerModal(){
   const c=state.car, original=Math.max(0,Number(c.odometer||0));let value=original;const min=Math.max(0,original-2000),max=original+5000;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>Update odometer</h2><div class="odo-picker"><small>Current reading</small><strong id="odoPickerValue">${original.toLocaleString(currentLocale())}</strong><span>km</span><input id="odoRange" type="range" min="${min}" max="${max}" step="10" value="${original}" aria-label="Odometer"></div><div class="odo-steps"><button data-odo-step="-100">−100</button><button data-odo-step="-10">−10</button><button data-odo-step="10">+10</button><button data-odo-step="100">+100</button></div><button class="primary full" id="saveOdo" style="margin-top:14px">Save odometer</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();const label=$('#odoPickerValue'),range=$('#odoRange');const draw=()=>{value=Math.max(0,Math.round(value));label.textContent=value.toLocaleString(currentLocale());range.value=String(clamp(value,Number(range.min),Number(range.max)));};range.oninput=()=>{value=Number(range.value);draw();};$$('[data-odo-step]').forEach(b=>b.onclick=()=>{value+=Number(b.dataset.odoStep);draw();});$('#saveOdo').onclick=()=>{c.odometer=value;save();modal.close();renderCar();toast('Odometer updated');};$('#cancelModal').onclick=()=>modal.close();localizeTree(modalContent);
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>Update odometer</h2><div class="odo-picker"><small>Current reading</small><strong id="odoPickerValue">${original.toLocaleString(currentLocale())}</strong><span>km</span><input id="odoRange" type="range" min="${min}" max="${max}" step="10" value="${original}" aria-label="Odometer"></div><div class="odo-steps"><button data-odo-step="-100">−100</button><button data-odo-step="-10">−10</button><button data-odo-step="10">+10</button><button data-odo-step="100">+100</button></div><button class="primary full" id="saveOdo" style="margin-top:14px">Save odometer</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);const label=$('#odoPickerValue'),range=$('#odoRange');const draw=()=>{value=Math.max(0,Math.round(value));label.textContent=value.toLocaleString(currentLocale());range.value=String(clamp(value,Number(range.min),Number(range.max)));};range.oninput=()=>{value=Number(range.value);draw();};$$('[data-odo-step]').forEach(b=>b.onclick=()=>{value+=Number(b.dataset.odoStep);draw();});$('#saveOdo').onclick=()=>{c.odometer=value;save();closeAppSheet(modal);renderCar();toast('Odometer updated');};$('#cancelModal').onclick=()=>closeAppSheet(modal);localizeTree(modalContent);
 }
-function openCarModal(){const c=state.car;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>Edit car details</h2><div class="stack"><label><span class="label">Car</span><input class="input" id="carModel" value="${escapeAttr(c.model||'')}"></label><label><span class="label">Current odometer (km)</span><input class="input" id="carOdo" type="number" min="0" value="${Number(c.odometer||0)}"></label><div class="form-grid"><label><span class="label">Rego due</span><input class="input" id="carRego" type="date" value="${c.regoDue||''}"></label><label><span class="label">Service due date</span><input class="input" id="carServiceDate" type="date" value="${c.serviceDueDate||''}"></label></div><label><span class="label">Service due odometer (km)</span><input class="input" id="carServiceKm" type="number" min="0" value="${Number(c.serviceDueKm||0)||''}"></label></div><button class="primary full" id="saveCar" style="margin-top:14px">Save car</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveCar').onclick=()=>{state.car.model=$('#carModel').value.trim()||'My car';state.car.odometer=Math.max(0,Number($('#carOdo').value||0));state.car.regoDue=$('#carRego').value||'';state.car.serviceDueDate=$('#carServiceDate').value||'';state.car.serviceDueKm=Math.max(0,Number($('#carServiceKm').value||0));save();modal.close();renderCar();};$('#cancelModal').onclick=()=>modal.close();}
-function openFuelModal(id=null){const c=state.car;const existing=id?(c.fuelLogs||[]).find(x=>x.id===id):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>${existing?'Edit':'Log'} a fuel fill</h2><div class="stack"><div class="form-grid"><label><span class="label">Litres</span><input class="input" id="fuelLitres" type="number" min="0" step="0.1" value="${existing?Number(existing.litres):''}"></label><label><span class="label">Cost (SAR)</span><input class="input" id="fuelCost" type="number" min="0" step="1" value="${existing?Number(existing.cost||0):''}"></label></div><div class="form-grid"><label><span class="label">Odometer (km)</span><input class="input" id="fuelOdo" type="number" min="0" value="${existing?Number(existing.odometer||0):Number(c.odometer||0)}"></label><label><span class="label">Date</span><input class="input" id="fuelDate" type="date" value="${existing?.date||todayKey()}"></label></div></div><button class="primary full" id="saveFuel" style="margin-top:14px">Save fuel fill</button>${existing?'<button class="danger-btn full" id="deleteFuel" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveFuel').onclick=()=>{const litres=Number($('#fuelLitres').value||0),cost=Number($('#fuelCost').value||0),odometer=Number($('#fuelOdo').value||0);if(!(litres>0))return toast('Enter litres');if(odometer<0)return toast('Enter a valid odometer');const data={litres,cost:Math.max(0,cost),odometer,date:$('#fuelDate').value||todayKey()};if(existing)Object.assign(existing,data);else state.car.fuelLogs.push({id:uid('fuel'),...data});state.car.odometer=Math.max(Number(state.car.odometer||0),odometer);save();modal.close();renderCar();toast(existing?'Fuel entry updated':'Fuel fill saved');};if(existing)$('#deleteFuel').onclick=()=>{const idx=state.car.fuelLogs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=state.car.fuelLogs[idx];state.car.fuelLogs.splice(idx,1);save();modal.close();renderCar();toast('Fuel entry deleted','Undo',()=>{state.car.fuelLogs.splice(Math.min(idx,state.car.fuelLogs.length),0,removed);save();renderCar();});};$('#cancelModal').onclick=()=>modal.close();}
-function openMaintenanceModal(id=null){const c=state.car;const existing=id?(c.maintenanceLogs||[]).find(x=>x.id===id):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR MAINTENANCE</p><h2>${existing?'Edit':'Log'} maintenance</h2><div class="stack"><label><span class="label">What was done?</span><input class="input" id="maintService" value="${escapeAttr(existing?.service||'')}" placeholder="e.g. Engine oil + filter"></label><div class="form-grid"><label><span class="label">Date</span><input class="input" id="maintDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Odometer (km)</span><input class="input" id="maintOdo" type="number" min="0" value="${existing?Number(existing.odometer||0):Number(c.odometer||0)}"></label></div><label><span class="label">Cost (SAR)</span><input class="input" id="maintCost" type="number" min="0" step="1" value="${existing?Number(existing.cost||0):''}"></label><label><span class="label">Short note (optional)</span><input class="input" id="maintNote" value="${escapeAttr(existing?.note||'')}" placeholder="fluid, parts, next check..."></label></div><button class="primary full" id="saveMaint" style="margin-top:14px">Save maintenance</button>${existing?'<button class="danger-btn full" id="deleteMaint" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveMaint').onclick=()=>{const service=$('#maintService').value.trim();if(!service)return toast('Add what was done');const odometer=Math.max(0,Number($('#maintOdo').value||0));const data={service,date:$('#maintDate').value||todayKey(),odometer,cost:Math.max(0,Number($('#maintCost').value||0)),note:$('#maintNote').value.trim()};if(existing)Object.assign(existing,data);else c.maintenanceLogs.push({id:uid('maint'),...data});c.odometer=Math.max(Number(c.odometer||0),odometer);save();modal.close();renderCar();toast(existing?'Maintenance updated':'Maintenance saved');};if(existing)$('#deleteMaint').onclick=()=>{const idx=c.maintenanceLogs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=c.maintenanceLogs[idx];c.maintenanceLogs.splice(idx,1);save();modal.close();renderCar();toast('Maintenance entry deleted','Undo',()=>{c.maintenanceLogs.splice(Math.min(idx,c.maintenanceLogs.length),0,removed);save();renderCar();});};$('#cancelModal').onclick=()=>modal.close();}
+function openCarModal(){const c=state.car;prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>Edit car details</h2><div class="stack"><label><span class="label">Car</span><input class="input" id="carModel" value="${escapeAttr(c.model||'')}"></label><label><span class="label">Current odometer (km)</span><input class="input" id="carOdo" type="number" min="0" value="${Number(c.odometer||0)}"></label><div class="form-grid"><label><span class="label">Rego due</span><input class="input" id="carRego" type="date" value="${c.regoDue||''}"></label><label><span class="label">Service due date</span><input class="input" id="carServiceDate" type="date" value="${c.serviceDueDate||''}"></label></div><label><span class="label">Service due odometer (km)</span><input class="input" id="carServiceKm" type="number" min="0" value="${Number(c.serviceDueKm||0)||''}"></label></div><button class="primary full" id="saveCar" style="margin-top:14px">Save car</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);$('#saveCar').onclick=()=>{state.car.model=$('#carModel').value.trim()||'My car';state.car.odometer=Math.max(0,Number($('#carOdo').value||0));state.car.regoDue=$('#carRego').value||'';state.car.serviceDueDate=$('#carServiceDate').value||'';state.car.serviceDueKm=Math.max(0,Number($('#carServiceKm').value||0));save();closeAppSheet(modal);renderCar();};$('#cancelModal').onclick=()=>closeAppSheet(modal);}
+function openFuelModal(id=null){const c=state.car;const existing=id?(c.fuelLogs||[]).find(x=>x.id===id):null;prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR</p><h2>${existing?'Edit':'Log'} a fuel fill</h2><div class="stack"><div class="form-grid"><label><span class="label">Litres</span><input class="input" id="fuelLitres" type="number" min="0" step="0.1" value="${existing?Number(existing.litres):''}"></label><label><span class="label">Cost (SAR)</span><input class="input" id="fuelCost" type="number" min="0" step="1" value="${existing?Number(existing.cost||0):''}"></label></div><div class="form-grid"><label><span class="label">Odometer (km)</span><input class="input" id="fuelOdo" type="number" min="0" value="${existing?Number(existing.odometer||0):Number(c.odometer||0)}"></label><label><span class="label">Date</span><input class="input" id="fuelDate" type="date" value="${existing?.date||todayKey()}"></label></div></div><button class="primary full" id="saveFuel" style="margin-top:14px">Save fuel fill</button>${existing?'<button class="danger-btn full" id="deleteFuel" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);$('#saveFuel').onclick=()=>{const litres=Number($('#fuelLitres').value||0),cost=Number($('#fuelCost').value||0),odometer=Number($('#fuelOdo').value||0);if(!(litres>0))return toast('Enter litres');if(odometer<0)return toast('Enter a valid odometer');const data={litres,cost:Math.max(0,cost),odometer,date:$('#fuelDate').value||todayKey()};if(existing)Object.assign(existing,data);else state.car.fuelLogs.push({id:uid('fuel'),...data});state.car.odometer=Math.max(Number(state.car.odometer||0),odometer);save();closeAppSheet(modal);renderCar();toast(existing?'Fuel entry updated':'Fuel fill saved');};if(existing)$('#deleteFuel').onclick=()=>{const idx=state.car.fuelLogs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=state.car.fuelLogs[idx];state.car.fuelLogs.splice(idx,1);save();closeAppSheet(modal);renderCar();toast('Fuel entry deleted','Undo',()=>{state.car.fuelLogs.splice(Math.min(idx,state.car.fuelLogs.length),0,removed);save();renderCar();});};$('#cancelModal').onclick=()=>closeAppSheet(modal);}
+function openMaintenanceModal(id=null){const c=state.car;const existing=id?(c.maintenanceLogs||[]).find(x=>x.id===id):null;prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CAR MAINTENANCE</p><h2>${existing?'Edit':'Log'} maintenance</h2><div class="stack"><label><span class="label">What was done?</span><input class="input" id="maintService" value="${escapeAttr(existing?.service||'')}" placeholder="e.g. Engine oil + filter"></label><div class="form-grid"><label><span class="label">Date</span><input class="input" id="maintDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Odometer (km)</span><input class="input" id="maintOdo" type="number" min="0" value="${existing?Number(existing.odometer||0):Number(c.odometer||0)}"></label></div><label><span class="label">Cost (SAR)</span><input class="input" id="maintCost" type="number" min="0" step="1" value="${existing?Number(existing.cost||0):''}"></label><label><span class="label">Short note (optional)</span><input class="input" id="maintNote" value="${escapeAttr(existing?.note||'')}" placeholder="fluid, parts, next check..."></label></div><button class="primary full" id="saveMaint" style="margin-top:14px">Save maintenance</button>${existing?'<button class="danger-btn full" id="deleteMaint" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);$('#saveMaint').onclick=()=>{const service=$('#maintService').value.trim();if(!service)return toast('Add what was done');const odometer=Math.max(0,Number($('#maintOdo').value||0));const data={service,date:$('#maintDate').value||todayKey(),odometer,cost:Math.max(0,Number($('#maintCost').value||0)),note:$('#maintNote').value.trim()};if(existing)Object.assign(existing,data);else c.maintenanceLogs.push({id:uid('maint'),...data});c.odometer=Math.max(Number(c.odometer||0),odometer);save();closeAppSheet(modal);renderCar();toast(existing?'Maintenance updated':'Maintenance saved');};if(existing)$('#deleteMaint').onclick=()=>{const idx=c.maintenanceLogs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=c.maintenanceLogs[idx];c.maintenanceLogs.splice(idx,1);save();closeAppSheet(modal);renderCar();toast('Maintenance entry deleted','Undo',()=>{c.maintenanceLogs.splice(Math.min(idx,c.maintenanceLogs.length),0,removed);save();renderCar();});};$('#cancelModal').onclick=()=>closeAppSheet(modal);}
 function renderProjects(){
   setHeader('Projects'); const active=state.projects.filter(p=>!p.archived), archived=state.projects.filter(p=>p.archived);
   const cards=list=>list.map(p=>`<button class="project-card ${p.archived?'archived':''}" data-project="${p.id}"><div class="row between center"><div><span class="badge ${p.archived?'muted-badge':p.status==='Completed'?'':'purple'}">${p.archived?'Archived':escapeHTML(p.status)}</span><h3>${escapeHTML(p.name)}</h3></div><strong>${clamp(Number(p.progress||0),0,100)}%</strong></div><div class="weekbar"><span style="width:${clamp(Number(p.progress||0),0,100)}%"></span></div><p>${escapeHTML(p.nextTask||'Set the next task.')}</p></button>`).join('');
   main.innerHTML=`${moreBack()}<div class="section-title first-section"><h2>Active projects</h2><button id="addProjectBtn">+ Project</button></div><section class="project-list">${active.length?cards(active):'<div class="card flat empty-state">No active projects. Start one when you have something worth building.</div>'}</section>${archived.length?`<details class="card flat archive-section"><summary>Archive · ${archived.length}</summary><section class="project-list archive-list">${cards(archived)}</section></details>`:''}`;
-  bindMoreBack();$('#addProjectBtn').onclick=()=>openProjectModal();$$('[data-project]').forEach(b=>b.onclick=()=>{historySelected.project.clear();historySelectMode.project=false;state.settings.moreView='project:'+b.dataset.project;save();renderMore();window.scrollTo({top:0,behavior:'auto'});});
+  bindMoreBack();$('#addProjectBtn').onclick=()=>openProjectModal();$$('[data-project]').forEach(b=>b.onclick=()=>{historySelected.project.clear();historySelectMode.project=false;state.settings.moreView='project:'+b.dataset.project;save();renderMore();pageScrollTo({top:0,behavior:'auto'});});
 }
 function renderProjectDetail(id){
   const p=state.projects.find(x=>x.id===id);if(!p){state.settings.moreView='projects';return renderProjects();}setHeader(p.name);
@@ -1564,15 +1744,15 @@ function renderProjectDetail(id){
 }
 function openProjectModal(id=null){
   const p=id?state.projects.find(x=>x.id===id):null;const x=p||{name:'',status:'Active',archived:false,progress:0,description:'',nextTask:'',plan:''};
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT</p><h2>${p?'Edit project':'New project'}</h2><div class="stack"><label><span class="label">Project name</span><input class="input" id="projectName" value="${escapeAttr(x.name)}"></label><label><span class="label">What is this project?</span><textarea id="projectDescription">${escapeHTML(x.description||'')}</textarea></label><label><span class="label">Next task</span><input class="input" id="projectNext" value="${escapeAttr(x.nextTask||'')}" placeholder="The next concrete thing to do"></label><label><span class="label">Plan / notes</span><textarea id="projectPlan">${escapeHTML(x.plan||'')}</textarea></label><div class="form-grid"><label><span class="label">Progress %</span><input class="input" id="projectProgress" type="number" min="0" max="100" value="${Number(x.progress||0)}"></label><label><span class="label">Status</span><select id="projectStatus"><option ${x.status==='Active'?'selected':''}>Active</option><option ${x.status==='Paused'?'selected':''}>Paused</option><option ${x.status==='Completed'?'selected':''}>Completed</option></select></label></div></div><button class="primary full" id="saveProject" style="margin-top:14px">Save project</button>${p?`<button class="secondary full" id="archiveProject" style="margin-top:8px">${p.archived?'Restore from archive':'Archive project'}</button>${p.archived?'<button class="danger-btn full" id="deleteProject" style="margin-top:8px">Delete permanently</button>':''}`:''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#saveProject').onclick=()=>{const name=$('#projectName').value.trim();if(!name)return toast('Add a project name');const data={name,status:$('#projectStatus').value,progress:clamp(Number($('#projectProgress').value||0),0,100),description:$('#projectDescription').value.trim(),nextTask:$('#projectNext').value.trim(),plan:$('#projectPlan').value.trim()};if(p)Object.assign(p,data);else state.projects.push({id:uid('project'),archived:false,sessions:0,logs:[],...data});save();modal.close();if(p){state.settings.moreView='project:'+p.id;renderMore();}else renderProjects();};
-  if(p)$('#archiveProject').onclick=()=>{p.archived=!p.archived;save();modal.close();renderProjectDetail(p.id);toast(p.archived?'Project archived':'Project restored');};
-  if(p&&$('#deleteProject'))$('#deleteProject').onclick=()=>{if(!confirm('Permanently delete this archived project and its history?'))return;state.projects=state.projects.filter(x=>x.id!==p.id);state.settings.moreView='projects';save();modal.close();renderMore();};
-  $('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT</p><h2>${p?'Edit project':'New project'}</h2><div class="stack"><label><span class="label">Project name</span><input class="input" id="projectName" value="${escapeAttr(x.name)}"></label><label><span class="label">What is this project?</span><textarea id="projectDescription">${escapeHTML(x.description||'')}</textarea></label><label><span class="label">Next task</span><input class="input" id="projectNext" value="${escapeAttr(x.nextTask||'')}" placeholder="The next concrete thing to do"></label><label><span class="label">Plan / notes</span><textarea id="projectPlan">${escapeHTML(x.plan||'')}</textarea></label><div class="form-grid"><label><span class="label">Progress %</span><input class="input" id="projectProgress" type="number" min="0" max="100" value="${Number(x.progress||0)}"></label><label><span class="label">Status</span><select id="projectStatus"><option ${x.status==='Active'?'selected':''}>Active</option><option ${x.status==='Paused'?'selected':''}>Paused</option><option ${x.status==='Completed'?'selected':''}>Completed</option></select></label></div></div><button class="primary full" id="saveProject" style="margin-top:14px">Save project</button>${p?`<button class="secondary full" id="archiveProject" style="margin-top:8px">${p.archived?'Restore from archive':'Archive project'}</button>${p.archived?'<button class="danger-btn full" id="deleteProject" style="margin-top:8px">Delete permanently</button>':''}`:''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
+  $('#saveProject').onclick=()=>{const name=$('#projectName').value.trim();if(!name)return toast('Add a project name');const data={name,status:$('#projectStatus').value,progress:clamp(Number($('#projectProgress').value||0),0,100),description:$('#projectDescription').value.trim(),nextTask:$('#projectNext').value.trim(),plan:$('#projectPlan').value.trim()};if(p)Object.assign(p,data);else state.projects.push({id:uid('project'),archived:false,sessions:0,logs:[],...data});save();closeAppSheet(modal);if(p){state.settings.moreView='project:'+p.id;renderMore();}else renderProjects();};
+  if(p)$('#archiveProject').onclick=()=>{p.archived=!p.archived;save();closeAppSheet(modal);renderProjectDetail(p.id);toast(p.archived?'Project archived':'Project restored');};
+  if(p&&$('#deleteProject'))$('#deleteProject').onclick=()=>{if(!confirm('Permanently delete this archived project and its history?'))return;state.projects=state.projects.filter(x=>x.id!==p.id);state.settings.moreView='projects';save();closeAppSheet(modal);renderMore();};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
-function openProjectSessionModal(id,logId=null){const p=state.projects.find(x=>x.id===id);if(!p)return;const existing=logId?(p.logs||[]).find(x=>x.id===logId):null;modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT SESSION</p><h2>${escapeHTML(p.name)}</h2><div class="stack"><label><span class="label">What did you move forward?</span><textarea id="projectSessionNote" placeholder="A short note is enough.">${escapeHTML(existing?.note||'')}</textarea></label><label><span class="label">Date</span><input class="input" id="projectSessionDate" type="date" value="${existing?.date||todayKey()}"></label></div><button class="primary full" id="saveProjectSession" style="margin-top:14px">Save session</button>${existing?'<button class="danger-btn full" id="deleteProjectSession" style="margin-top:8px">Delete session</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();$('#saveProjectSession').onclick=()=>{const data={date:$('#projectSessionDate').value||todayKey(),note:$('#projectSessionNote').value.trim()||'Focused project session'};if(existing)Object.assign(existing,data);else{p.sessions=Number(p.sessions||0)+1;if(!Array.isArray(p.logs))p.logs=[];p.logs.push({id:uid('projectlog'),...data});}save();modal.close();renderProjectDetail(p.id);toast(existing?'Project session updated':'Project session logged');};if(existing)$('#deleteProjectSession').onclick=()=>{const idx=p.logs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=p.logs[idx];p.logs.splice(idx,1);p.sessions=Math.max(0,Number(p.sessions||0)-1);save();modal.close();renderProjectDetail(p.id);toast('Project session deleted','Undo',()=>{p.logs.splice(Math.min(idx,p.logs.length),0,removed);p.sessions=Number(p.sessions||0)+1;save();renderProjectDetail(p.id);});};$('#cancelModal').onclick=()=>modal.close();}
-function openModeModal(){const cur=currentMode();const modes=[['normal','Normal','Full routine and normal weekly plan.'],['bad','Bad day','Today only: keep essentials, classes, meals, outside and sleep. It resets tomorrow.'],['exam','Exam','Temporarily park projects and nonessential life admin. Keep uni, sleep, food and training.'],['holiday','Holiday','Pause university items without deleting the timetable. Keep life, gym, projects and sleep.']];modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DAY MODE</p><h2>How should Reset treat your schedule?</h2><div class="mode-list">${modes.map(([id,name,desc])=>`<button class="mode-option ${id===cur?'active':''}" data-mode="${id}"><span><b>${name}</b><small>${desc}</small></span><strong>${id===cur?'✓':''}</strong></button>`).join('')}</div><button class="secondary full" id="cancelModal" style="margin-top:10px">Cancel</button>`;modal.showModal();$$('[data-mode]').forEach(b=>b.onclick=()=>{state.settings.mode=b.dataset.mode;state.settings.modeSetDate=todayKey();ensureRecord(todayKey()).mode=b.dataset.mode;save();modal.close();renderToday();toast(`${modeName()} mode active`);});$('#cancelModal').onclick=()=>modal.close();}
+function openProjectSessionModal(id,logId=null){const p=state.projects.find(x=>x.id===id);if(!p)return;const existing=logId?(p.logs||[]).find(x=>x.id===logId):null;prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">PROJECT SESSION</p><h2>${escapeHTML(p.name)}</h2><div class="stack"><label><span class="label">What did you move forward?</span><textarea id="projectSessionNote" placeholder="A short note is enough.">${escapeHTML(existing?.note||'')}</textarea></label><label><span class="label">Date</span><input class="input" id="projectSessionDate" type="date" value="${existing?.date||todayKey()}"></label></div><button class="primary full" id="saveProjectSession" style="margin-top:14px">Save session</button>${existing?'<button class="danger-btn full" id="deleteProjectSession" style="margin-top:8px">Delete session</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);$('#saveProjectSession').onclick=()=>{const data={date:$('#projectSessionDate').value||todayKey(),note:$('#projectSessionNote').value.trim()||'Focused project session'};if(existing)Object.assign(existing,data);else{p.sessions=Number(p.sessions||0)+1;if(!Array.isArray(p.logs))p.logs=[];p.logs.push({id:uid('projectlog'),...data});}save();closeAppSheet(modal);renderProjectDetail(p.id);toast(existing?'Project session updated':'Project session logged');};if(existing)$('#deleteProjectSession').onclick=()=>{const idx=p.logs.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=p.logs[idx];p.logs.splice(idx,1);p.sessions=Math.max(0,Number(p.sessions||0)-1);save();closeAppSheet(modal);renderProjectDetail(p.id);toast('Project session deleted','Undo',()=>{p.logs.splice(Math.min(idx,p.logs.length),0,removed);p.sessions=Number(p.sessions||0)+1;save();renderProjectDetail(p.id);});};$('#cancelModal').onclick=()=>closeAppSheet(modal);}
+function openModeModal(){const cur=currentMode();const modes=[['normal','Normal','Full routine and normal weekly plan.'],['bad','Bad day','Today only: keep essentials, classes, meals, outside and sleep. It resets tomorrow.'],['exam','Exam','Temporarily park projects and nonessential life admin. Keep uni, sleep, food and training.'],['holiday','Holiday','Pause university items without deleting the timetable. Keep life, gym, projects and sleep.']];prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DAY MODE</p><h2>How should Reset treat your schedule?</h2><div class="mode-list">${modes.map(([id,name,desc])=>`<button class="mode-option ${id===cur?'active':''}" data-mode="${id}"><span><b>${name}</b><small>${desc}</small></span><strong>${id===cur?'✓':''}</strong></button>`).join('')}</div><button class="secondary full" id="cancelModal" style="margin-top:10px">Cancel</button>`;openAppSheet(modal);$$('[data-mode]').forEach(b=>b.onclick=()=>{state.settings.mode=b.dataset.mode;state.settings.modeSetDate=todayKey();ensureRecord(todayKey()).mode=b.dataset.mode;save();closeAppSheet(modal);renderToday();toast(`${modeName()} mode active`);});$('#cancelModal').onclick=()=>closeAppSheet(modal);}
 
 /* ===== Reset v3.4 stability + planning layer ===== */
 const SAFETY_KEY = `${APP_KEY}-safety-v1`;
@@ -1660,7 +1840,7 @@ function clearItemTimeOverride(item,key){const rec=ensureRecord(key);delete rec.
 function dayAttentionIssues(date){
   const key=todayKey(date),rec=ensureRecord(key),issues=[];
   const all=itemsForMode(itemsForDate(date),modeForDate(key));
-  const unscheduled=new Set(rec.unscheduledItems||[]);
+  const unscheduled=new Set((rec.unscheduledItems||[]).filter(occ=>all.some(x=>occurrenceKey(x)===occ&&!isClosedStatus(getStatus(x,key)))));
   if(unscheduled.size)issues.push(`${unscheduled.size} task${unscheduled.size===1?'':'s'} could not fit into the day`);
   const active=all.filter(i=>!['cancelled','dropped','deferred','missed'].includes(getStatus(i,key))&&!unscheduled.has(occurrenceKey(i)));
   const wakeEnd=effectiveWakeEnd(date),sleepLimit=plannedSleepAbsolute(date);
@@ -1687,7 +1867,7 @@ function isDayPlanned(date){
   const key=todayKey(date),rec=state.records[key]||{};
   return !!(rec.futurePlannedAt||rec.dayPlanType&&rec.dayPlanType!=='planned'||Object.values(rec.timeOverrides||{}).some(x=>x?.manual)||state.oneOffTasks.some(x=>x.date===key));
 }
-function dayPlanStatus(date){
+function dayPlanStatusLegacy(date){
   const key=todayKey(date),issues=dayAttentionIssues(date),completion=dayCompletion(date),rec=state.records[key]||{};
   if(issues.length)return {label:'Needs attention',tone:'attention',icon:'warning'};
   if(key<=todayKey()&&completion===100)return {label:'Complete',tone:'complete',icon:'check'};
@@ -1716,7 +1896,7 @@ function buildDaySchedulePlan(date,{kind='future',preserveManual=true,wakeTime=n
   // Completed items keep the exact time they were displayed at; a rebuild is about the remaining day.
   Object.entries(manualMap).forEach(([occ,ov])=>{const item=baseRaw.find(x=>occurrenceKey(x)===occ);if(item&&getStatus(item,key)==='done'&&!isDayAnchor(item))overrides[occ]={...ov};});
   let baseItems=baseRaw.map(i=>{const ov=preserveManual?manualMap[occurrenceKey(i)]:null;return ov?.manual&&!ov?.dayAnchor?{...i,...ov}:i;});
-  const fixed=baseItems.filter(i=>!isDayAnchor(i)&&itemIsFixed(i)&&!['cancelled','dropped','deferred'].includes(getStatus(i,key)));
+  const fixed=baseItems.filter(i=>!isDayAnchor(i)&&itemIsFixed(i)&&!['done','cancelled','dropped','deferred'].includes(getStatus(i,key)));
   const missedFixed=kind==='today'?fixed.filter(i=>getStatus(i,key)==='pending'&&itemEndSortMinutes(i)<currentMinutes()):[];
   const blocked=[];
   fixed.forEach(i=>{if(!itemAllowsOverlap(i)&&(itemEndSortMinutes(i)>floor||kind!=='today'))blocked.push({start:itemSortMinutes(i),end:itemEndSortMinutes(i),item:i});});
@@ -1782,12 +1962,12 @@ function daySnapshot(key){return deepClone(ensureRecord(key));}
 function restoreDaySnapshot(key,snapshot){state.records[key]=deepClone(snapshot);save();render();}
 function openRestartModal(){
   const date=new Date(),key=todayKey(date),keepPlan=buildAdaptiveRestartPlan(date,true),resetPlan=buildAdaptiveRestartPlan(date,false),manualCount=keepPlan.manualCount,p=manualCount?keepPlan:resetPlan,missCount=p.missedFixed.length,attention=p.unplaced.length;
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ADAPTIVE RESTART</p><h2>Rebuild the rest of today.</h2><p class="muted">Wake and sleep stay as real day boundaries. Classes and appointments never move.${missCount?` ${missCount} fixed event${missCount===1?' is':'s are'} already past and will be marked missed.`:''}${attention?` ${attention} task${attention===1?' may':'s may'} need attention if there is not enough room.`:''}</p>${manualCount?`<div class="card flat restart-preview"><b>${manualCount} manual move${manualCount===1?'':'s'} detected</b><small>Keep your choices where possible, or rebuild from the original routine.</small></div><button class="primary full" id="restartKeepMoves" style="margin-top:12px">Rebuild + keep my moves</button><button class="secondary full" id="restartResetMoves" style="margin-top:8px">Reset my moves + rebuild</button>`:`<div class="card flat restart-preview"><b>Smart rebuild</b><small>Flexible tasks compact around your effective wake time and fixed events. Meals stay in order.</small></div><button class="primary full" id="restartResetMoves" style="margin-top:12px">Rebuild today</button>`}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  const run=(plan,label)=>{const before=daySnapshot(key);createSafetySnapshot('Before rebuilding today');applyAdaptiveRestart(plan);modal.close();renderToday();toast(label,'Undo',()=>restoreDaySnapshot(key,before));};
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">ADAPTIVE RESTART</p><h2>Rebuild the rest of today.</h2><p class="muted">Wake and sleep stay as real day boundaries. Classes and appointments never move.${missCount?` ${missCount} fixed event${missCount===1?' is':'s are'} already past and will be marked missed.`:''}${attention?` ${attention} task${attention===1?' may':'s may'} need attention if there is not enough room.`:''}</p>${manualCount?`<div class="card flat restart-preview"><b>${manualCount} manual move${manualCount===1?'':'s'} detected</b><small>Keep your choices where possible, or rebuild from the original routine.</small></div><button class="primary full" id="restartKeepMoves" style="margin-top:12px">Rebuild + keep my moves</button><button class="secondary full" id="restartResetMoves" style="margin-top:8px">Reset my moves + rebuild</button>`:`<div class="card flat restart-preview"><b>Smart rebuild</b><small>Flexible tasks compact around your effective wake time and fixed events. Meals stay in order.</small></div><button class="primary full" id="restartResetMoves" style="margin-top:12px">Rebuild today</button>`}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
+  const run=(plan,label)=>{const before=daySnapshot(key);createSafetySnapshot('Before rebuilding today');applyAdaptiveRestart(plan);closeAppSheet(modal);renderToday();toast(label,'Undo',()=>restoreDaySnapshot(key,before));};
   if($('#restartKeepMoves'))$('#restartKeepMoves').onclick=()=>run(keepPlan,'Today rebuilt and your moves were kept');
   $('#restartResetMoves').onclick=()=>run(resetPlan,manualCount?'Today rebuilt from the original routine':'Today rebuilt');
-  $('#cancelModal').onclick=()=>modal.close();
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 function exceptionItemHTML(item,date){
@@ -1825,7 +2005,7 @@ function bindTimeline(date){
       if(cb.checked){const now=key===todayKey()?new Date():new Date(`${key}T${dayWakeTime(date)}:00`);rec.actualWakeAt=localDateTimeInput(now);rec.actualWakeOffsetMin=now.getTimezoneOffset();markMissedBeforeWake(key,rec.actualWakeAt);setStatus(item,key,'done');}
       else{delete rec.actualWakeAt;delete rec.actualWakeOffsetMin;setStatus(item,key,'pending');}
     }else setStatus(item,key,cb.checked?'done':'pending');
-    const y=window.scrollY;render();requestAnimationFrame(()=>{window.scrollTo(0,y);if(cb.checked)maybeCelebrateDayFinish(date);});
+    const y=pageScrollY();render();requestAnimationFrame(()=>{pageScrollTo(0,y);if(cb.checked)maybeCelebrateDayFinish(date);});
   }));
   $$('[data-edit-item]').forEach(btn=>btn.addEventListener('click',()=>{const [source,id]=btn.dataset.editItem.split(':');if(source==='schedule')openScheduleItemModal(id);else openOneOffTaskModal(id);}));
   $$('[data-plan-anchors]').forEach(btn=>btn.addEventListener('click',()=>openDayAnchorPlanner(parseDateKey(btn.dataset.planAnchors))));
@@ -1840,7 +2020,7 @@ function bindTimeline(date){
 }
 
 function renderToday(preserveScroll=false){
-  const scroll=window.scrollY,date=new Date(),key=todayKey(date),rec=ensureRecord(key);rec.mode=currentMode();
+  const scroll=pageScrollY(),date=new Date(),key=todayKey(date),rec=ensureRecord(key);rec.mode=currentMode();
   const allItems=itemsForDate(date),items=itemsForMode(allItems,currentMode()),parked=allItems.filter(i=>!itemIncludedForMode(i,currentMode()));
   const exceptionItems=items.filter(i=>['missed','cancelled'].includes(getStatus(i,key))),unscheduledSet=new Set(rec.unscheduledItems||[]),unscheduledItems=items.filter(i=>unscheduledSet.has(occurrenceKey(i))),timelineItems=items.filter(i=>!['missed','cancelled'].includes(getStatus(i,key))&&!unscheduledSet.has(occurrenceKey(i)));
   const effectiveItems=items.filter(i=>getStatus(i,key)!=='cancelled'&&itemCountsForProgress(i)),done=effectiveItems.filter(i=>getStatus(i,key)==='done').length,total=effectiveItems.length,pct=total?Math.round(done/total*100):0;
@@ -1863,7 +2043,7 @@ function renderToday(preserveScroll=false){
   if($('#exceptionPanel'))$('#exceptionPanel').ontoggle=e=>{rec.exceptionPanelOpen=e.currentTarget.open;save();};
   if($('#logLastSleepBtn')&&lastSleep)$('#logLastSleepBtn').onclick=()=>openSleepLogModal(lastSleep.key);if($('#wrapDayBtn'))$('#wrapDayBtn').onclick=()=>openEndOfDayCleanup(date);
   if($('#heroDoneBtn')&&hero)$('#heroDoneBtn').onclick=()=>{const completed=hero;if(completed.id==='sleep')return openSleepLogModal(key);if(completed.id==='wake'){completeWakeAnchor(key,{preferPrevious:true});renderToday();toast('Wake logged','Undo',()=>{uncompleteWakeAnchor(key);renderToday();});requestAnimationFrame(()=>maybeCelebrateDayFinish(date));return;}setStatus(completed,key,'done');renderToday();toast('Marked done','Undo',()=>{setStatus(completed,key,'pending');renderToday();});requestAnimationFrame(()=>maybeCelebrateDayFinish(date));};
-  if($('#heroMoveBtn')&&hero)$('#heroMoveBtn').onclick=()=>openMoveItemModal(hero,date);if(preserveScroll)requestAnimationFrame(()=>window.scrollTo(0,scroll));
+  if($('#heroMoveBtn')&&hero)$('#heroMoveBtn').onclick=()=>openMoveItemModal(hero,date);if(preserveScroll)requestAnimationFrame(()=>pageScrollTo(0,scroll));
 }
 
 function planRowHTML(item,date){
@@ -1875,21 +2055,23 @@ function planRowHTML(item,date){
 function openPlanItemEditor(item,date){
   const key=todayKey(date),status=getStatus(item,key),fixed=itemIsFixed(item),reminder=itemIsNonBlocking(item),oneoff=item.source==='oneoff',active=!['cancelled','dropped','deferred'].includes(status);
   const others=itemsForDate(date).filter(x=>occurrenceKey(x)!==occurrenceKey(item)&&!itemManualMoveLocked(x)&&!isClosedStatus(getStatus(x,key))).sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b));
-  modalContent.innerHTML=`<div class="sheet-handle"></div><div class="day-plan-modal-head"><button class="round-icon" id="backToPlan" aria-label="Back">${svgIcon('chevronLeft')}</button><div><p class="eyebrow">PLAN ITEM</p><h2>${escapeHTML(item.title)}</h2><p>${reminder?'Non-blocking reminder':fixed?'Fixed event':'Flexible task'} · ${escapeHTML(timeWindow(item))}</p></div><span></span></div>
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><div class="day-plan-modal-head"><button class="round-icon" id="backToPlan" aria-label="Back">${svgIcon('chevronLeft')}</button><div><p class="eyebrow">PLAN ITEM</p><h2>${escapeHTML(item.title)}</h2><p>${reminder?'Non-blocking reminder':fixed?'Fixed event':'Flexible task'} · ${escapeHTML(timeWindow(item))}</p></div><span></span></div>
     ${!fixed&&active?`<section class="day-settings-card"><h3>Move or swap</h3><div class="stack"><label><span class="label">Move to time</span><input class="input" id="planMoveTime" type="time" value="${escapeAttr(item.start)}"></label>${others.length?`<label><span class="label">Or swap with</span><select id="planSwapTask"><option value="">No swap</option>${others.map(x=>`<option value="${escapeAttr(occurrenceKey(x))}">${escapeHTML(x.title)} · ${escapeHTML(formatClock(x.start))}</option>`).join('')}</select></label>`:''}</div><button class="primary full" id="savePlanMove" style="margin-top:12px">Save move</button></section>`:''}
     <section class="day-plan-section compact-plan-actions"><div class="day-plan-section-head"><span>${svgIcon('more')}</span><div><h3>Actions</h3><p>Changes apply only to ${escapeHTML(formatDateShort(date))}.</p></div></div>
       ${oneoff?`<button class="secondary full" id="editPlanOneOff">${svgIcon('settings')} Edit details</button>`:''}
       ${status==='cancelled'?`<button class="secondary full" id="restorePlanItem">${svgIcon('refresh')} Restore to this day</button>`:active?`<button class="secondary full" id="cancelPlanItem">${svgIcon('close')} Cancel for this day</button>`:''}
       ${oneoff?`<button class="danger-btn full" id="deletePlanOneOff">Delete from this day</button>`:''}
     </section>`;
-  if(!modal.open)modal.showModal();
+  if(!modal.open)openAppSheet(modal);
   $('#backToPlan').onclick=()=>openDayAnchorPlanner(date);
   if($('#savePlanMove'))$('#savePlanMove').onclick=()=>{const swapOcc=$('#planSwapTask')?.value||'',before=daySnapshot(key);if(swapOcc){const other=itemsForDate(date).find(x=>occurrenceKey(x)===swapOcc);if(!other)return toast('That task is no longer available');const aStart=item.start,bStart=other.start;if(moveWouldHitLocked(item,date,bStart)||moveWouldHitLocked(other,date,aStart))return toast('That swap would overlap an active locked item');setItemTimeOverride(item,key,bStart);setItemTimeOverride(other,key,aStart);save();openDayAnchorPlanner(date);toast('Tasks swapped','Undo',()=>restoreDaySnapshot(key,before));return;}const time=$('#planMoveTime').value;if(!time)return toast('Choose a time');if(moveWouldHitLocked(item,date,time))return toast('That time overlaps an active locked item');setItemTimeOverride(item,key,time);save();openDayAnchorPlanner(date);toast(reminder?'Reminder moved':'Task moved','Undo',()=>restoreDaySnapshot(key,before));};
-  if($('#editPlanOneOff'))$('#editPlanOneOff').onclick=()=>{modal.close();openOneOffTaskModal(item.id,{returnToPlan:key});};
+  if($('#editPlanOneOff'))$('#editPlanOneOff').onclick=()=>{closeAppSheet(modal);openOneOffTaskModal(item.id,{returnToPlan:key});};
   if($('#cancelPlanItem'))$('#cancelPlanItem').onclick=()=>{const before=daySnapshot(key);setStatus(item,key,'cancelled');save();openDayAnchorPlanner(date);toast('Cancelled for this day','Undo',()=>restoreDaySnapshot(key,before));};
   if($('#restorePlanItem'))$('#restorePlanItem').onclick=()=>{const before=daySnapshot(key);setStatus(item,key,'pending');save();openDayAnchorPlanner(date);toast(fixed?'Restored to its fixed time':'Restored','Undo',()=>restoreDaySnapshot(key,before));};
   if($('#deletePlanOneOff'))$('#deletePlanOneOff').onclick=()=>{const idx=state.oneOffTasks.findIndex(x=>x.id===item.id);if(idx<0)return;const removed=deepClone(state.oneOffTasks[idx]);state.oneOffTasks.splice(idx,1);save();openDayAnchorPlanner(date);toast(reminder?'Reminder deleted':'Item deleted','Undo',()=>{state.oneOffTasks.splice(Math.min(idx,state.oneOffTasks.length),0,removed);save();openDayAnchorPlanner(date);});};
 }
+function returnToDayPlan(date){const top=planReturnScroll;openDayAnchorPlanner(date);modalContent.scrollTop=top;}
+
 function resetDateToRoutine(date){
   const key=todayKey(date),rec=ensureRecord(key);createSafetySnapshot(`Before resetting ${key} to routine`);
   const actualWake=rec.actualWakeAt,actualSleep=rec.actualSleepAt,actualWakeOffsetMin=rec.actualWakeOffsetMin,actualSleepOffsetMin=rec.actualSleepOffsetMin,doneStatuses=Object.fromEntries(Object.entries(rec.itemStatus||{}).filter(([,v])=>v==='done'));
@@ -1905,7 +2087,7 @@ function copyOneOffSetup(sourceDate,targetDate){
 function openDayAnchorPlanner(date){
   const key=todayKey(date);if(key<todayKey())return toast('Past day anchors can be corrected from their history instead');
   const rec=ensureRecord(key),currentWake=dayWakeTime(date),currentSleep=daySleepTime(date),isToday=key===todayKey(),items=itemsForDate(date),routine=items.filter(i=>i.source==='schedule'&&!isDayAnchor(i)),oneoffs=items.filter(i=>i.source==='oneoff'),cancelled=items.filter(i=>getStatus(i,key)==='cancelled').length,planType=rec.dayPlanType||'planned';
-  modalContent.innerHTML=`<div class="sheet-handle"></div><div class="day-plan-modal-head"><button class="round-icon" id="cancelModal" aria-label="Back">${svgIcon('chevronLeft')}</button><div><h2>${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}</h2><p>Plan this day without changing your recurring routine.</p></div><button class="round-icon" id="dayPlanMoreBtn" aria-label="More">${svgIcon('more')}</button></div>
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><div class="day-plan-modal-head"><button class="round-icon" id="cancelModal" aria-label="Back">${svgIcon('chevronLeft')}</button><div><h2>${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}</h2><p>Plan this day without changing your recurring routine.</p></div><button class="round-icon" id="dayPlanMoreBtn" aria-label="More">${svgIcon('more')}</button></div>
   <section class="day-settings-card"><h3>Day settings</h3><div class="day-anchor-grid"><label><span class="day-setting-icon wake">${svgIcon('sun')}</span><span><small>Wake time</small><input id="futureWakeTime" type="time" value="${escapeAttr(currentWake)}"><em>${hasDayAnchorOverride(date,'wake')?`Override · routine ${formatClock(dailyWakeItem(date)?.start||state.profile.wakeTarget)}`:'From routine'}</em></span></label><label><span class="day-setting-icon sleep">${svgIcon('moon')}</span><span><small>Sleep time</small><input id="futureSleepTime" type="time" value="${escapeAttr(currentSleep)}"><em>${hasDayAnchorOverride(date,'sleep')?`Override · routine ${formatClock(dailySleepItem(date)?.start||state.profile.sleepTarget)}`:'From routine'}</em></span></label></div></section>
   <section class="quick-status-card"><h3>Quick status</h3><p>Set the feel of this day. It does not rewrite your routine.</p><div class="day-type-grid"><button data-day-type="planned" class="${planType==='planned'?'active':''}">${svgIcon('check')} Planned</button><button data-day-type="focus" class="${planType==='focus'?'active':''}">${svgIcon('target')} Focus Day</button><button data-day-type="travel" class="${planType==='travel'?'active':''}">${svgIcon('plane')} Travel</button><button data-day-type="rest" class="${planType==='rest'?'active':''}">${svgIcon('bed')} Rest Day</button></div></section>
   <section class="day-plan-section"><div class="day-plan-section-head"><span>${svgIcon('calendar')}</span><div><h3>Routine & fixed events</h3><p>Recurring items for this date. Fixed events keep their real time.</p></div></div><div class="day-plan-list">${routine.length?routine.map(i=>planRowHTML(i,date)).join(''):'<div class="empty-state compact-empty">No recurring items.</div>'}</div></section>
@@ -1913,15 +2095,15 @@ function openDayAnchorPlanner(date){
   <section class="day-plan-summary"><h3>Day summary</h3><div><span>${svgIcon('calendar')}<b>${routine.filter(itemIsFixed).length}</b><small>Fixed events</small></span><span>${svgIcon('check')}<b>${oneoffs.length}</b><small>One-off tasks</small></span><span>${svgIcon('list')}<b>${items.filter(i=>getStatus(i,key)!=='cancelled').length}</b><small>Planned items</small></span><span class="${cancelled?'red':''}">${svgIcon('close')}<b>${cancelled}</b><small>Cancelled</small></span></div></section>
   <section class="day-plan-advanced hidden" id="dayPlanAdvanced"><div class="day-plan-section-head"><span>${svgIcon('more')}</span><div><h3>More options</h3><p>Useful occasionally, kept out of the way.</p></div></div><label><span class="label">Copy this day’s one-off setup to</span><input class="input" id="copyDayTarget" type="date" min="${todayKey()}" value="${todayKey(addDays(date,1))}"></label><button class="secondary full" id="copyDaySetup" style="margin-top:8px">Copy one-off setup</button><button class="secondary full" id="manageRoutineFromPlan" style="margin-top:8px">Manage recurring routine</button></section>
   <button class="primary full day-plan-rebuild" id="rebuildFutureDay">${svgIcon('refresh')}<span><b>Rebuild with my changes</b><small>Update this day’s plan</small></span></button><button class="secondary full reset-routine-btn" id="resetFutureDay">${svgIcon('refresh')}<span><b>Reset to routine</b><small>Revert this day to its default routine</small></span></button><p class="day-plan-footnote">${svgIcon('lightbulb')} This only changes ${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}. Your recurring routine stays the same.</p>`;
-  modal.showModal();
+  openAppSheet(modal);
   let selectedType=planType;$$('[data-day-type]',modalContent).forEach(b=>b.onclick=()=>{selectedType=b.dataset.dayType;$$('[data-day-type]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});
   $('#dayPlanMoreBtn').onclick=()=>$('#dayPlanAdvanced').classList.toggle('hidden');
-  $('#addPlanOneOff').onclick=()=>{modal.close();openOneOffTaskModal(null,{date:key,start:'12:00'});};
-  $('#manageRoutineFromPlan').onclick=()=>{modal.close();openScheduleManager();};
+  $('#addPlanOneOff').onclick=()=>{closeAppSheet(modal);openOneOffTaskModal(null,{date:key,start:'12:00'});};
+  $('#manageRoutineFromPlan').onclick=()=>{closeAppSheet(modal);openScheduleManager();};
   $('#copyDaySetup').onclick=()=>{const target=$('#copyDayTarget').value;if(!target)return toast('Choose a target date');const count=copyOneOffSetup(date,parseDateKey(target));toast(count?`${count} one-off task${count===1?'':'s'} copied`:'Nothing new to copy');};
-  $('#rebuildFutureDay').onclick=()=>{const wake=$('#futureWakeTime').value||currentWake,sleep=$('#futureSleepTime').value||currentSleep,before=daySnapshot(key);createSafetySnapshot(`Before rebuilding ${key}`);setDayWakeOverride(date,wake);setDaySleepOverride(date,sleep);rec.dayPlanType=selectedType;const plan=isToday?buildDaySchedulePlan(date,{kind:'today',preserveManual:true,wakeTime:wake,sleepTime:sleep}):buildDaySchedulePlan(date,{kind:'future',preserveManual:true,wakeTime:wake,sleepTime:sleep});if(isToday)applyAdaptiveRestart(plan);else applyFutureDayPlan(plan);rec.dayPlanType=selectedType;save();modal.close();render();toast('Day rebuilt','Undo',()=>restoreDaySnapshot(key,before));};
-  $('#resetFutureDay').onclick=()=>{if(!confirm('Reset this date to the recurring routine? One-off tasks and day-specific changes will be removed. Completed history and actual wake/sleep logs are kept.'))return;const before=daySnapshot(key),oneoffsBefore=deepClone(state.oneOffTasks.filter(x=>x.date===key));resetDateToRoutine(date);modal.close();render();toast('Day restored to routine','Undo',()=>{state.records[key]=before;state.oneOffTasks.push(...oneoffsBefore.filter(x=>!state.oneOffTasks.some(y=>y.id===x.id)));save();render();});};
-  $('#cancelModal').onclick=()=>modal.close();
+  $('#rebuildFutureDay').onclick=()=>{const wake=$('#futureWakeTime').value||currentWake,sleep=$('#futureSleepTime').value||currentSleep,before=daySnapshot(key);createSafetySnapshot(`Before rebuilding ${key}`);setDayWakeOverride(date,wake);setDaySleepOverride(date,sleep);rec.dayPlanType=selectedType;const plan=isToday?buildDaySchedulePlan(date,{kind:'today',preserveManual:true,wakeTime:wake,sleepTime:sleep}):buildDaySchedulePlan(date,{kind:'future',preserveManual:true,wakeTime:wake,sleepTime:sleep});if(isToday)applyAdaptiveRestart(plan);else applyFutureDayPlan(plan);rec.dayPlanType=selectedType;save();closeAppSheet(modal);render();toast('Day rebuilt','Undo',()=>restoreDaySnapshot(key,before));};
+  $('#resetFutureDay').onclick=()=>{if(!confirm('Reset this date to the recurring routine? One-off tasks and day-specific changes will be removed. Completed history and actual wake/sleep logs are kept.'))return;const before=daySnapshot(key),oneoffsBefore=deepClone(state.oneOffTasks.filter(x=>x.date===key));resetDateToRoutine(date);closeAppSheet(modal);render();toast('Day restored to routine','Undo',()=>{state.records[key]=before;state.oneOffTasks.push(...oneoffsBefore.filter(x=>!state.oneOffTasks.some(y=>y.id===x.id)));save();render();});};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 function openFutureDayPlanner(date){openDayAnchorPlanner(date);}
 
@@ -1938,17 +2120,17 @@ function renderWeek(){
   let selected=parseDateKey(state.settings.selectedWeekDate||todayKey()),weekStart=startOfWeek(selected),days=Array.from({length:7},(_,i)=>addDays(weekStart,i)),weekEnd=days[6],selectedKey=todayKey(selected);
   if(!days.some(d=>todayKey(d)===selectedKey)){selected=weekStart;selectedKey=todayKey(selected);state.settings.selectedWeekDate=selectedKey;}
   setHeader('Week',selected);const rec=ensureRecord(selectedKey),selectedAll=itemsForDate(selected),selectedItems=selectedAll.filter(i=>!['cancelled','missed'].includes(getStatus(i,selectedKey))&&!(rec.unscheduledItems||[]).includes(occurrenceKey(i))),expanded=!!state.settings.weekDayExpanded,shown=expanded?selectedItems:selectedItems.slice(0,4),otherDays=days.filter(d=>todayKey(d)!==selectedKey),otherExpanded=!!state.settings.weekOtherExpanded,otherShown=otherExpanded?otherDays:otherDays.slice(0,3);
-  const completeCount=days.filter(d=>todayKey(d)<=todayKey()&&dayCompletion(d)===100).length,attentionCount=days.filter(d=>dayAttentionIssues(d).length).length,plannedCount=days.filter(isDayPlanned).length;
+  const completeCount=days.filter(d=>todayKey(d)<=todayKey()&&dayCompletion(d)===100).length,attentionCount=days.filter(d=>dayAttentionIssues(d).length).length,plannedCount=days.filter(d=>isTrackedDate(d)&&isDayPlanned(d)).length;
   const selectedStatus=dayPlanStatus(selected);
   main.innerHTML=`<p class="week-subtitle">Plan ahead, not just react.</p><section class="week-header-card week-v34" id="weekSwipeArea"><div class="week-nav clean"><button class="round-icon" id="prevWeekBtn" aria-label="Previous week">${svgIcon('chevronLeft')}</button><div><b>${formatDateShort(weekStart)} – ${formatDateShort(weekEnd)}</b><button class="today-link" id="todayWeekBtn">This Week</button></div><button class="round-icon" id="nextWeekBtn" aria-label="Next week">${svgIcon('chevronRight')}</button></div><div class="week-strip modern">${days.map(d=>{const k=todayKey(d),p=dayCompletion(d),status=dayPlanStatus(d);return `<button class="week-day ${k===selectedKey?'active':''} ${k===todayKey()?'today':''}" data-day-key="${k}"><small>${dayShort(d.getDay())}</small><strong>${d.getDate()}</strong><i style="--p:${p}%"></i>${status.tone==='attention'?'<span class="week-alert-dot"></span>':''}</button>`}).join('')}</div></section>
   <section class="week-summary-v34"><button data-week-summary="complete"><span class="week-summary-icon complete">${svgIcon('check')}</span><b>${completeCount} / 7</b><small>Complete</small><i>${svgIcon('chevronRight')}</i></button><button data-week-summary="attention" class="${attentionCount?'has-attention':''}"><span class="week-summary-icon attention">${svgIcon('warning')}</span><b>${attentionCount}</b><small>Need attention</small><i>${svgIcon('chevronRight')}</i></button><button data-week-summary="planned"><span class="week-summary-icon planned">${svgIcon('calendar')}</span><b>${plannedCount}</b><small>Planned</small><i>${svgIcon('chevronRight')}</i></button></section>
   <section class="week-selected-card"><div class="week-selected-head"><div><small>${dayLong(selected.getDay()).toUpperCase()}</small><h2>${formatDateShort(selected)}</h2></div>${selectedKey>=todayKey()?`<button class="week-plan-button" id="planDayBtn">${svgIcon('calendar')} Plan Day</button>`:`<span class="week-status-pill ${selectedStatus.tone}">${selectedStatus.label}</span>`}</div><div class="week-preview-list">${shown.length?shown.map(i=>weekPreviewRow(i,selected)).join(''):'<div class="empty-state compact-empty">Nothing scheduled for this day.</div>'}</div>${selectedItems.length>4?`<button class="week-view-full" id="weekViewFull">${svgIcon('list')} <span>${expanded?'Show less':`View full day (${selectedItems.length} items)`}</span>${svgIcon('chevronRight')}</button>`:''}${expanded?`<div class="week-expanded-actions"><button class="secondary small-btn" id="addWeekTaskBtn">${svgIcon('plus')} Add task</button></div>`:''}</section>
   <div class="week-other-title"><h2>Other Days This Week</h2>${otherDays.length>3?`<button id="weekSeeAll">${otherExpanded?'Show Less':'See All'}</button>`:''}</div><section class="week-other-list">${otherShown.map(weekOtherRow).join('')}</section>
   <details class="routine-manager week-routine-v34"><summary><span>${svgIcon('refresh')}<span><b>Weekly routine</b><small>${state.schedule.filter(s=>s.active!==false).length} recurring items</small></span></span>${svgIcon('chevronRight')}</summary><div class="routine-actions"><button class="primary" id="addRoutineBtn">+ Recurring item</button><button class="secondary" id="manageRoutineBtn">Manage routine</button></div></details>`;
-  const shiftWeek=n=>{state.settings.selectedWeekDate=todayKey(addDays(selected,n*7));state.settings.weekDayExpanded=false;save();renderWeek();};
+  const shiftWeek=n=>{state.settings.selectedWeekDate=todayKey(n>0?addDays(startOfWeek(selected),7):addDays(startOfWeek(selected),-1));state.settings.weekDayExpanded=false;save();renderWeek();};
   $('#prevWeekBtn').onclick=()=>shiftWeek(-1);$('#nextWeekBtn').onclick=()=>shiftWeek(1);$('#todayWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey();state.settings.weekDayExpanded=false;save();renderWeek();};
-  $$('[data-day-key]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.dayKey;state.settings.weekDayExpanded=false;save();renderWeek();});$$('[data-week-other]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.weekOther;state.settings.weekDayExpanded=false;save();renderWeek();window.scrollTo({top:0,behavior:'smooth'});});
-  $$('[data-week-summary]').forEach(b=>b.onclick=()=>{const type=b.dataset.weekSummary;let candidates=type==='complete'?days.filter(d=>todayKey(d)<=todayKey()&&dayCompletion(d)===100):type==='attention'?days.filter(d=>dayAttentionIssues(d).length):days.filter(isDayPlanned);if(!candidates.length)return toast(type==='attention'?'No days need attention':type==='planned'?'No manually planned days this week':'No completed days yet');if(type==='complete')candidates=[...candidates].reverse();state.settings.selectedWeekDate=todayKey(candidates[0]);state.settings.weekDayExpanded=false;save();renderWeek();window.scrollTo({top:0,behavior:'smooth'});});
+  $$('[data-day-key]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.dayKey;state.settings.weekDayExpanded=false;save();renderWeek();});$$('[data-week-other]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.weekOther;state.settings.weekDayExpanded=false;save();renderWeek();pageScrollTo({top:0,behavior:'smooth'});});
+  $$('[data-week-summary]').forEach(b=>b.onclick=()=>{const type=b.dataset.weekSummary;let candidates=type==='complete'?days.filter(d=>todayKey(d)<=todayKey()&&dayCompletion(d)===100):type==='attention'?days.filter(d=>dayAttentionIssues(d).length):days.filter(isDayPlanned);if(!candidates.length)return toast(type==='attention'?'No days need attention':type==='planned'?'No manually planned days this week':'No completed days yet');if(type==='complete')candidates=[...candidates].reverse();state.settings.selectedWeekDate=todayKey(candidates[0]);state.settings.weekDayExpanded=false;save();renderWeek();pageScrollTo({top:0,behavior:'smooth'});});
   if($('#planDayBtn'))$('#planDayBtn').onclick=()=>openDayAnchorPlanner(selected);if($('#weekViewFull'))$('#weekViewFull').onclick=()=>{state.settings.weekDayExpanded=!expanded;save();renderWeek();};if($('#weekSeeAll'))$('#weekSeeAll').onclick=()=>{state.settings.weekOtherExpanded=!otherExpanded;save();renderWeek();};
   if($('#addWeekTaskBtn'))$('#addWeekTaskBtn').onclick=()=>openOneOffTaskModal(null,{date:selectedKey,start:'12:00'});$('#addRoutineBtn').onclick=()=>openScheduleItemModal(null,{days:[selected.getDay()]});$('#manageRoutineBtn').onclick=openScheduleManager;
   let sx=0,sy=0;const swipe=$('#weekSwipeArea');swipe.addEventListener('touchstart',e=>{const t=e.touches[0];sx=t.clientX;sy=t.clientY;},{passive:true});swipe.addEventListener('touchend',e=>{const t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.4)shiftWeek(dx<0?1:-1);},{passive:true});
@@ -1958,63 +2140,72 @@ function openSleepLogModal(targetKey){
   const item=sleepItemForKey(targetKey);if(!item)return toast('Sleep anchor was not found for that day');
   const rec=ensureRecord(targetKey),targetDate=parseDateKey(targetKey),nextKey=todayKey(addDays(targetDate,1));let defaultValue=rec.actualSleepAt||'';
   if(!defaultValue){const now=new Date();if(targetKey===todayKey(addDays(now,-1)))defaultValue=localDateTimeInput(now);else if(targetKey===todayKey()&&currentMinutes()>=daySleepAbsoluteMinutes(targetDate)%1440)defaultValue=localDateTimeInput(now);else{const planned=new Date(targetDate),off=daySleepOffset(targetDate);planned.setDate(planned.getDate()+off);const [h,m]=daySleepTime(targetDate).split(':').map(Number);planned.setHours(h,m,0,0);defaultValue=localDateTimeInput(planned);}}
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Log when you actually went to sleep</h2><p class="muted">This belongs to the night of ${escapeHTML(formatDateShort(targetDate))}, even if you slept after midnight. Your planned sleep time will stay unchanged.</p><label><span class="label">Actual sleep time</span><input class="input" id="actualSleepInput" type="datetime-local" value="${escapeAttr(defaultValue)}"></label><button class="primary full" id="saveSleepLog" style="margin-top:14px">Save sleep time</button>${rec.actualSleepAt?'<button class="danger-btn full" id="clearSleepLog" style="margin-top:8px">Clear sleep log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#saveSleepLog').onclick=()=>{const value=$('#actualSleepInput').value;if(!value||!value.includes('T'))return toast('Choose the actual sleep time');const actualKey=value.slice(0,10);if(actualKey!==targetKey&&actualKey!==nextKey)return toast('Use that evening or the following morning');rec.actualSleepAt=value;rec.actualSleepOffsetMin=localOffsetForInput(value);setStatus(item,targetKey,'done');save();modal.close();render();toast(`Sleep logged at ${actualSleepClock(value)}`);requestAnimationFrame(()=>maybeCelebrateDayFinish(targetDate));};
-  if($('#clearSleepLog'))$('#clearSleepLog').onclick=()=>{delete rec.actualSleepAt;delete rec.actualSleepOffsetMin;setStatus(item,targetKey,'pending');save();modal.close();render();toast('Sleep log cleared');};$('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Log when you actually went to sleep</h2><p class="muted">This belongs to the night of ${escapeHTML(formatDateShort(targetDate))}, even if you slept after midnight. Your planned sleep time will stay unchanged.</p><label><span class="label">Actual sleep time</span><input class="input" id="actualSleepInput" type="datetime-local" value="${escapeAttr(defaultValue)}"></label><button class="primary full" id="saveSleepLog" style="margin-top:14px">Save sleep time</button>${rec.actualSleepAt?'<button class="danger-btn full" id="clearSleepLog" style="margin-top:8px">Clear sleep log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
+  $('#saveSleepLog').onclick=()=>{const value=$('#actualSleepInput').value;if(!value||!value.includes('T'))return toast('Choose the actual sleep time');const actualKey=value.slice(0,10);if(actualKey!==targetKey&&actualKey!==nextKey)return toast('Use that evening or the following morning');rec.actualSleepAt=value;rec.actualSleepOffsetMin=localOffsetForInput(value);setStatus(item,targetKey,'done');save();closeAppSheet(modal);render();toast(`Sleep logged at ${actualSleepClock(value)}`);requestAnimationFrame(()=>maybeCelebrateDayFinish(targetDate));};
+  if($('#clearSleepLog'))$('#clearSleepLog').onclick=()=>{delete rec.actualSleepAt;delete rec.actualSleepOffsetMin;setStatus(item,targetKey,'pending');save();closeAppSheet(modal);render();toast('Sleep log cleared');};$('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 function openSleepNightModal(nightKey){
   const r=sleepNightRecord(nightKey),night=parseDateKey(nightKey),next=addDays(night,1),nextKey=todayKey(next),plannedSleep=daySleepTime(night),plannedWake=dayWakeTime(next);let sleepValue=r.sleepValue,wakeValue=r.wakeValue;
   if(!sleepValue){const d=new Date(night),off=sleepDayOffsetForTime(plannedSleep);d.setDate(d.getDate()+off);const [h,m]=plannedSleep.split(':').map(Number);d.setHours(h,m,0,0);sleepValue=localDateTimeInput(d);}if(!wakeValue){const d=new Date(next);const [h,m]=plannedWake.split(':').map(Number);d.setHours(h,m,0,0);wakeValue=localDateTimeInput(d);}
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP HISTORY</p><h2>${escapeHTML(formatDateShort(night))} night</h2><p class="muted">Correct the actual times. Planned wake and sleep anchors stay separate.</p><div class="stack"><label><span class="label">Went to sleep</span><input class="input" id="sleepNightBed" type="datetime-local" value="${escapeAttr(sleepValue)}"></label><label><span class="label">Woke up</span><input class="input" id="sleepNightWake" type="datetime-local" value="${escapeAttr(wakeValue)}"></label></div><button class="primary full" id="saveSleepNight" style="margin-top:14px">Save night</button>${r.sleepValue||r.wakeValue?'<button class="danger-btn full" id="deleteSleepNight" style="margin-top:8px">Clear this night</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
-  $('#saveSleepNight').onclick=()=>{const bed=$('#sleepNightBed').value,wake=$('#sleepNightWake').value;if(!bed||!wake)return toast('Choose both sleep and wake times');const bedOffset=localOffsetForInput(bed),wakeOffset=localOffsetForInput(wake),hours=stableDurationHours(bed,wake,bedOffset,wakeOffset);if(hours==null||hours<=0)return toast('Wake time must be after sleep time');if(hours>20)return toast('That sleep duration looks too long');const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);sleepRec.actualSleepAt=bed;sleepRec.actualSleepOffsetMin=bedOffset;wakeRec.actualWakeAt=wake;wakeRec.actualWakeOffsetMin=wakeOffset;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'done');if(wakeItem)setStatus(wakeItem,nextKey,'done');save();modal.close();renderSleep();toast('Sleep night saved');};
-  if($('#deleteSleepNight'))$('#deleteSleepNight').onclick=()=>{const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);delete sleepRec.actualSleepAt;delete sleepRec.actualSleepOffsetMin;delete wakeRec.actualWakeAt;delete wakeRec.actualWakeOffsetMin;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'pending');if(wakeItem)setStatus(wakeItem,nextKey,'pending');save();modal.close();renderSleep();toast('Sleep night cleared');};$('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP HISTORY</p><h2>${escapeHTML(formatDateShort(night))} night</h2><p class="muted">Correct the actual times. Planned wake and sleep anchors stay separate.</p><div class="stack"><label><span class="label">Went to sleep</span><input class="input" id="sleepNightBed" type="datetime-local" value="${escapeAttr(sleepValue)}"></label><label><span class="label">Woke up</span><input class="input" id="sleepNightWake" type="datetime-local" value="${escapeAttr(wakeValue)}"></label></div><button class="primary full" id="saveSleepNight" style="margin-top:14px">Save night</button>${r.sleepValue||r.wakeValue?'<button class="danger-btn full" id="deleteSleepNight" style="margin-top:8px">Clear this night</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);
+  $('#saveSleepNight').onclick=()=>{const bed=$('#sleepNightBed').value,wake=$('#sleepNightWake').value;if(!bed||!wake)return toast('Choose both sleep and wake times');const bedOffset=localOffsetForInput(bed),wakeOffset=localOffsetForInput(wake),hours=stableDurationHours(bed,wake,bedOffset,wakeOffset);if(hours==null||hours<=0)return toast('Wake time must be after sleep time');if(hours>20)return toast('That sleep duration looks too long');const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);sleepRec.actualSleepAt=bed;sleepRec.actualSleepOffsetMin=bedOffset;wakeRec.actualWakeAt=wake;wakeRec.actualWakeOffsetMin=wakeOffset;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'done');if(wakeItem)setStatus(wakeItem,nextKey,'done');save();closeAppSheet(modal);renderSleep();toast('Sleep night saved');};
+  if($('#deleteSleepNight'))$('#deleteSleepNight').onclick=()=>{const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);delete sleepRec.actualSleepAt;delete sleepRec.actualSleepOffsetMin;delete wakeRec.actualWakeAt;delete wakeRec.actualWakeOffsetMin;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'pending');if(wakeItem)setStatus(wakeItem,nextKey,'pending');save();closeAppSheet(modal);renderSleep();toast('Sleep night cleared');};$('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 function openWorkoutPlanner(){
   let focus='Full Body',temp={};workoutFocuses().forEach(name=>temp[name]=new Set(validPresetIds(name)));
   const draw=()=>{
     const selected=temp[focus],all=state.gym.exercises||[],count=selected.size;
-    modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">START WORKOUT</p><h2>Build today’s workout</h2><div class="focus-chip-wrap workout-four">${workoutFocuses().map(x=>`<button class="focus-chip ${x===focus?'active':''}" data-workout-focus="${escapeAttr(x)}">${escapeHTML(x)}</button>`).join('')}</div><div class="workout-builder-head"><div><small>${escapeHTML(focus.toUpperCase())}</small><b id="workoutSelectedCount">${count} exercise${count===1?'':'s'} selected</b></div><button class="text-button" id="resetWorkoutPreset">${focus==='Custom'?'Clear':'Reset default'}</button></div><div class="exercise-pick-grid">${all.map(ex=>`<label class="exercise-pick ${selected.has(ex.id)?'selected':''}" data-workout-label="${escapeAttr(ex.id)}"><input type="checkbox" data-workout-pick="${escapeAttr(ex.id)}" ${selected.has(ex.id)?'checked':''}><span class="exercise-pick-check">${selected.has(ex.id)?svgIcon('check'):''}</span><span><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></span></label>`).join('')}</div><button class="primary full" id="startPlannedWorkout" ${count?'':'disabled'}>Start ${escapeHTML(focus)} workout</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
+    prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">START WORKOUT</p><h2>Build today’s workout</h2><div class="focus-chip-wrap workout-four">${workoutFocuses().map(x=>`<button class="focus-chip ${x===focus?'active':''}" data-workout-focus="${escapeAttr(x)}">${escapeHTML(x)}</button>`).join('')}</div><div class="workout-builder-head"><div><small>${escapeHTML(focus.toUpperCase())}</small><b id="workoutSelectedCount">${count} exercise${count===1?'':'s'} selected</b></div><button class="text-button" id="resetWorkoutPreset">${focus==='Custom'?'Clear':'Reset default'}</button></div><div class="exercise-pick-grid">${all.map(ex=>`<label class="exercise-pick ${selected.has(ex.id)?'selected':''}" data-workout-label="${escapeAttr(ex.id)}"><input type="checkbox" data-workout-pick="${escapeAttr(ex.id)}" ${selected.has(ex.id)?'checked':''}><span class="exercise-pick-check">${selected.has(ex.id)?svgIcon('check'):''}</span><span><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></span></label>`).join('')}</div><button class="primary full" id="startPlannedWorkout" ${count?'':'disabled'}>Start ${escapeHTML(focus)} workout</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);
     $$('[data-workout-focus]',modalContent).forEach(b=>b.onclick=()=>{focus=b.dataset.workoutFocus;draw();});
     $$('[data-workout-pick]',modalContent).forEach(cb=>cb.onchange=()=>{const id=cb.dataset.workoutPick,label=$(`[data-workout-label="${CSS.escape(id)}"]`,modalContent);if(cb.checked)selected.add(id);else selected.delete(id);label?.classList.toggle('selected',cb.checked);const check=label?.querySelector('.exercise-pick-check');if(check)check.innerHTML=cb.checked?svgIcon('check'):'';const countEl=$('#workoutSelectedCount');if(countEl)countEl.textContent=`${selected.size} exercise${selected.size===1?'':'s'} selected`;const start=$('#startPlannedWorkout');if(start){start.disabled=!selected.size;start.textContent=`Start ${focus} workout`;}});
     $('#resetWorkoutPreset').onclick=()=>{temp[focus]=new Set(focus==='Custom'?[]:(defaultWorkoutPresets()[focus]||[]).filter(id=>state.gym.exercises.some(ex=>ex.id===id)));draw();};
-    $('#startPlannedWorkout').onclick=()=>{const ids=[...temp[focus]];if(!ids.length)return toast('Choose at least one exercise');if(!state.gym.workoutPresets)state.gym.workoutPresets=defaultWorkoutPresets();state.gym.workoutPresets[focus]=ids;state.gym.activeWorkout={id:uid('workout'),date:todayKey(),focus,exerciseIds:ids,completedExerciseIds:[],startedAt:new Date().toISOString()};save();modal.close();renderGym();toast(`${focus} workout started`);};$('#cancelModal').onclick=()=>modal.close();
+    $('#startPlannedWorkout').onclick=()=>{const ids=[...temp[focus]];if(!ids.length)return toast('Choose at least one exercise');if(!state.gym.workoutPresets)state.gym.workoutPresets=defaultWorkoutPresets();state.gym.workoutPresets[focus]=ids;state.gym.activeWorkout={id:uid('workout'),date:todayKey(),focus,exerciseIds:ids,completedExerciseIds:[],startedAt:new Date().toISOString()};save();closeAppSheet(modal);renderGym();toast(`${focus} workout started`);};$('#cancelModal').onclick=()=>closeAppSheet(modal);
   };draw();
 }
 function openGymLogModal(id=null,presetExerciseId=null){
   const active=state.gym.activeWorkout?.date===todayKey()?state.gym.activeWorkout:null,workoutExisting=!id&&presetExerciseId&&active?sessionWorkoutLog(active.id,presetExerciseId):null,existing=id?(state.gym.logs||[]).find(x=>x.id===id):workoutExisting,lockedExercise=!!(presetExerciseId&&active),initialId=existing?.exerciseId||presetExerciseId||state.settings.selectedExerciseId,ex=state.gym.exercises.find(x=>x.id===initialId)||state.gym.exercises[0];
   const drawQuickWeights=(exerciseId,current=existing)=>smartWeightOptions(exerciseId,current).map(v=>`<button type="button" class="quick-value" data-quick-weight="${v}">${v}</button>`).join('');
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>${existing?'Update':'Log'} exercise</h2><div class="stack">${lockedExercise?`<div class="locked-exercise-name"><small>Exercise</small><b>${escapeHTML(ex?.name||'Exercise')}</b></div>`:`<label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label>`}<label><span class="label">Weight (kg)</span><div class="quick-value-row" id="quickWeightRow">${drawQuickWeights(ex?.id)}</div><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal" value="${existing?Number(existing.weight):''}" placeholder="Type another weight"></label><div class="quick-log-grid"><label><span class="label">Sets</span><div class="quick-value-row compact">${[2,3,4,5].map(v=>`<button type="button" class="quick-value ${Number(existing?.sets||3)===v?'active':''}" data-quick-sets="${v}">${v}</button>`).join('')}</div><input class="input" id="gymSets" type="number" min="1" max="20" step="1" inputmode="numeric" enterkeyhint="next" value="${Number(existing?.sets||3)}"></label><label><span class="label">Reps</span><div class="quick-value-row compact">${[6,8,10,12,15].map(v=>`<button type="button" class="quick-value ${Number(existing?.reps||10)===v?'active':''}" data-quick-reps="${v}">${v}</button>`).join('')}</div><input class="input" id="gymReps" type="number" min="1" max="100" step="1" inputmode="numeric" enterkeyhint="done" value="${Number(existing?.reps||10)}"></label></div>${lockedExercise?'':`<label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${existing?.date||todayKey()}"></label>`}</div><button class="primary full" id="saveGymLog" style="margin-top:14px">${existing?'Update log':'Save log'}</button>${existing&&!workoutExisting?'<button class="danger-btn full" id="deleteGymLog" style="margin-top:8px">Delete log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>${existing?'Update':'Log'} exercise</h2><div class="stack">${lockedExercise?`<div class="locked-exercise-name"><small>Exercise</small><b>${escapeHTML(ex?.name||'Exercise')}</b></div>`:`<label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label>`}<label><span class="label">Weight (kg)</span><div class="quick-value-row" id="quickWeightRow">${drawQuickWeights(ex?.id)}</div><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal" value="${existing?Number(existing.weight):''}" placeholder="Type another weight"></label><div class="quick-log-grid"><label><span class="label">Sets</span><div class="quick-value-row compact">${[2,3,4,5].map(v=>`<button type="button" class="quick-value ${Number(existing?.sets||3)===v?'active':''}" data-quick-sets="${v}">${v}</button>`).join('')}</div><input class="input" id="gymSets" type="number" min="1" max="20" step="1" inputmode="numeric" enterkeyhint="next" value="${Number(existing?.sets||3)}"></label><label><span class="label">Reps</span><div class="quick-value-row compact">${[6,8,10,12,15].map(v=>`<button type="button" class="quick-value ${Number(existing?.reps||10)===v?'active':''}" data-quick-reps="${v}">${v}</button>`).join('')}</div><input class="input" id="gymReps" type="number" min="1" max="100" step="1" inputmode="numeric" enterkeyhint="done" value="${Number(existing?.reps||10)}"></label></div>${lockedExercise?'':`<label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${existing?.date||todayKey()}"></label>`}</div><button class="primary full" id="saveGymLog" style="margin-top:14px">${existing?'Update log':'Save log'}</button>${existing&&!workoutExisting?'<button class="danger-btn full" id="deleteGymLog" style="margin-top:8px">Delete log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);
   const bindQuick=()=>{$$('[data-quick-weight]',modalContent).forEach(b=>b.onclick=()=>{$('#gymWeight').value=b.dataset.quickWeight;$$('[data-quick-weight]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});$$('[data-quick-sets]',modalContent).forEach(b=>b.onclick=()=>{$('#gymSets').value=b.dataset.quickSets;$$('[data-quick-sets]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});$$('[data-quick-reps]',modalContent).forEach(b=>b.onclick=()=>{$('#gymReps').value=b.dataset.quickReps;$$('[data-quick-reps]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});};bindQuick();
   ['gymSets','gymReps'].forEach(id=>{const el=$(`#${id}`);if(el)el.addEventListener('input',()=>{el.value=String(el.value||'').replace(/[^0-9]/g,'');});});
   if($('#gymLogExercise'))$('#gymLogExercise').onchange=e=>{$('#quickWeightRow').innerHTML=drawQuickWeights(e.target.value,null);bindQuick();};
-  $('#saveGymLog').onclick=()=>{const exerciseId=lockedExercise?ex.id:$('#gymLogExercise').value,weight=Number($('#gymWeight').value);if(!Number.isFinite(weight)||weight<0)return toast('Choose or type a valid weight');const date=lockedExercise?todayKey():($('#gymDate').value||todayKey()),priorPR=exercisePR(exerciseId,existing?.id||null),data={exerciseId,weight,sets:clamp(Number($('#gymSets').value||1),1,20),reps:clamp(Number($('#gymReps').value||1),1,100),date,createdAt:existing?.createdAt||Date.now(),workoutId:lockedExercise?active.id:(existing?.workoutId||null)};if(existing)Object.assign(existing,data);else state.gym.logs.push({id:uid('gymlog'),...data});state.gym.sessionExcluded=state.gym.sessionExcluded.filter(k=>k!==date);state.settings.selectedExerciseId=exerciseId;if(lockedExercise)markActiveWorkoutExercise(exerciseId);save();modal.close();renderGym();toast(weight>priorPR?`New PR: ${weight} kg`:(existing?'Gym log updated':'Gym progress saved'));};
-  if(existing&&!workoutExisting&&$('#deleteGymLog'))$('#deleteGymLog').onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===existing.id);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();modal.close();renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});};$('#cancelModal').onclick=()=>modal.close();
+  $('#saveGymLog').onclick=()=>{const exerciseId=lockedExercise?ex.id:$('#gymLogExercise').value,weight=Number($('#gymWeight').value);if(!Number.isFinite(weight)||weight<0)return toast('Choose or type a valid weight');const date=lockedExercise?todayKey():($('#gymDate').value||todayKey()),priorPR=exercisePR(exerciseId,existing?.id||null),data={exerciseId,weight,sets:clamp(Number($('#gymSets').value||1),1,20),reps:clamp(Number($('#gymReps').value||1),1,100),date,createdAt:existing?.createdAt||Date.now(),workoutId:lockedExercise?active.id:(existing?.workoutId||null)};if(existing)Object.assign(existing,data);else state.gym.logs.push({id:uid('gymlog'),...data});state.gym.sessionExcluded=state.gym.sessionExcluded.filter(k=>k!==date);state.settings.selectedExerciseId=exerciseId;if(lockedExercise)markActiveWorkoutExercise(exerciseId);save();closeAppSheet(modal);renderGym();toast(weight>priorPR?`New PR: ${weight} kg`:(existing?'Gym log updated':'Gym progress saved'));};
+  if(existing&&!workoutExisting&&$('#deleteGymLog'))$('#deleteGymLog').onclick=()=>{const idx=state.gym.logs.findIndex(l=>l.id===existing.id);if(idx<0)return;const removed=state.gym.logs[idx];state.gym.logs.splice(idx,1);save();closeAppSheet(modal);renderGym();toast('Exercise log deleted','Undo',()=>{state.gym.logs.splice(Math.min(idx,state.gym.logs.length),0,removed);save();renderGym();});};$('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 function compareVersionStrings(a,b){const aa=String(a).trim().split('.').map(Number),bb=String(b).trim().split('.').map(Number);for(let i=0;i<Math.max(aa.length,bb.length);i++){const x=aa[i]||0,y=bb[i]||0;if(x!==y)return x-y;}return 0;}
 async function checkForAppUpdate(fromSettings=false){
   try{const response=await fetch(`./VERSION.txt?check=${Date.now()}`,{cache:'no-store'});if(!response.ok)return;const latest=(await response.text()).trim(),btn=$('#updateReadyBtn'),label=$('#updateReadyLabel');if(compareVersionStrings(latest,APP_DISPLAY_VERSION)>0){window.__resetUpdateVersion=latest;if(btn)btn.classList.remove('hidden');if(label)label.textContent=`v${latest}`;if(!fromSettings&&!window.__resetUpdateToast){window.__resetUpdateToast=true;toast(`Reset v${latest} is ready`,'Update',applyAppUpdate);}}else{if(btn)btn.classList.add('hidden');window.__resetUpdateVersion='';}}catch(e){}
 }
-async function applyAppUpdate(){try{const reg=await navigator.serviceWorker?.getRegistration();if(reg){await reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});}}catch(e){}setTimeout(()=>{const u=new URL(location.href);u.searchParams.set('update',Date.now());location.replace(u.toString());},350);}
+async function applyAppUpdate(){
+  flushStateSave();window.__resetApplyingUpdate=true;
+  try{const reg=await navigator.serviceWorker?.getRegistration();if(reg){await reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});}}catch(e){}
+  setTimeout(()=>{const u=new URL(location.href);u.searchParams.set('update',Date.now());location.replace(u.toString());},350);
+}
+
 /* ===== Reset v3.5 reliability + polish layer ===== */
 const SAFETY_LIST_KEY = `${APP_KEY}-safety-list-v2`;
 let __resetSaveTimer = null;
 let __resetLastSerialized = '';
 let routineManagerReturnDay = null;
+let routineManagerReturnScroll = 0;
+let planReturnScroll = 0;
 
 function flushStateSave(){
+  sealPastDays();refreshHistoricalSummaries();
   if(!state.meta) state.meta={};
   state.meta.lastSavedAt=new Date().toISOString();
   let serialized='';
   try{
     serialized=JSON.stringify(state);
     if(serialized!==__resetLastSerialized){localStorage.setItem(APP_KEY,serialized);__resetLastSerialized=serialized;}
-  }catch(e){}
+  }catch(e){if(!window.__resetStorageWarning){window.__resetStorageWarning=true;toast('Device storage could not save this change. Export a backup now.');}const label=$('#backupConfidenceStatus');if(label)label.textContent='Save failed';}
   if(appInitialized){clearTimeout(durableTimer);durableTimer=setTimeout(()=>durableWrite(),260);}
 }
 function save(){
+  sealPastDays();refreshHistoricalSummaries();
   if(!state.meta) state.meta={};
   state.meta.lastSavedAt=new Date().toISOString();
   clearTimeout(__resetSaveTimer);
@@ -2045,12 +2236,12 @@ function updateRecoverySnapshotRow(){
 }
 function openRecoverySnapshotModal(){
   const snap=latestSafetySnapshot();if(!snap)return toast('No recovery snapshot is available');
-  settingsDialog?.close();
+  closeAppSheet(settingsDialog);
   const d=new Date(snap.createdAt),when=Number.isNaN(d.getTime())?'an earlier point':d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">RECOVERY</p><h2>Restore safety snapshot?</h2><p class="muted">${escapeHTML(snap.reason||'Safety snapshot')} · ${escapeHTML(when)}</p><p class="muted tiny">Your current state will be saved as a new safety snapshot first, so this action is reversible.</p><button class="primary full" id="restoreSafetyNow">Restore snapshot</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#restoreSafetyNow').onclick=()=>{const old=deepClone(snap.state);createSafetySnapshot('Before restoring recovery snapshot');state=migrateState(old);flushStateSave();modal.close();render();toast('Recovery snapshot restored');};
-  $('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">RECOVERY</p><h2>Restore safety snapshot?</h2><p class="muted">${escapeHTML(snap.reason||'Safety snapshot')} · ${escapeHTML(when)}</p><p class="muted tiny">Your current state will be saved as a new safety snapshot first, so this action is reversible.</p><button class="primary full" id="restoreSafetyNow">Restore snapshot</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
+  $('#restoreSafetyNow').onclick=()=>{const old=deepClone(snap.state);createSafetySnapshot('Before restoring recovery snapshot');state=migrateState(old);flushStateSave();closeAppSheet(modal);render();toast('Recovery snapshot restored');};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 function ensureRecord(key=todayKey()){
@@ -2109,29 +2300,29 @@ function openWakeLogModal(targetKey){
   const date=parseDateKey(targetKey),item=itemsForDate(date).find(i=>i.id==='wake');if(!item)return toast('Wake anchor was not found for that day');
   const rec=ensureRecord(targetKey);let value=rec.actualWakeAt||(validActualWakeForKey(rec.lastActualWakeAt,targetKey)?rec.lastActualWakeAt:'');
   if(!value){const d=targetKey===todayKey()?new Date():new Date(`${targetKey}T${dayWakeTime(date)}:00`);value=localDateTimeInput(d);}
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">WAKE</p><h2>${rec.actualWakeAt?'Edit':'Log'} actual wake time</h2><p class="muted">Planned wake stays ${escapeHTML(formatClock(dayWakeTime(date)))}. This only records what actually happened.</p><label><span class="label">Actual wake time</span><input class="input" id="actualWakeInput" type="datetime-local" value="${escapeAttr(value)}"></label><button class="primary full" id="saveWakeLog" style="margin-top:14px">Save actual wake</button>${rec.actualWakeAt?'<button class="danger-btn full" id="clearWakeLog" style="margin-top:8px">Clear actual wake</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#saveWakeLog').onclick=()=>{const v=$('#actualWakeInput').value;if(!v||String(v).slice(0,10)!==targetKey)return toast('Use a time on this date');clearAutoMissedFromWake(targetKey);setActualWake(targetKey,v);setStatus(item,targetKey,'done');save();modal.close();render();toast(`Wake logged at ${actualSleepClock(v)}`);};
-  if($('#clearWakeLog'))$('#clearWakeLog').onclick=()=>{clearAutoMissedFromWake(targetKey);delete rec.actualWakeAt;delete rec.actualWakeOffsetMin;delete rec.lastActualWakeAt;delete rec.lastActualWakeOffsetMin;setStatus(item,targetKey,'pending');save();modal.close();render();toast('Actual wake cleared');};
-  $('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">WAKE</p><h2>${rec.actualWakeAt?'Edit':'Log'} actual wake time</h2><p class="muted">Planned wake stays ${escapeHTML(formatClock(dayWakeTime(date)))}. This only records what actually happened.</p><label><span class="label">Actual wake time</span><input class="input" id="actualWakeInput" type="datetime-local" value="${escapeAttr(value)}"></label><button class="primary full" id="saveWakeLog" style="margin-top:14px">Save actual wake</button>${rec.actualWakeAt?'<button class="danger-btn full" id="clearWakeLog" style="margin-top:8px">Clear actual wake</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
+  $('#saveWakeLog').onclick=()=>{const v=$('#actualWakeInput').value;if(!v||String(v).slice(0,10)!==targetKey)return toast('Use a time on this date');clearAutoMissedFromWake(targetKey);setActualWake(targetKey,v);setStatus(item,targetKey,'done');save();closeAppSheet(modal);render();toast(`Wake logged at ${actualSleepClock(v)}`);};
+  if($('#clearWakeLog'))$('#clearWakeLog').onclick=()=>{clearAutoMissedFromWake(targetKey);delete rec.actualWakeAt;delete rec.actualWakeOffsetMin;delete rec.lastActualWakeAt;delete rec.lastActualWakeOffsetMin;setStatus(item,targetKey,'pending');save();closeAppSheet(modal);render();toast('Actual wake cleared');};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 function openSleepLogModal(targetKey){
   const item=sleepItemForKey(targetKey);if(!item)return toast('Sleep anchor was not found for that day');
   const rec=ensureRecord(targetKey),targetDate=parseDateKey(targetKey),nextKey=todayKey(addDays(targetDate,1));let defaultValue=rec.actualSleepAt||rec.lastActualSleepAt||'';
   if(!defaultValue){const now=new Date();if(targetKey===todayKey(addDays(now,-1)))defaultValue=localDateTimeInput(now);else if(targetKey===todayKey()&&currentMinutes()>=daySleepAbsoluteMinutes(targetDate)%1440)defaultValue=localDateTimeInput(now);else{const planned=new Date(targetDate),off=daySleepOffset(targetDate);planned.setDate(planned.getDate()+off);const [h,m]=daySleepTime(targetDate).split(':').map(Number);planned.setHours(h,m,0,0);defaultValue=localDateTimeInput(planned);}}
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Log when you actually went to sleep</h2><p class="muted">This belongs to the night of ${escapeHTML(formatDateShort(targetDate))}, even after midnight. Planned sleep stays ${escapeHTML(formatClock(daySleepTime(targetDate)))}.</p><label><span class="label">Actual sleep time</span><input class="input" id="actualSleepInput" type="datetime-local" value="${escapeAttr(defaultValue)}"></label><button class="primary full" id="saveSleepLog" style="margin-top:14px">Save sleep time</button>${rec.actualSleepAt?'<button class="danger-btn full" id="clearSleepLog" style="margin-top:8px">Clear sleep log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
-  $('#saveSleepLog').onclick=()=>{const value=$('#actualSleepInput').value;if(!value||!value.includes('T'))return toast('Choose the actual sleep time');const actualKey=value.slice(0,10);if(actualKey!==targetKey&&actualKey!==nextKey)return toast('Use that evening or the following morning');rec.actualSleepAt=value;rec.actualSleepOffsetMin=localOffsetForInput(value);rec.lastActualSleepAt=value;rec.lastActualSleepOffsetMin=rec.actualSleepOffsetMin;setStatus(item,targetKey,'done');save();modal.close();render();toast(`Sleep logged at ${actualSleepClock(value)}`);requestAnimationFrame(()=>maybeCelebrateDayFinish(targetDate));};
-  if($('#clearSleepLog'))$('#clearSleepLog').onclick=()=>{delete rec.actualSleepAt;delete rec.actualSleepOffsetMin;delete rec.lastActualSleepAt;delete rec.lastActualSleepOffsetMin;setStatus(item,targetKey,'pending');save();modal.close();render();toast('Sleep log cleared');};
-  $('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Log when you actually went to sleep</h2><p class="muted">This belongs to the night of ${escapeHTML(formatDateShort(targetDate))}, even after midnight. Planned sleep stays ${escapeHTML(formatClock(daySleepTime(targetDate)))}.</p><label><span class="label">Actual sleep time</span><input class="input" id="actualSleepInput" type="datetime-local" value="${escapeAttr(defaultValue)}"></label><button class="primary full" id="saveSleepLog" style="margin-top:14px">Save sleep time</button>${rec.actualSleepAt?'<button class="danger-btn full" id="clearSleepLog" style="margin-top:8px">Clear sleep log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
+  $('#saveSleepLog').onclick=()=>{const value=$('#actualSleepInput').value;if(!value||!value.includes('T'))return toast('Choose the actual sleep time');const actualKey=value.slice(0,10);if(actualKey!==targetKey&&actualKey!==nextKey)return toast('Use that evening or the following morning');rec.actualSleepAt=value;rec.actualSleepOffsetMin=localOffsetForInput(value);rec.lastActualSleepAt=value;rec.lastActualSleepOffsetMin=rec.actualSleepOffsetMin;setStatus(item,targetKey,'done');save();closeAppSheet(modal);render();toast(`Sleep logged at ${actualSleepClock(value)}`);requestAnimationFrame(()=>maybeCelebrateDayFinish(targetDate));};
+  if($('#clearSleepLog'))$('#clearSleepLog').onclick=()=>{delete rec.actualSleepAt;delete rec.actualSleepOffsetMin;delete rec.lastActualSleepAt;delete rec.lastActualSleepOffsetMin;setStatus(item,targetKey,'pending');save();closeAppSheet(modal);render();toast('Sleep log cleared');};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 function openSleepNightModal(nightKey){
   const r=sleepNightRecord(nightKey),night=parseDateKey(nightKey),next=addDays(night,1),nextKey=todayKey(next),plannedSleep=daySleepTime(night),plannedWake=dayWakeTime(next);let sleepValue=r.sleepValue,wakeValue=r.wakeValue;
   if(!sleepValue){const d=new Date(night),off=sleepDayOffsetForTime(plannedSleep);d.setDate(d.getDate()+off);const [h,m]=plannedSleep.split(':').map(Number);d.setHours(h,m,0,0);sleepValue=localDateTimeInput(d);}if(!wakeValue){const d=new Date(next);const [h,m]=plannedWake.split(':').map(Number);d.setHours(h,m,0,0);wakeValue=localDateTimeInput(d);}
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP HISTORY</p><h2>${escapeHTML(formatDateShort(night))} night</h2><p class="muted">Correct actual times only. Planned Wake and Sleep anchors stay unchanged.</p><div class="stack"><label><span class="label">Went to sleep</span><input class="input" id="sleepNightBed" type="datetime-local" value="${escapeAttr(sleepValue)}"></label><label><span class="label">Woke up</span><input class="input" id="sleepNightWake" type="datetime-local" value="${escapeAttr(wakeValue)}"></label></div><button class="primary full" id="saveSleepNight" style="margin-top:14px">Save night</button>${r.sleepValue||r.wakeValue?'<button class="danger-btn full" id="deleteSleepNight" style="margin-top:8px">Clear this night</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
-  $('#saveSleepNight').onclick=()=>{const bed=$('#sleepNightBed').value,wake=$('#sleepNightWake').value;if(!bed||!wake)return toast('Choose both sleep and wake times');const bedOffset=localOffsetForInput(bed),wakeOffset=localOffsetForInput(wake),hours=stableDurationHours(bed,wake,bedOffset,wakeOffset);if(hours==null||hours<=0)return toast('Wake time must be after sleep time');if(hours>20)return toast('That sleep duration looks too long');const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);sleepRec.actualSleepAt=bed;sleepRec.actualSleepOffsetMin=bedOffset;sleepRec.lastActualSleepAt=bed;sleepRec.lastActualSleepOffsetMin=bedOffset;clearAutoMissedFromWake(nextKey);wakeRec.actualWakeAt=wake;wakeRec.actualWakeOffsetMin=wakeOffset;wakeRec.lastActualWakeAt=wake;wakeRec.lastActualWakeOffsetMin=wakeOffset;markMissedBeforeWake(nextKey,wake);const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'done');if(wakeItem)setStatus(wakeItem,nextKey,'done');save();modal.close();renderSleep();toast('Sleep night saved');};
-  if($('#deleteSleepNight'))$('#deleteSleepNight').onclick=()=>{const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);delete sleepRec.actualSleepAt;delete sleepRec.actualSleepOffsetMin;delete sleepRec.lastActualSleepAt;delete sleepRec.lastActualSleepOffsetMin;clearAutoMissedFromWake(nextKey);delete wakeRec.actualWakeAt;delete wakeRec.actualWakeOffsetMin;delete wakeRec.lastActualWakeAt;delete wakeRec.lastActualWakeOffsetMin;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'pending');if(wakeItem)setStatus(wakeItem,nextKey,'pending');save();modal.close();renderSleep();toast('Sleep night cleared');};$('#cancelModal').onclick=()=>modal.close();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP HISTORY</p><h2>${escapeHTML(formatDateShort(night))} night</h2><p class="muted">Correct actual times only. Planned Wake and Sleep anchors stay unchanged.</p><div class="stack"><label><span class="label">Went to sleep</span><input class="input" id="sleepNightBed" type="datetime-local" value="${escapeAttr(sleepValue)}"></label><label><span class="label">Woke up</span><input class="input" id="sleepNightWake" type="datetime-local" value="${escapeAttr(wakeValue)}"></label></div><button class="primary full" id="saveSleepNight" style="margin-top:14px">Save night</button>${r.sleepValue||r.wakeValue?'<button class="danger-btn full" id="deleteSleepNight" style="margin-top:8px">Clear this night</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;openAppSheet(modal);
+  $('#saveSleepNight').onclick=()=>{const bed=$('#sleepNightBed').value,wake=$('#sleepNightWake').value;if(!bed||!wake)return toast('Choose both sleep and wake times');const bedOffset=localOffsetForInput(bed),wakeOffset=localOffsetForInput(wake),hours=stableDurationHours(bed,wake,bedOffset,wakeOffset);if(hours==null||hours<=0)return toast('Wake time must be after sleep time');if(hours>20)return toast('That sleep duration looks too long');const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);sleepRec.actualSleepAt=bed;sleepRec.actualSleepOffsetMin=bedOffset;sleepRec.lastActualSleepAt=bed;sleepRec.lastActualSleepOffsetMin=bedOffset;clearAutoMissedFromWake(nextKey);wakeRec.actualWakeAt=wake;wakeRec.actualWakeOffsetMin=wakeOffset;wakeRec.lastActualWakeAt=wake;wakeRec.lastActualWakeOffsetMin=wakeOffset;markMissedBeforeWake(nextKey,wake);const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'done');if(wakeItem)setStatus(wakeItem,nextKey,'done');save();closeAppSheet(modal);renderSleep();toast('Sleep night saved');};
+  if($('#deleteSleepNight'))$('#deleteSleepNight').onclick=()=>{const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);delete sleepRec.actualSleepAt;delete sleepRec.actualSleepOffsetMin;delete sleepRec.lastActualSleepAt;delete sleepRec.lastActualSleepOffsetMin;clearAutoMissedFromWake(nextKey);delete wakeRec.actualWakeAt;delete wakeRec.actualWakeOffsetMin;delete wakeRec.lastActualWakeAt;delete wakeRec.lastActualWakeOffsetMin;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'pending');if(wakeItem)setStatus(wakeItem,nextKey,'pending');save();closeAppSheet(modal);renderSleep();toast('Sleep night cleared');};$('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 function timelineItemHTML(item,date,showActions=false){
@@ -2146,7 +2337,7 @@ function timelineItemHTML(item,date,showActions=false){
 }
 function bindTimeline(date){
   const key=todayKey(date);
-  $$('[data-occ]').forEach(cb=>cb.addEventListener('change',()=>{const occ=cb.dataset.occ,item=itemsForDate(date).find(x=>occurrenceKey(x)===occ);if(!item)return;if(item.id==='sleep'&&cb.checked){cb.checked=false;openSleepLogModal(key);return;}if(item.id==='wake'){if(cb.checked)completeWakeAnchor(key,{preferPrevious:true});else uncompleteWakeAnchor(key);}else setStatus(item,key,cb.checked?'done':'pending');const y=window.scrollY;render();requestAnimationFrame(()=>{window.scrollTo(0,y);if(cb.checked)maybeCelebrateDayFinish(date);});}));
+  $$('[data-occ]').forEach(cb=>cb.addEventListener('change',()=>{const occ=cb.dataset.occ,item=itemsForDate(date).find(x=>occurrenceKey(x)===occ);if(!item)return;if(item.id==='sleep'&&cb.checked){cb.checked=false;openSleepLogModal(key);return;}if(item.id==='wake'){if(cb.checked)completeWakeAnchor(key,{preferPrevious:true});else uncompleteWakeAnchor(key);}else setStatus(item,key,cb.checked?'done':'pending');const y=pageScrollY();render();requestAnimationFrame(()=>{pageScrollTo(0,y);if(cb.checked)maybeCelebrateDayFinish(date);});}));
   $$('[data-edit-item]').forEach(btn=>btn.addEventListener('click',()=>{const [source,id]=btn.dataset.editItem.split(':');if(source==='schedule')openScheduleItemModal(id);else openOneOffTaskModal(id);}));
   $$('[data-plan-anchors]').forEach(btn=>btn.addEventListener('click',()=>openDayAnchorPlanner(parseDateKey(btn.dataset.planAnchors))));
   $$('[data-log-wake]').forEach(btn=>btn.addEventListener('click',()=>openWakeLogModal(btn.dataset.logWake)));
@@ -2161,8 +2352,8 @@ function bindTimeline(date){
   const panel=$('#exceptionPanel');if(panel)panel.addEventListener('toggle',()=>{ensureRecord(key).exceptionPanelOpen=panel.open;save();});
 }
 
-function dayAttentionDetails(date){
-  const key=todayKey(date),rec=ensureRecord(key),details=[],all=itemsForMode(itemsForDate(date),modeForDate(key)),unscheduled=new Set(rec.unscheduledItems||[]);
+function dayAttentionDetailsLive(date){
+  const key=todayKey(date),rec=ensureRecord(key),details=[],all=itemsForMode(itemsForDate(date),modeForDate(key)),unscheduled=new Set((rec.unscheduledItems||[]).filter(occ=>all.some(x=>occurrenceKey(x)===occ&&!isClosedStatus(getStatus(x,key)))));
   if(unscheduled.size)details.push({code:'unscheduled',text:`${unscheduled.size} task${unscheduled.size===1?'':'s'} could not fit before sleep`,count:unscheduled.size});
   const active=all.filter(i=>!itemIsNonBlocking(i)&&!['cancelled','dropped','deferred','missed'].includes(getStatus(i,key))&&!unscheduled.has(occurrenceKey(i))),wakeEnd=effectiveWakeEnd(date),sleepLimit=plannedSleepAbsolute(date);
   const beforeWake=active.filter(i=>!isDayAnchor(i)&&getStatus(i,key)!=='done'&&itemSortMinutes(i)<wakeEnd);
@@ -2187,7 +2378,9 @@ function dayAttentionDetails(date){
 }
 function dayAttentionIssues(date){return dayAttentionDetails(date).map(x=>x.text).slice(0,5);}
 function isDayPlanned(date){const key=todayKey(date),rec=state.records[key]||{};return !!(rec.futurePlannedAt||(rec.dayPlanType&&rec.dayPlanType!=='planned')||String(rec.dayNote||'').trim()||Object.values(rec.timeOverrides||{}).some(x=>x?.manual)||state.oneOffTasks.some(x=>x.date===key));}
-function dayPlanStatus(date){const key=todayKey(date),issues=dayAttentionIssues(date),completion=dayCompletion(date),rec=state.records[key]||{};if(issues.length)return {label:'Needs attention',tone:'attention',icon:'warning'};if(key<=todayKey()&&completion===100)return {label:'Complete',tone:'complete',icon:'check'};if(isDayPlanned(date))return {label:rec.dayPlanType==='focus'?'Focus day':rec.dayPlanType==='travel'?'Travel':rec.dayPlanType==='rest'?'Rest day':'Planned',tone:'planned',icon:rec.dayPlanType==='focus'?'target':rec.dayPlanType==='travel'?'plane':rec.dayPlanType==='rest'?'bed':'calendar'};return {label:'On track',tone:'track',icon:'check'};}
+function dayPlanStatusLegacy(date){const key=todayKey(date),issues=dayAttentionIssues(date),completion=dayCompletion(date),rec=state.records[key]||{};if(issues.length)return {label:'Needs attention',tone:'attention',icon:'warning'};if(key<=todayKey()&&completion===100)return {label:'Complete',tone:'complete',icon:'check'};if(isDayPlanned(date))return {label:rec.dayPlanType==='focus'?'Focus day':rec.dayPlanType==='travel'?'Travel':rec.dayPlanType==='rest'?'Rest day':'Planned',tone:'planned',icon:rec.dayPlanType==='focus'?'target':rec.dayPlanType==='travel'?'plane':rec.dayPlanType==='rest'?'bed':'calendar'};return {label:'On track',tone:'track',icon:'check'};}
+
+function returnToDayPlan(date){const top=planReturnScroll;openDayAnchorPlanner(date);modalContent.scrollTop=top;}
 
 function resetDateToRoutine(date){
   const key=todayKey(date),rec=ensureRecord(key);createSafetySnapshot(`Before resetting ${key} to routine`);
@@ -2198,7 +2391,7 @@ function resetDateToRoutine(date){
 function openDayAnchorPlanner(date){
   const key=todayKey(date);if(key<todayKey())return toast('Past day anchors can be corrected from their history instead');
   const rec=ensureRecord(key),currentWake=dayWakeTime(date),currentSleep=daySleepTime(date),isToday=key===todayKey(),items=itemsForDate(date),routine=items.filter(i=>i.source==='schedule'&&!isDayAnchor(i)),oneoffs=items.filter(i=>i.source==='oneoff'),reminders=oneoffs.filter(itemIsNonBlocking),cancelled=items.filter(i=>getStatus(i,key)==='cancelled').length,planType=rec.dayPlanType||'planned',attention=dayAttentionDetails(date);
-  modalContent.innerHTML=`<div class="sheet-handle"></div><div class="day-plan-modal-head"><button class="round-icon" id="cancelModal" aria-label="Back">${svgIcon('chevronLeft')}</button><div><h2>${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}</h2><p>Plan this day without changing your recurring routine.</p></div><button class="round-icon" id="dayPlanMoreBtn" aria-label="More">${svgIcon('more')}</button></div>
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><div class="day-plan-modal-head"><button class="round-icon" id="cancelModal" aria-label="Back">${svgIcon('chevronLeft')}</button><div><h2>${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}</h2><p>Plan this day without changing your recurring routine.</p></div><button class="round-icon" id="dayPlanMoreBtn" aria-label="More">${svgIcon('more')}</button></div>
   ${attention.length?`<section class="week-attention-card plan-attention-card"><span>${svgIcon('warning')}</span><div><b>${attention.length} ${attention.length===1?'issue needs':'issues need'} attention</b>${attention.map(x=>`<small>${escapeHTML(x.text)}</small>`).join('')}<em>Tap any item below to move, cancel, restore or edit it.</em></div></section>`:''}
   <section class="day-settings-card"><h3>Day settings</h3><div class="day-anchor-grid"><label><span class="day-setting-icon wake">${svgIcon('sun')}</span><span><small>Wake time</small><input id="futureWakeTime" type="time" value="${escapeAttr(currentWake)}"><em>${hasDayAnchorOverride(date,'wake')?`Override · routine ${formatClock(dailyWakeItem(date)?.start||state.profile.wakeTarget)}`:'From routine'}</em></span></label><label><span class="day-setting-icon sleep">${svgIcon('moon')}</span><span><small>Sleep time</small><input id="futureSleepTime" type="time" value="${escapeAttr(currentSleep)}"><em>${hasDayAnchorOverride(date,'sleep')?`Override · routine ${formatClock(dailySleepItem(date)?.start||state.profile.sleepTarget)}`:'From routine'}</em></span></label></div><label class="day-note-field"><span class="label">Day note <small>optional</small></span><input class="input" id="dayNoteInput" maxlength="80" value="${escapeAttr(rec.dayNote||'')}" placeholder="Exam day, feeling sick, travel…"></label></section>
   <section class="quick-status-card"><h3>Quick status</h3><p>Set the feel of this day. It does not rewrite your routine.</p><div class="day-type-grid"><button data-day-type="planned" class="${planType==='planned'?'active':''}">${svgIcon('check')} Planned</button><button data-day-type="focus" class="${planType==='focus'?'active':''}">${svgIcon('target')} Focus Day</button><button data-day-type="travel" class="${planType==='travel'?'active':''}">${svgIcon('plane')} Travel</button><button data-day-type="rest" class="${planType==='rest'?'active':''}">${svgIcon('bed')} Rest Day</button></div></section>
@@ -2207,31 +2400,31 @@ function openDayAnchorPlanner(date){
   <section class="day-plan-summary"><h3>Day summary</h3><div><span>${svgIcon('calendar')}<b>${routine.filter(itemIsFixed).length}</b><small>Fixed events</small></span><span>${svgIcon('check')}<b>${oneoffs.length}</b><small>One-off items</small></span><span>${svgIcon('bell')}<b>${reminders.length}</b><small>Reminders</small></span><span class="${cancelled?'red':''}">${svgIcon('close')}<b>${cancelled}</b><small>Cancelled</small></span></div></section>
   <section class="day-plan-advanced hidden" id="dayPlanAdvanced"><div class="day-plan-section-head"><span>${svgIcon('more')}</span><div><h3>More options</h3><p>Useful occasionally, kept out of the way.</p></div></div><label><span class="label">Copy this day’s one-off setup to</span><input class="input" id="copyDayTarget" type="date" min="${todayKey()}" value="${todayKey(addDays(date,1))}"></label><button class="secondary full" id="copyDaySetup" style="margin-top:8px">Copy one-off setup</button><button class="secondary full" id="manageRoutineFromPlan" style="margin-top:8px">Manage recurring routine</button></section>
   <button class="primary full day-plan-rebuild" id="rebuildFutureDay">${svgIcon('refresh')}<span><b>Rebuild with my changes</b><small>Resolve flexible tasks around your fixed events and anchors</small></span></button><button class="secondary full reset-routine-btn" id="resetFutureDay">${svgIcon('refresh')}<span><b>Reset to routine</b><small>Revert this day to its default routine</small></span></button><p class="day-plan-footnote">${svgIcon('lightbulb')} This only changes ${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}. Your recurring routine stays the same.</p>`;
-  if(!modal.open)modal.showModal();let selectedType=planType;
+  if(!modal.open)openAppSheet(modal);let selectedType=planType;
   $$('[data-day-type]',modalContent).forEach(b=>b.onclick=()=>{selectedType=b.dataset.dayType;$$('[data-day-type]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});
   $$('[data-plan-item]',modalContent).forEach(b=>b.onclick=()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===b.dataset.planItem);if(item)openPlanItemEditor(item,date);});
   $('#dayPlanMoreBtn').onclick=()=>$('#dayPlanAdvanced').classList.toggle('hidden');
-  $('#addPlanOneOff').onclick=()=>{modal.close();openOneOffTaskModal(null,{date:key,start:key===todayKey()?suggestTimeForNewTask(date):'12:00',returnToPlan:key});};
-  $('#manageRoutineFromPlan').onclick=()=>{modal.close();openScheduleManager(date.getDay());};
+  $('#addPlanOneOff').onclick=()=>{closeAppSheet(modal);openOneOffTaskModal(null,{date:key,start:key===todayKey()?suggestTimeForNewTask(date):'12:00',returnToPlan:key});};
+  $('#manageRoutineFromPlan').onclick=()=>{closeAppSheet(modal);openScheduleManager(date.getDay());};
   $('#copyDaySetup').onclick=()=>{const target=$('#copyDayTarget').value;if(!target)return toast('Choose a target date');const count=copyOneOffSetup(date,parseDateKey(target));toast(count?`${count} one-off item${count===1?'':'s'} copied`:'Nothing new to copy');};
-  $('#rebuildFutureDay').onclick=()=>{const wake=$('#futureWakeTime').value||currentWake,sleep=$('#futureSleepTime').value||currentSleep,before=daySnapshot(key);createSafetySnapshot(`Before rebuilding ${key}`);rec.dayNote=$('#dayNoteInput').value.trim();setDayWakeOverride(date,wake);setDaySleepOverride(date,sleep);rec.dayPlanType=selectedType;const plan=isToday?buildDaySchedulePlan(date,{kind:'today',preserveManual:true,wakeTime:wake,sleepTime:sleep}):buildDaySchedulePlan(date,{kind:'future',preserveManual:true,wakeTime:wake,sleepTime:sleep});if(isToday)applyAdaptiveRestart(plan);else applyFutureDayPlan(plan);rec.dayPlanType=selectedType;save();modal.close();render();toast('Day rebuilt','Undo',()=>restoreDaySnapshot(key,before));};
-  $('#resetFutureDay').onclick=()=>{if(!confirm('Reset this date to the recurring routine? One-off items and day-specific changes will be removed. Completed history and actual wake/sleep logs are kept.'))return;const before=daySnapshot(key),oneoffsBefore=deepClone(state.oneOffTasks.filter(x=>x.date===key));resetDateToRoutine(date);modal.close();render();toast('Day restored to routine','Undo',()=>{state.records[key]=before;state.oneOffTasks.push(...oneoffsBefore.filter(x=>!state.oneOffTasks.some(y=>y.id===x.id)));save();render();});};
-  $('#cancelModal').onclick=()=>modal.close();
+  $('#rebuildFutureDay').onclick=()=>{const wake=$('#futureWakeTime').value||currentWake,sleep=$('#futureSleepTime').value||currentSleep,before=daySnapshot(key);createSafetySnapshot(`Before rebuilding ${key}`);rec.dayNote=$('#dayNoteInput').value.trim();setDayWakeOverride(date,wake);setDaySleepOverride(date,sleep);rec.dayPlanType=selectedType;const plan=isToday?buildDaySchedulePlan(date,{kind:'today',preserveManual:true,wakeTime:wake,sleepTime:sleep}):buildDaySchedulePlan(date,{kind:'future',preserveManual:true,wakeTime:wake,sleepTime:sleep});if(isToday)applyAdaptiveRestart(plan);else applyFutureDayPlan(plan);rec.dayPlanType=selectedType;save();closeAppSheet(modal);render();toast('Day rebuilt','Undo',()=>restoreDaySnapshot(key,before));};
+  $('#resetFutureDay').onclick=()=>{if(!confirm('Reset this date to the recurring routine? One-off items and day-specific changes will be removed. Completed history and actual wake/sleep logs are kept.'))return;const before=daySnapshot(key),oneoffsBefore=deepClone(state.oneOffTasks.filter(x=>x.date===key));resetDateToRoutine(date);closeAppSheet(modal);render();toast('Day restored to routine','Undo',()=>{state.records[key]=before;state.oneOffTasks.push(...oneoffsBefore.filter(x=>!state.oneOffTasks.some(y=>y.id===x.id)));save();render();});};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 function weekAttentionCard(date){const details=dayAttentionDetails(date);if(!details.length)return '';return `<section class="week-attention-card"><span>${svgIcon('warning')}</span><div><b>${details.length} ${details.length===1?'issue':'issues'} need attention</b>${details.map(x=>`<small>${escapeHTML(x.text)}</small>`).join('')}</div></section>`;}
-function renderWeek(){
+function renderWeekBase(){
   let selected=parseDateKey(state.settings.selectedWeekDate||todayKey()),weekStart=startOfWeek(selected),days=Array.from({length:7},(_,i)=>addDays(weekStart,i)),weekEnd=days[6],selectedKey=todayKey(selected);if(!days.some(d=>todayKey(d)===selectedKey)){selected=weekStart;selectedKey=todayKey(selected);state.settings.selectedWeekDate=selectedKey;}
   setHeader('Week',selected);const rec=ensureRecord(selectedKey),selectedAll=itemsForDate(selected),selectedItems=selectedAll.filter(i=>!['cancelled','missed'].includes(getStatus(i,selectedKey))&&!(rec.unscheduledItems||[]).includes(occurrenceKey(i))),expanded=!!state.settings.weekDayExpanded,shown=expanded?selectedItems:selectedItems.slice(0,4),otherDays=days.filter(d=>todayKey(d)!==selectedKey),otherExpanded=!!state.settings.weekOtherExpanded,otherShown=otherExpanded?otherDays:otherDays.slice(0,3);
-  const completeCount=days.filter(d=>todayKey(d)<=todayKey()&&dayCompletion(d)===100).length,attentionDays=days.filter(d=>dayAttentionIssues(d).length),attentionCount=attentionDays.length,plannedCount=days.filter(isDayPlanned).length,selectedStatus=dayPlanStatus(selected),cancelledCount=selectedAll.filter(i=>getStatus(i,selectedKey)==='cancelled').length;
+  const completeCount=days.filter(d=>todayKey(d)<=todayKey()&&dayCompletion(d)===100).length,attentionDays=days.filter(d=>isTrackedDate(d)&&dayAttentionIssues(d).length),attentionCount=attentionDays.length,plannedCount=days.filter(d=>isTrackedDate(d)&&isDayPlanned(d)).length,selectedStatus=dayPlanStatus(selected),cancelledCount=selectedAll.filter(i=>getStatus(i,selectedKey)==='cancelled').length;
   main.innerHTML=`<p class="week-subtitle">Plan ahead, not just react.</p><section class="week-header-card week-v34" id="weekSwipeArea"><div class="week-nav clean"><button class="round-icon" id="prevWeekBtn" aria-label="Previous week">${svgIcon('chevronLeft')}</button><div><b>${formatDateShort(weekStart)} – ${formatDateShort(weekEnd)}</b><button class="today-link" id="todayWeekBtn">This Week</button></div><button class="round-icon" id="nextWeekBtn" aria-label="Next week">${svgIcon('chevronRight')}</button></div><div class="week-strip modern">${days.map(d=>{const k=todayKey(d),p=dayCompletion(d),status=dayPlanStatus(d);return `<button class="week-day ${k===selectedKey?'active':''} ${k===todayKey()?'today':''}" data-day-key="${k}"><small>${dayShort(d.getDay())}</small><strong>${d.getDate()}</strong><i style="--p:${p}%"></i>${status.tone==='attention'?'<span class="week-alert-dot"></span>':''}</button>`}).join('')}</div></section>
   <section class="week-summary-v34 week-summary-v35"><button data-week-summary="complete"><span class="week-summary-icon complete">${svgIcon('check')}</span><b>${completeCount} / 7</b><small>Days complete</small><i>${svgIcon('chevronRight')}</i></button><button data-week-summary="attention" class="${attentionCount?'has-attention':''}"><span class="week-summary-icon attention">${svgIcon('warning')}</span><b>${attentionCount}</b><small>Days need attention</small><i>${svgIcon('chevronRight')}</i></button><button data-week-summary="planned"><span class="week-summary-icon planned">${svgIcon('calendar')}</span><b>${plannedCount}</b><small>Planned days</small><i>${svgIcon('chevronRight')}</i></button></section>
   <section class="week-selected-card"><div class="week-selected-head"><div><small>${dayLong(selected.getDay()).toUpperCase()}</small><h2>${formatDateShort(selected)}</h2>${rec.dayNote?`<p class="week-day-note">${svgIcon('lightbulb')} ${escapeHTML(rec.dayNote)}</p>`:''}</div>${selectedKey>=todayKey()?`<button class="week-plan-button" id="planDayBtn">${svgIcon('calendar')} Plan Day</button>`:`<span class="week-status-pill ${selectedStatus.tone}">${selectedStatus.label}</span>`}</div>${weekAttentionCard(selected)}${cancelledCount?`<div class="week-cancelled-note"><span>${svgIcon('close')}</span><b>${cancelledCount} cancelled</b><small>Intentional cancellations do not count as attention.</small></div>`:''}<div class="week-preview-list">${shown.length?shown.map(i=>weekPreviewRow(i,selected)).join(''):'<div class="empty-state compact-empty">Nothing scheduled for this day.</div>'}</div>${selectedItems.length>4?`<button class="week-view-full" id="weekViewFull">${svgIcon('list')} <span>${expanded?'Show less':`View full day (${selectedItems.length} items)`}</span>${svgIcon('chevronRight')}</button>`:''}${expanded?`<div class="week-expanded-actions"><button class="secondary small-btn" id="addWeekTaskBtn">${svgIcon('plus')} Add task</button></div>`:''}</section>
   <div class="week-other-title"><h2>Other Days This Week</h2>${otherDays.length>3?`<button id="weekSeeAll">${otherExpanded?'Show Less':'See All'}</button>`:''}</div><section class="week-other-list">${otherShown.map(weekOtherRow).join('')}</section>
   <details class="routine-manager week-routine-v34"><summary><span>${svgIcon('refresh')}<span><b>Weekly routine</b><small>${state.schedule.filter(s=>s.active!==false).length} recurring items</small></span></span>${svgIcon('chevronRight')}</summary><div class="routine-actions"><button class="primary" id="addRoutineBtn">+ Recurring item</button><button class="secondary" id="manageRoutineBtn">Manage routine</button></div></details>`;
-  const shiftWeek=n=>{state.settings.selectedWeekDate=todayKey(addDays(selected,n*7));state.settings.weekDayExpanded=false;save();renderWeek();};$('#prevWeekBtn').onclick=()=>shiftWeek(-1);$('#nextWeekBtn').onclick=()=>shiftWeek(1);$('#todayWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey();state.settings.weekDayExpanded=false;save();renderWeek();};
-  $$('[data-day-key]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.dayKey;state.settings.weekDayExpanded=false;save();renderWeek();});$$('[data-week-other]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.weekOther;state.settings.weekDayExpanded=false;save();renderWeek();window.scrollTo({top:0,behavior:'smooth'});});
-  $$('[data-week-summary]').forEach(b=>b.onclick=()=>{const type=b.dataset.weekSummary;let candidates=type==='complete'?days.filter(d=>todayKey(d)<=todayKey()&&dayCompletion(d)===100):type==='attention'?attentionDays:days.filter(isDayPlanned);if(!candidates.length)return toast(type==='attention'?'No days need attention':type==='planned'?'No manually planned days this week':'No completed days yet');if(type==='complete')candidates=[...candidates].reverse();state.settings.selectedWeekDate=todayKey(candidates[0]);state.settings.weekDayExpanded=false;save();renderWeek();window.scrollTo({top:0,behavior:'smooth'});});
+  const shiftWeek=n=>{state.settings.selectedWeekDate=todayKey(n>0?addDays(startOfWeek(selected),7):addDays(startOfWeek(selected),-1));state.settings.weekDayExpanded=false;save();renderWeek();};$('#prevWeekBtn').onclick=()=>shiftWeek(-1);$('#nextWeekBtn').onclick=()=>shiftWeek(1);$('#todayWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey();state.settings.weekDayExpanded=false;save();renderWeek();};
+  $$('[data-day-key]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.dayKey;state.settings.weekDayExpanded=false;save();renderWeek();});$$('[data-week-other]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.weekOther;state.settings.weekDayExpanded=false;save();renderWeek();pageScrollTo({top:0,behavior:'smooth'});});
+  $$('[data-week-summary]').forEach(b=>b.onclick=()=>{const type=b.dataset.weekSummary;let candidates=type==='complete'?days.filter(d=>todayKey(d)<=todayKey()&&dayCompletion(d)===100):type==='attention'?attentionDays:days.filter(isDayPlanned);if(!candidates.length)return toast(type==='attention'?'No days need attention':type==='planned'?'No manually planned days this week':'No completed days yet');if(type==='complete')candidates=[...candidates].reverse();state.settings.selectedWeekDate=todayKey(candidates[0]);state.settings.weekDayExpanded=false;save();renderWeek();pageScrollTo({top:0,behavior:'smooth'});});
   if($('#planDayBtn'))$('#planDayBtn').onclick=()=>openDayAnchorPlanner(selected);if($('#weekViewFull'))$('#weekViewFull').onclick=()=>{state.settings.weekDayExpanded=!expanded;save();renderWeek();};if($('#weekSeeAll'))$('#weekSeeAll').onclick=()=>{state.settings.weekOtherExpanded=!otherExpanded;save();renderWeek();};if($('#addWeekTaskBtn'))$('#addWeekTaskBtn').onclick=()=>openOneOffTaskModal(null,{date:selectedKey,start:'12:00'});$('#addRoutineBtn').onclick=()=>openScheduleItemModal(null,{days:[selected.getDay()]});$('#manageRoutineBtn').onclick=()=>openScheduleManager(selected.getDay());
   let sx=0,sy=0;const swipe=$('#weekSwipeArea');swipe.addEventListener('touchstart',e=>{const t=e.touches[0];sx=t.clientX;sy=t.clientY;},{passive:true});swipe.addEventListener('touchend',e=>{const t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.4)shiftWeek(dx<0?1:-1);},{passive:true});
 }
@@ -2240,38 +2433,41 @@ function routineItemCard(item,selectedDay){
   const isAnchor=isDayAnchor(item),fixed=itemIsFixed(item),days=(item.days||[]).map(dayShort).join(', ');
   return `<button class="routine-v35-item ${item.active===false?'paused':''}" data-routine-edit="${escapeAttr(item.id)}">${taskIconHTML(item)}<span class="routine-v35-copy"><b>${escapeHTML(item.title)}</b><small>${escapeHTML(timeWindow(item))} · ${escapeHTML(item.category||'Routine')}</small><em>${isAnchor?'Anchor':fixed?'Fixed':'Flexible'} · ${escapeHTML(days)}</em></span><span class="routine-v35-chevron">${svgIcon('chevronRight')}</span></button>`;
 }
-function openScheduleManager(initialDay=null){
+function openScheduleManager(initialDay=null, returnScroll=0, returning=false){
+  if(!returning)routineAllView.open=false;
   let selectedDay=initialDay==null?parseDateKey(state.settings.selectedWeekDate||todayKey()).getDay():Number(initialDay);
-  const draw=()=>{
+  const draw=(restoreScroll=0)=>{
     const active=state.schedule.filter(x=>x.active!==false&&Array.isArray(x.days)&&x.days.includes(selectedDay)).sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b)),anchors=active.filter(isDayAnchor),fixed=active.filter(i=>!isDayAnchor(i)&&itemIsFixed(i)),flex=active.filter(i=>!isDayAnchor(i)&&!itemIsFixed(i)),paused=state.schedule.filter(x=>x.active===false&&Array.isArray(x.days)&&x.days.includes(selectedDay));
     const wake=anchors.find(i=>i.id==='wake'),sleep=anchors.find(i=>i.id==='sleep');
-    modalContent.innerHTML=`<div class="sheet-handle"></div><div class="routine-v35-head"><div><p class="eyebrow">WEEKLY ROUTINE</p><h2>Manage routine</h2><p>Your recurring default week. One-off planning stays in Week → Plan Day.</p></div><button class="round-icon" id="closeModal" aria-label="Close">${svgIcon('close')}</button></div><div class="routine-day-tabs">${DAY_SHORT.map((d,i)=>`<button data-routine-day="${i}" class="${i===selectedDay?'active':''}"><small>${d}</small><b>${state.schedule.filter(x=>x.active!==false&&x.days?.includes(i)).length}</b></button>`).join('')}</div>
+    prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><div class="routine-v35-head"><div><p class="eyebrow">WEEKLY ROUTINE</p><h2>Manage routine</h2><p>Your recurring default week. One-off planning stays in Week → Plan Day.</p></div><button class="round-icon" id="closeModal" aria-label="Close">${svgIcon('close')}</button></div><div class="routine-day-tabs">${DAY_SHORT.map((d,i)=>`<button data-routine-day="${i}" class="${i===selectedDay?'active':''}"><small>${d}</small><b>${state.schedule.filter(x=>x.active!==false&&x.days?.includes(i)).length}</b></button>`).join('')}</div>
     <section class="routine-v35-summary"><div><span class="routine-anchor-icon wake">${svgIcon('sun')}</span><small>Wake</small><b>${formatClock(wake?.start||state.profile.wakeTarget)}</b><button data-routine-edit="wake">Edit</button></div><div><span class="routine-anchor-icon sleep">${svgIcon('moon')}</span><small>Sleep</small><b>${formatClock(sleep?.start||state.profile.sleepTarget)}</b><button data-routine-edit="sleep">Edit</button></div><div class="routine-counts"><span><b>${fixed.length}</b><small>Fixed</small></span><span><b>${flex.length}</b><small>Flexible</small></span></div></section>
-    <div class="routine-v35-section-head"><div><span class="routine-section-icon fixed">${svgIcon('calendar')}</span><span><b>Fixed events</b><small>Classes and appointments never move.</small></span></div></div><section class="routine-v35-list">${fixed.length?fixed.map(i=>routineItemCard(i,selectedDay)).join(''):'<div class="empty-state compact-empty">No fixed events on ${escapeHTML(dayLong(selectedDay))}.</div>'}</section>
-    <div class="routine-v35-section-head"><div><span class="routine-section-icon flexible">${svgIcon('spark')}</span><span><b>Flexible routine</b><small>Reset may move these when rebuilding a day.</small></span></div></div><section class="routine-v35-list">${flex.length?flex.map(i=>routineItemCard(i,selectedDay)).join(''):'<div class="empty-state compact-empty">No flexible routine items on ${escapeHTML(dayLong(selectedDay))}.</div>'}</section>
+    <div class="routine-v35-section-head"><div><span class="routine-section-icon fixed">${svgIcon('calendar')}</span><span><b>Fixed events</b><small>Classes and appointments never move.</small></span></div></div><section class="routine-v35-list">${fixed.length?fixed.map(i=>routineItemCard(i,selectedDay)).join(''):`<div class="empty-state compact-empty">No fixed events on ${escapeHTML(dayLong(selectedDay))}.</div>`}</section>
+    <div class="routine-v35-section-head"><div><span class="routine-section-icon flexible">${svgIcon('spark')}</span><span><b>Flexible routine</b><small>Reset may move these when rebuilding a day.</small></span></div></div><section class="routine-v35-list">${flex.length?flex.map(i=>routineItemCard(i,selectedDay)).join(''):`<div class="empty-state compact-empty">No flexible routine items on ${escapeHTML(dayLong(selectedDay))}.</div>`}</section>
     ${paused.length?`<details class="routine-paused"><summary>${paused.length} paused item${paused.length===1?'':'s'} on this day</summary><div>${paused.map(i=>routineItemCard(i,selectedDay)).join('')}</div></details>`:''}
     <button class="primary full routine-add-v35" id="addRoutineInside">${svgIcon('plus')} Add recurring item</button>`;
-    if(!modal.open)modal.showModal();
-    $('#closeModal').onclick=()=>modal.close();$$('[data-routine-day]').forEach(b=>b.onclick=()=>{selectedDay=Number(b.dataset.routineDay);draw();});
-    $$('[data-routine-edit]').forEach(b=>b.onclick=()=>{routineManagerReturnDay=selectedDay;openScheduleItemModal(b.dataset.routineEdit);});
-    $('#addRoutineInside').onclick=()=>{routineManagerReturnDay=selectedDay;openScheduleItemModal(null,{days:[selectedDay]});};
-  };draw();
+    if(!modal.open)openAppSheet(modal);
+    $('#closeModal').onclick=()=>dismissAppSheet(modal);$$('[data-routine-day]').forEach(b=>b.onclick=()=>{selectedDay=Number(b.dataset.routineDay);draw();});
+    $$('[data-routine-edit]').forEach(b=>b.onclick=()=>{routineManagerReturnDay=selectedDay;routineManagerReturnScroll=modalContent.scrollTop;openScheduleItemModal(b.dataset.routineEdit);});
+    $('#addRoutineInside').onclick=()=>{routineManagerReturnDay=selectedDay;routineManagerReturnScroll=modalContent.scrollTop;openScheduleItemModal(null,{days:[selectedDay]});};
+    attachAllRecurringItems(selectedDay);
+    modalContent.scrollTop=restoreScroll;
+  };draw(returnScroll);
 }
 function renderAfterEditor(){
-  if(routineManagerReturnDay!==null){const d=routineManagerReturnDay;routineManagerReturnDay=null;openScheduleManager(d);return;}
-  if(state.settings.activeTab==='week'&&weekEditContext){const ctx=weekEditContext;weekEditContext=null;state.settings.selectedWeekDate=ctx.date;save();renderWeek();requestAnimationFrame(()=>window.scrollTo({top:ctx.scrollY,behavior:'auto'}));}else{weekEditContext=null;render();}
+  if(routineManagerReturnDay!==null){returnToRoutineManager();return;}
+  if(state.settings.activeTab==='week'&&weekEditContext){const ctx=weekEditContext;weekEditContext=null;state.settings.selectedWeekDate=ctx.date;save();renderWeek();requestAnimationFrame(()=>pageScrollTo({top:ctx.scrollY,behavior:'auto'}));}else{weekEditContext=null;render();}
 }
 
 function openWorkoutPlanner(){
   let focus='Full Body',temp={};workoutFocuses().forEach(name=>temp[name]=new Set(validPresetIds(name)));
   const draw=()=>{
     const selected=temp[focus],all=state.gym.exercises||[],count=selected.size;
-    modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">START WORKOUT</p><h2>Build today’s workout</h2><div class="focus-chip-wrap workout-four">${workoutFocuses().map(x=>`<button class="focus-chip ${x===focus?'active':''}" data-workout-focus="${escapeAttr(x)}">${escapeHTML(x)}</button>`).join('')}</div><div class="workout-builder-head"><div><small>${escapeHTML(focus.toUpperCase())}</small><b id="workoutSelectedCount">${count} exercise${count===1?'':'s'} selected</b></div><button class="text-button" id="resetWorkoutPreset">${focus==='Custom'?'Clear':'Reset default'}</button></div><div class="exercise-pick-grid" id="exercisePickGrid">${all.map(ex=>`<button type="button" class="exercise-pick ${selected.has(ex.id)?'selected':''}" data-workout-pick="${escapeAttr(ex.id)}" role="checkbox" aria-checked="${selected.has(ex.id)?'true':'false'}"><span class="exercise-pick-check">${selected.has(ex.id)?'✓':''}</span><span><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></span></button>`).join('')}</div><button class="primary full" id="startPlannedWorkout" ${count?'':'disabled'}>Start ${escapeHTML(focus)} workout</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-    if(!modal.open)modal.showModal();
+    prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">START WORKOUT</p><h2>Build today’s workout</h2><div class="focus-chip-wrap workout-four">${workoutFocuses().map(x=>`<button class="focus-chip ${x===focus?'active':''}" data-workout-focus="${escapeAttr(x)}">${escapeHTML(x)}</button>`).join('')}</div><div class="workout-builder-head"><div><small>${escapeHTML(focus.toUpperCase())}</small><b id="workoutSelectedCount">${count} exercise${count===1?'':'s'} selected</b></div><button class="text-button" id="resetWorkoutPreset">${focus==='Custom'?'Clear':'Reset default'}</button></div><div class="exercise-pick-grid" id="exercisePickGrid">${all.map(ex=>`<button type="button" class="exercise-pick ${selected.has(ex.id)?'selected':''}" data-workout-pick="${escapeAttr(ex.id)}" role="checkbox" aria-checked="${selected.has(ex.id)?'true':'false'}"><span class="exercise-pick-check">${selected.has(ex.id)?'✓':''}</span><span><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></span></button>`).join('')}</div><button class="primary full" id="startPlannedWorkout" ${count?'':'disabled'}>Start ${escapeHTML(focus)} workout</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+    if(!modal.open)openAppSheet(modal);
     $$('[data-workout-focus]',modalContent).forEach(b=>b.onclick=()=>{focus=b.dataset.workoutFocus;draw();});
     const grid=$('#exercisePickGrid');grid.onclick=e=>{const btn=e.target.closest('[data-workout-pick]');if(!btn)return;const id=btn.dataset.workoutPick;if(selected.has(id))selected.delete(id);else selected.add(id);const on=selected.has(id);btn.classList.toggle('selected',on);btn.setAttribute('aria-checked',on?'true':'false');const check=btn.querySelector('.exercise-pick-check');if(check)check.textContent=on?'✓':'';const c=$('#workoutSelectedCount');if(c)c.textContent=`${selected.size} exercise${selected.size===1?'':'s'} selected`;const start=$('#startPlannedWorkout');if(start)start.disabled=!selected.size;};
     $('#resetWorkoutPreset').onclick=()=>{temp[focus]=new Set(focus==='Custom'?[]:(defaultWorkoutPresets()[focus]||[]).filter(id=>state.gym.exercises.some(ex=>ex.id===id)));draw();};
-    $('#startPlannedWorkout').onclick=()=>{const ids=[...temp[focus]];if(!ids.length)return toast('Choose at least one exercise');if(!state.gym.workoutPresets)state.gym.workoutPresets=defaultWorkoutPresets();state.gym.workoutPresets[focus]=ids;state.gym.activeWorkout={id:uid('workout'),date:todayKey(),focus,exerciseIds:ids,completedExerciseIds:[],startedAt:new Date().toISOString()};save();modal.close();renderGym();toast(`${focus} workout started`);};$('#cancelModal').onclick=()=>modal.close();
+    $('#startPlannedWorkout').onclick=()=>{const ids=[...temp[focus]];if(!ids.length)return toast('Choose at least one exercise');if(!state.gym.workoutPresets)state.gym.workoutPresets=defaultWorkoutPresets();state.gym.workoutPresets[focus]=ids;state.gym.activeWorkout={id:uid('workout'),date:todayKey(),focus,exerciseIds:ids,completedExerciseIds:[],startedAt:new Date().toISOString()};save();closeAppSheet(modal);renderGym();toast(`${focus} workout started`);};$('#cancelModal').onclick=()=>closeAppSheet(modal);
   };draw();
 }
 
@@ -2284,7 +2480,7 @@ function inspectDataHealth({repair=false}={}){
     if(log.workoutId&&log.exerciseId){const k=`${log.workoutId}|${log.exerciseId}`,old=gymSeen.get(k);if(old){issues.push('Duplicate exercise logs exist inside one workout');if(repair){const oldIndex=state.gym.logs.indexOf(old),newIndex=state.gym.logs.indexOf(log);if(oldIndex>=0&&newIndex>=0){const keep=Number(log.createdAt||0)>=Number(old.createdAt||0)?log:old,drop=keep===log?old:log;state.gym.logs=state.gym.logs.filter(x=>x!==drop);gymSeen.set(k,keep);repaired++;}}}else gymSeen.set(k,log);}
   }
   for(const [key,rec] of Object.entries(state.records||{})){
-    const date=parseDateKey(key),valid=new Set(itemsForDate(date,{ignoreOverrides:true}).map(occurrenceKey));
+    const date=parseDateKey(key),valid=new Set([...itemsForDate(date,{ignoreOverrides:true}).map(occurrenceKey),...state.schedule.map(x=>'s:'+x.id)]);
     for(const occ of Object.keys(rec.itemStatus||{})){if(!valid.has(occ)){issues.push(`${key} has an orphan task status`);if(repair){delete rec.itemStatus[occ];repaired++;}}}
     for(const occ of Object.keys(rec.timeOverrides||{})){if(!valid.has(occ)){issues.push(`${key} has an orphan time override`);if(repair){delete rec.timeOverrides[occ];repaired++;}}}
     const before=(rec.unscheduledItems||[]).length;const cleaned=(rec.unscheduledItems||[]).filter(x=>valid.has(x));if(cleaned.length!==before){issues.push(`${key} has stale attention references`);if(repair){rec.unscheduledItems=cleaned;repaired+=before-cleaned.length;}}
@@ -2297,16 +2493,16 @@ function inspectDataHealth({repair=false}={}){
   return {issues:[...new Set(issues)],repaired};
 }
 function openDataHealthModal(){
-  const report=inspectDataHealth(),status=$('#dataHealthStatus');if(status)status.textContent=report.issues.length?`${report.issues.length} found`:'Healthy';settingsDialog?.close();
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DATA HEALTH</p><h2>${report.issues.length?'A few things need checking':'Everything looks healthy'}</h2><p class="muted">Reset checks schedule links, Wake/Sleep separation, gym logs and stored references without sending anything online.</p>${report.issues.length?`<div class="health-check-list">${report.issues.slice(0,10).map(x=>`<div>${svgIcon('warning')}<span>${escapeHTML(x)}</span></div>`).join('')}${report.issues.length>10?`<small>+ ${report.issues.length-10} more</small>`:''}</div><button class="primary full" id="repairDataHealth">Repair safe issues</button>`:`<div class="health-ok-card">${svgIcon('check')}<div><b>No structural problems found</b><small>Your local Reset data passed the consistency check.</small></div></div>`}<button class="secondary full" id="cancelModal" style="margin-top:8px">Close</button>`;
-  modal.showModal();
-  if($('#repairDataHealth'))$('#repairDataHealth').onclick=()=>{createSafetySnapshot('Before data health repair');const fixed=inspectDataHealth({repair:true});save();const status=$('#dataHealthStatus');if(status)status.textContent='Healthy';modal.close();render();toast(fixed.repaired?`${fixed.repaired} safe issue${fixed.repaired===1?'':'s'} repaired`:'No safe repairs were needed');};
-  $('#cancelModal').onclick=()=>modal.close();
+  const report=inspectDataHealth(),status=$('#dataHealthStatus');if(status)status.textContent=report.issues.length?`${report.issues.length} found`:'Healthy';closeAppSheet(settingsDialog);
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DATA HEALTH</p><h2>${report.issues.length?'A few things need checking':'Everything looks healthy'}</h2><p class="muted">Reset checks schedule links, Wake/Sleep separation, gym logs and stored references without sending anything online.</p>${report.issues.length?`<div class="health-check-list">${report.issues.slice(0,10).map(x=>`<div>${svgIcon('warning')}<span>${escapeHTML(x)}</span></div>`).join('')}${report.issues.length>10?`<small>+ ${report.issues.length-10} more</small>`:''}</div><button class="primary full" id="repairDataHealth">Repair safe issues</button>`:`<div class="health-ok-card">${svgIcon('check')}<div><b>No structural problems found</b><small>Your local Reset data passed the consistency check.</small></div></div>`}<button class="secondary full" id="cancelModal" style="margin-top:8px">Close</button>`;
+  openAppSheet(modal);
+  if($('#repairDataHealth'))$('#repairDataHealth').onclick=()=>{createSafetySnapshot('Before data health repair');const fixed=inspectDataHealth({repair:true});save();const status=$('#dataHealthStatus');if(status)status.textContent='Healthy';closeAppSheet(modal);render();toast(fixed.repaired?`${fixed.repaired} safe issue${fixed.repaired===1?'':'s'} repaired`:'No safe repairs were needed');};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 // Prevent accidental double execution of the same action while still allowing rapid interaction across different controls.
 const __resetTapTimes=new WeakMap();
-document.addEventListener('click',e=>{const btn=e.target.closest?.('button');if(!btn||btn.matches('[data-odo-step],[data-quick-weight],[data-quick-sets],[data-quick-reps]'))return;const now=performance.now(),last=__resetTapTimes.get(btn)||0;if(now-last<260){e.preventDefault();e.stopImmediatePropagation();return;}__resetTapTimes.set(btn,now);},true);
+document.addEventListener('click',e=>{const btn=e.target.closest?.('button');if(!btn||btn.matches('[data-odo-step],[data-quick-weight],[data-quick-sets],[data-quick-reps]'))return;if(btn.matches('#cancelModal,#closeModal,#backToPlan,[aria-label="Close"],[aria-label="Back"]'))return;const now=performance.now(),last=__resetTapTimes.get(btn);if(last!==undefined&&now-last<260){e.preventDefault();e.stopImmediatePropagation();return;}__resetTapTimes.set(btn,now);},true);
 
 const __dataHealthBtn=$('#dataHealthBtn');if(__dataHealthBtn)__dataHealthBtn.onclick=openDataHealthModal;
 const __recoveryBtn=$('#recoverySnapshotBtn');if(__recoveryBtn)__recoveryBtn.onclick=openRecoverySnapshotModal;
@@ -2315,20 +2511,19 @@ const __recoveryBtn=$('#recoverySnapshotBtn');if(__recoveryBtn)__recoveryBtn.onc
 /* ===== end v3.4 layer ===== */
 
 
-$$('.tab').forEach(btn=>btn.addEventListener('click',()=>{state.settings.activeTab=btn.dataset.tab;if(btn.dataset.tab==='more')state.settings.moreView='home';if(btn.dataset.tab==='money')state.settings.moneyView='home';save();render();window.scrollTo({top:0,behavior:'auto'});}));
+$$('.tab').forEach(btn=>btn.addEventListener('click',()=>{state.settings.activeTab=btn.dataset.tab;if(btn.dataset.tab==='more')state.settings.moreView='home';if(btn.dataset.tab==='money')state.settings.moneyView='home';save();render();pageScrollTo({top:0,behavior:'auto'});}));
 
 const settingsDialog=$('#settingsDialog');
-$('#settingsBtn').onclick=()=>{const v=$('#versionLabel');if(v)v.textContent='v'+APP_DISPLAY_VERSION;requestPersistentStorage().then(updateStorageProtectionLabel);updateBackupConfidenceLabel();updateRecoverySnapshotRow();checkForAppUpdate(true);settingsDialog.showModal();};
+$('#settingsBtn').onclick=()=>{const v=$('#versionLabel');if(v)v.textContent='v'+APP_DISPLAY_VERSION;requestPersistentStorage().then(updateStorageProtectionLabel);updateBackupConfidenceLabel();updateRecoverySnapshotRow();checkForAppUpdate(true);openAppSheet(settingsDialog);};
 if($('#updateReadyBtn'))$('#updateReadyBtn').onclick=applyAppUpdate;
 $('#exportBtn').onclick=()=>{
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`reset-backup-${todayKey()}.json`;a.click();URL.revokeObjectURL(url);toast('Backup exported');
 };
-$('#importInput').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const data=JSON.parse(await f.text());if(!data.money||!data.records)throw new Error('Invalid');createSafetySnapshot('Before backup import');state=migrateState(data);save();settingsDialog.close();toast('Backup imported');render();}catch(err){toast('That backup file is not valid');}e.target.value='';});
-$('#installHelpBtn').onclick=()=>{settingsDialog.close();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">IPHONE</p><h2>Add Reset to your Home Screen</h2><ol class="muted" style="padding-left:20px;line-height:1.8"><li>Open the app link in <b>Safari</b>.</li><li>Tap <b>Share</b>.</li><li>Choose <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b>.</li></ol><p class="muted tiny">When an update is uploaded to GitHub Pages, fully close and reopen the app. If an old version remains, refresh the Safari page once.</p><button class="primary full" id="cancelModal">Got it</button>`;modal.showModal();$('#cancelModal').onclick=()=>modal.close();};
+$('#importInput').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const data=JSON.parse(await f.text());if(!data.money||!data.records)throw new Error('Invalid');createSafetySnapshot('Before backup import');state=migrateState(data);save();closeAppSheet(settingsDialog);toast('Backup imported');render();}catch(err){toast('That backup file is not valid');}e.target.value='';});
+$('#installHelpBtn').onclick=()=>{closeAppSheet(settingsDialog);prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">IPHONE</p><h2>Add Reset to your Home Screen</h2><ol class="muted" style="padding-left:20px;line-height:1.8"><li>Open the app link in <b>Safari</b>.</li><li>Tap <b>Share</b>.</li><li>Choose <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b>.</li></ol><p class="muted tiny">When an update is uploaded to GitHub Pages, fully close and reopen the app. If an old version remains, refresh the Safari page once.</p><button class="primary full" id="cancelModal">Got it</button>`;openAppSheet(modal);$('#cancelModal').onclick=()=>closeAppSheet(modal);};
 $('#storageProtectionBtn').onclick=async()=>{const r=await requestPersistentStorage();updateStorageProtectionLabel(r);toast(r.persisted?'Local data protection enabled':'iPhone is using best-effort local storage');};
-$('#eraseBtn').onclick=async()=>{if(confirm('Erase all Reset app data on this device?')){try{localStorage.removeItem(APP_KEY);}catch(e){}await durableClear();clearSafetySnapshot();state=defaultState();settingsDialog.close();save();render();toast('App reset');}};
-modal.addEventListener('click',e=>{if(e.target===modal)modal.close();});
-settingsDialog.addEventListener('click',e=>{if(e.target===settingsDialog)settingsDialog.close();});
+$('#eraseBtn').onclick=async()=>{if(confirm('Erase all Reset app data on this device?')){try{localStorage.removeItem(APP_KEY);}catch(e){}await durableClear();clearSafetySnapshot();state=defaultState();closeAppSheet(settingsDialog);save();render();toast('App reset');}};
+
 
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
@@ -2336,17 +2531,18 @@ if('serviceWorker' in navigator){
       let reloading=false;
       navigator.serviceWorker.addEventListener('controllerchange',()=>{
         if(reloading)return;
+        if(!window.__resetApplyingUpdate){const button=$('#updateReadyBtn');if(button)button.classList.remove('hidden');return;}
         reloading=true;
         window.location.reload();
       });
-      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.6.1',{updateViaCache:'none'});
-      if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});
+      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.6.2-final',{updateViaCache:'none'});
+      if(reg.waiting){const button=$('#updateReadyBtn');if(button)button.classList.remove('hidden');}
       reg.addEventListener('updatefound',()=>{
         const worker=reg.installing;
         if(!worker)return;
         worker.addEventListener('statechange',()=>{
           if(worker.state==='installed'&&navigator.serviceWorker.controller){
-            worker.postMessage({type:'SKIP_WAITING'});
+            const button=$('#updateReadyBtn');if(button)button.classList.remove('hidden');
           }
         });
       });
@@ -2357,23 +2553,9 @@ if('serviceWorker' in navigator){
   });
 }
 
-// iPhone standalone Safari can still zoom on rapid double taps even when
-// touch-action is set. Reset is an app-like UI, so suppress that gesture.
-let resetLastTouch={time:0,target:null,x:0,y:0};
-document.addEventListener('touchend',event=>{
-  if(event.touches&&event.touches.length>0)return;
-  const touch=event.changedTouches&&event.changedTouches[0];
-  const now=Date.now();
-  const x=touch?touch.clientX:0;
-  const y=touch?touch.clientY:0;
-  const sameTarget=event.target===resetLastTouch.target;
-  const closeEnough=Math.hypot(x-resetLastTouch.x,y-resetLastTouch.y)<28;
-  if(now-resetLastTouch.time<320&&sameTarget&&closeEnough)event.preventDefault();
-  resetLastTouch={time:now,target:event.target,x,y};
-},{passive:false});
-document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
+// CSS touch-action handles double taps without swallowing taps after scrolling.
 let lastClockDateKey=todayKey();
-setInterval(()=>{const nowKey=todayKey();if(nowKey!==lastClockDateKey){lastClockDateKey=nowKey;if(state.settings.activeTab==='today')renderToday(false);else if(state.settings.activeTab==='week')renderWeek();else render();return;}if(state.settings.activeTab==='today')renderToday(true);},60000);
+setInterval(()=>{if(openSheets().length)return;const nowKey=todayKey();if(nowKey!==lastClockDateKey){sealPastDays();lastClockDateKey=nowKey;if(state.settings.activeTab==='today')renderToday(false);else if(state.settings.activeTab==='week')renderWeek();else render();return;}if(state.settings.activeTab==='today')renderToday(true);},60000);
 /* ===== Reset v3.6.1 swap/order hotfix ===== */
 function swapEligibleItems(date){
   const key=todayKey(date);
@@ -2434,7 +2616,7 @@ function buildDaySchedulePlan(date,{kind='future',preserveManual=true,wakeTime=n
   if(sleepBase){const occ=occurrenceKey(sleepBase),routine=minutesToTime(minutesFromTime(sleepBase.start)),normalized=minutesToTime(minutesFromTime(chosenSleepTime));if(normalized!==routine||manualMap[occ]?.dayAnchor){const dur=durationMinutes(sleepBase),abs=minutesFromTime(normalized)+1440*chosenSleepOff;overrides[occ]={start:normalized,end:minutesToTime(abs+dur),dayOffset:chosenSleepOff,manual:true,adaptive:false,dayAnchor:true};}}
   Object.entries(manualMap).forEach(([occ,ov])=>{const item=baseRaw.find(x=>occurrenceKey(x)===occ);if(item&&getStatus(item,key)==='done'&&!isDayAnchor(item))overrides[occ]={...ov};});
   let baseItems=baseRaw.map(i=>{const ov=preserveManual?manualMap[occurrenceKey(i)]:null;return ov?.manual&&!ov?.dayAnchor?{...i,...ov}:i;});
-  const fixed=baseItems.filter(i=>!isDayAnchor(i)&&itemIsFixed(i)&&!['cancelled','dropped','deferred'].includes(getStatus(i,key)));
+  const fixed=baseItems.filter(i=>!isDayAnchor(i)&&itemIsFixed(i)&&!['done','cancelled','dropped','deferred'].includes(getStatus(i,key)));
   const missedFixed=kind==='today'?fixed.filter(i=>getStatus(i,key)==='pending'&&itemEndSortMinutes(i)<currentMinutes()):[];
   const blocked=[];
   fixed.forEach(i=>{if(!itemAllowsOverlap(i)&&(itemEndSortMinutes(i)>floor||kind!=='today'))blocked.push({start:itemSortMinutes(i),end:itemEndSortMinutes(i),item:i});});
@@ -2486,18 +2668,18 @@ function buildDaySchedulePlan(date,{kind='future',preserveManual=true,wakeTime=n
     const newStart=slot,newEnd=slot+duration;blocked.push({start:newStart,end:newEnd,item});if(mr)lastMealEnd=newEnd;if(inManualSequence)sequenceCursor=newEnd;
     const original=baseRaw.find(x=>occurrenceKey(x)===occ);
     const changed=!original||newStart!==itemSortMinutes(original)||duration!==normalDuration||overdue||(preserveManual&&wasManual)||inManualSequence||(['groom','breakfast'].includes(item.id)&&wakeShift!==0);
-    if(changed){const ov={start:minutesToTime(newStart),end:minutesToTime(newEnd),dayOffset:Math.floor(newStart/1440),adaptive:true,manual:preserveManual&&(wasManual||inManualSequence)};if(preserveManual&&wasManual)ov.manualPreferredStart=manualMap[occ]?.manualPreferredStart||manualMap[occ]?.start||item.start;overrides[occ]=ov;moved.push({...item,...ov});}
+    if(changed){const ov={start:minutesToTime(newStart),end:minutesToTime(newEnd),dayOffset:Math.floor(newStart/1440),adaptive:true,manual:preserveManual&&(wasManual||inManualSequence)};if(preserveManual&&(wasManual||inManualSequence))ov.manualPreferredStart=manualMap[occ]?.manualPreferredStart||manualMap[occ]?.start||item.start;overrides[occ]=ov;moved.push({...item,...ov});}
   }
   return {key,kind,now,floor,overrides,moved,missedFixed,unplaced,preserveManual,wakeTime:chosenWakeTime,sleepTime:chosenSleepTime,manualCount:Object.values(manualMap).filter(x=>x?.manual&&!x?.dayAnchor).length,manualOrder:preserveManual?storedOrder:[]};
 }
 function applyAdaptiveRestart(plan){
-  const rec=ensureRecord(plan.key);rec.timeOverrides=plan.overrides;rec.manualOrder=Array.isArray(plan.manualOrder)?[...plan.manualOrder]:[];rec.unscheduledItems=plan.unplaced.map(occurrenceKey);rec.schedulerAttention=plan.unplaced.map(i=>`${i.title} could not fit before sleep`);
+  const rec=ensureRecord(plan.key);recordRebuildSummary(plan);rec.timeOverrides=plan.overrides;rec.manualOrder=Array.isArray(plan.manualOrder)?[...plan.manualOrder]:[];rec.unscheduledItems=plan.unplaced.map(occurrenceKey);rec.schedulerAttention=plan.unplaced.map(i=>`${i.title} could not fit before sleep`);
   for(const item of plan.missedFixed){if(getStatus(item,plan.key)!=='done'&&getStatus(item,plan.key)!=='cancelled')rec.itemStatus[occurrenceKey(item)]='missed';}
   for(const item of plan.moved){if(rec.itemStatus[occurrenceKey(item)]==='missed')delete rec.itemStatus[occurrenceKey(item)];}
   Object.keys(rec.itemStatus).forEach(k=>{if(rec.itemStatus[k]!=='missed')return;const item=itemsForDate(parseDateKey(plan.key),{ignoreOverrides:true}).find(x=>occurrenceKey(x)===k);if(item&&!itemIsFixed(item)&&!rec.unscheduledItems.includes(k))delete rec.itemStatus[k];});
   rec.resetCount=(rec.resetCount||0)+1;rec.restartAt=new Date().toISOString();save();
 }
-function applyFutureDayPlan(plan){const rec=ensureRecord(plan.key);rec.timeOverrides=plan.overrides;rec.manualOrder=Array.isArray(plan.manualOrder)?[...plan.manualOrder]:[];rec.unscheduledItems=plan.unplaced.map(occurrenceKey);rec.schedulerAttention=plan.unplaced.map(i=>`${i.title} could not fit before sleep`);rec.futurePlannedAt=new Date().toISOString();save();}
+function applyFutureDayPlan(plan){const rec=ensureRecord(plan.key);recordRebuildSummary(plan);rec.timeOverrides=plan.overrides;rec.manualOrder=Array.isArray(plan.manualOrder)?[...plan.manualOrder]:[];rec.unscheduledItems=plan.unplaced.map(occurrenceKey);rec.schedulerAttention=plan.unplaced.map(i=>`${i.title} could not fit before sleep`);rec.futurePlannedAt=new Date().toISOString();save();}
 function clearItemTimeOverride(item,key){const rec=ensureRecord(key),occ=occurrenceKey(item);delete rec.timeOverrides[occ];if(Array.isArray(rec.manualOrder))rec.manualOrder=rec.manualOrder.filter(x=>x!==occ);removeUnscheduledOccurrence(key,occ);save();}
 
 function openMoveItemModal(item,date){
@@ -2505,45 +2687,49 @@ function openMoveItemModal(item,date){
   if(itemManualMoveLocked(item))return toast('This item is locked to its planned time');
   const others=itemsForDate(date).filter(x=>occurrenceKey(x)!==occurrenceKey(item)&&!itemManualMoveLocked(x)&&!itemIsNonBlocking(x)&&!isClosedStatus(getStatus(x,key))).sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b));
   const hasOverride=!!state.records[key]?.timeOverrides?.[occurrenceKey(item)];
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">MOVE TASK</p><h2>${escapeHTML(item.title)}</h2><p class="muted tiny">Move to an exact time, or swap positions with another flexible task. Swaps automatically repack the surrounding timeline.</p><div class="stack"><label><span class="label">Move to a different time</span><input class="input" id="moveTime" type="time" value="${escapeAttr(item.start)}"></label>${others.length?`<label><span class="label">Or swap positions with</span><select id="swapTask"><option value="">No swap</option>${others.map(x=>`<option value="${escapeAttr(occurrenceKey(x))}">${escapeHTML(x.title)} · ${escapeHTML(formatClock(x.start))}</option>`).join('')}</select></label>`:''}</div><button class="primary full" id="saveMove" style="margin-top:14px">Save move</button><button class="secondary full" id="moveTomorrow" style="margin-top:8px">Move to tomorrow</button>${hasOverride?'<button class="secondary full" id="resetMove" style="margin-top:8px">Reset to planned time</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  modal.showModal();
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">MOVE TASK</p><h2>${escapeHTML(item.title)}</h2><p class="muted tiny">Move to an exact time, or swap positions with another flexible task. Swaps automatically repack the surrounding timeline.</p><div class="stack"><label><span class="label">Move to a different time</span><input class="input" id="moveTime" type="time" value="${escapeAttr(item.start)}"></label>${others.length?`<label><span class="label">Or swap positions with</span><select id="swapTask"><option value="">No swap</option>${others.map(x=>`<option value="${escapeAttr(occurrenceKey(x))}">${escapeHTML(x.title)} · ${escapeHTML(formatClock(x.start))}</option>`).join('')}</select></label>`:''}</div><button class="primary full" id="saveMove" style="margin-top:14px">Save move</button><button class="secondary full" id="moveTomorrow" style="margin-top:8px">Move to tomorrow</button>${hasOverride?'<button class="secondary full" id="resetMove" style="margin-top:8px">Reset to planned time</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);
   $('#saveMove').onclick=()=>{
     const swapOcc=$('#swapTask')?.value||'';
     if(swapOcc){
       const other=itemsForDate(date).find(x=>occurrenceKey(x)===swapOcc);if(!other)return toast('That task is no longer available');
       const before=daySnapshot(key);createSafetySnapshot(`Before swapping tasks on ${key}`);
       if(!recordSwapIntent(item,other,date))return toast(__manualSwapError||'Those tasks cannot be swapped right now');
-      const plan=rebuildAfterManualSwap(date);modal.close();render();
+      const plan=rebuildAfterManualSwap(date);closeAppSheet(modal);render();
       if(plan.unplaced.length)toast('Swapped, but part of the day needs attention','Undo',()=>restoreDaySnapshot(key,before));else toast('Tasks swapped and timeline repacked','Undo',()=>restoreDaySnapshot(key,before));
       return;
     }
     const time=$('#moveTime').value;if(!time)return toast('Choose a time');
     if(moveWouldHitLocked(item,date,time))return toast('That time overlaps a locked item');
-    const before=daySnapshot(key);setItemTimeOverride(item,key,time);modal.close();render();toast('Task moved','Undo',()=>restoreDaySnapshot(key,before));
+    const before=daySnapshot(key);setItemTimeOverride(item,key,time);closeAppSheet(modal);render();toast('Task moved','Undo',()=>restoreDaySnapshot(key,before));
   };
-  $('#moveTomorrow').onclick=()=>{const nextKey=todayKey(addDays(parseDateKey(key),1)),beforeRec=deepClone(state.records[key]||null),beforeNext=deepClone(state.records[nextKey]||null),beforeOneOff=deepClone(state.oneOffTasks);if(moveItemToTomorrow(item,key)){modal.close();render();toast('Moved to tomorrow','Undo',()=>{if(beforeRec)state.records[key]=beforeRec;else delete state.records[key];if(beforeNext)state.records[nextKey]=beforeNext;else delete state.records[nextKey];state.oneOffTasks=beforeOneOff;save();render();});}};
-  if($('#resetMove'))$('#resetMove').onclick=()=>{const before=daySnapshot(key);clearItemTimeOverride(item,key);modal.close();render();toast('Planned time restored','Undo',()=>restoreDaySnapshot(key,before));};
-  $('#cancelModal').onclick=()=>modal.close();
+  $('#moveTomorrow').onclick=()=>{const nextKey=todayKey(addDays(parseDateKey(key),1)),beforeRec=deepClone(state.records[key]||null),beforeNext=deepClone(state.records[nextKey]||null),beforeOneOff=deepClone(state.oneOffTasks);if(moveItemToTomorrow(item,key)){closeAppSheet(modal);render();toast('Moved to tomorrow','Undo',()=>{if(beforeRec)state.records[key]=beforeRec;else delete state.records[key];if(beforeNext)state.records[nextKey]=beforeNext;else delete state.records[nextKey];state.oneOffTasks=beforeOneOff;save();render();});}};
+  if($('#resetMove'))$('#resetMove').onclick=()=>{const before=daySnapshot(key);clearItemTimeOverride(item,key);closeAppSheet(modal);render();toast('Planned time restored','Undo',()=>restoreDaySnapshot(key,before));};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
 function openPlanItemEditor(item,date){
+  if($('#futureWakeTime',modalContent))planReturnScroll=modalContent.scrollTop;
   const key=todayKey(date),status=getStatus(item,key),fixed=itemIsFixed(item),reminder=itemIsNonBlocking(item),oneoff=item.source==='oneoff',active=!['cancelled','dropped','deferred'].includes(status);
   const others=itemsForDate(date).filter(x=>occurrenceKey(x)!==occurrenceKey(item)&&!itemManualMoveLocked(x)&&!itemIsNonBlocking(x)&&!isClosedStatus(getStatus(x,key))).sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b));
-  modalContent.innerHTML=`<div class="sheet-handle"></div><div class="day-plan-modal-head"><button class="round-icon" id="backToPlan" aria-label="Back">${svgIcon('chevronLeft')}</button><div><p class="eyebrow">PLAN ITEM</p><h2>${escapeHTML(item.title)}</h2><p>${reminder?'Non-blocking reminder':fixed?'Fixed event':'Flexible task'} · ${escapeHTML(timeWindow(item))}</p></div><span></span></div>
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><div class="day-plan-modal-head"><button class="round-icon" id="backToPlan" aria-label="Back">${svgIcon('chevronLeft')}</button><div><p class="eyebrow">PLAN ITEM</p><h2>${escapeHTML(item.title)}</h2><p>${reminder?'Non-blocking reminder':fixed?'Fixed event':'Flexible task'} · ${escapeHTML(timeWindow(item))}</p></div><span></span></div>
     ${!fixed&&active?`<section class="day-settings-card"><h3>Move or swap</h3><div class="stack"><label><span class="label">Move to time</span><input class="input" id="planMoveTime" type="time" value="${escapeAttr(item.start)}"></label>${others.length?`<label><span class="label">Or swap positions with</span><select id="planSwapTask"><option value="">No swap</option>${others.map(x=>`<option value="${escapeAttr(occurrenceKey(x))}">${escapeHTML(x.title)} · ${escapeHTML(formatClock(x.start))}</option>`).join('')}</select></label>`:''}</div><button class="primary full" id="savePlanMove" style="margin-top:12px">Save move</button></section>`:''}
     <section class="day-plan-section compact-plan-actions"><div class="day-plan-section-head"><span>${svgIcon('more')}</span><div><h3>Actions</h3><p>Changes apply only to ${escapeHTML(formatDateShort(date))}.</p></div></div>
       ${oneoff?`<button class="secondary full" id="editPlanOneOff">${svgIcon('settings')} Edit details</button>`:''}
       ${status==='cancelled'?`<button class="secondary full" id="restorePlanItem">${svgIcon('refresh')} Restore to this day</button>`:active?`<button class="secondary full" id="cancelPlanItem">${svgIcon('close')} Cancel for this day</button>`:''}
       ${oneoff?`<button class="danger-btn full" id="deletePlanOneOff">Delete from this day</button>`:''}
     </section>`;
-  if(!modal.open)modal.showModal();
-  $('#backToPlan').onclick=()=>openDayAnchorPlanner(date);
-  if($('#savePlanMove'))$('#savePlanMove').onclick=()=>{const swapOcc=$('#planSwapTask')?.value||'',before=daySnapshot(key);if(swapOcc){const other=itemsForDate(date).find(x=>occurrenceKey(x)===swapOcc);if(!other)return toast('That task is no longer available');createSafetySnapshot(`Before swapping tasks on ${key}`);if(!recordSwapIntent(item,other,date))return toast(__manualSwapError||'Those tasks cannot be swapped right now');const plan=rebuildAfterManualSwap(date);openDayAnchorPlanner(date);toast(plan.unplaced.length?'Swapped, but this day still needs attention':'Tasks swapped and day repacked','Undo',()=>restoreDaySnapshot(key,before));return;}const time=$('#planMoveTime').value;if(!time)return toast('Choose a time');if(moveWouldHitLocked(item,date,time))return toast('That time overlaps an active locked item');setItemTimeOverride(item,key,time);save();openDayAnchorPlanner(date);toast(reminder?'Reminder moved':'Task moved','Undo',()=>restoreDaySnapshot(key,before));};
-  if($('#editPlanOneOff'))$('#editPlanOneOff').onclick=()=>{modal.close();openOneOffTaskModal(item.id,{returnToPlan:key});};
-  if($('#cancelPlanItem'))$('#cancelPlanItem').onclick=()=>{const before=daySnapshot(key);setStatus(item,key,'cancelled');save();openDayAnchorPlanner(date);toast('Cancelled for this day','Undo',()=>restoreDaySnapshot(key,before));};
-  if($('#restorePlanItem'))$('#restorePlanItem').onclick=()=>{const before=daySnapshot(key);setStatus(item,key,'pending');save();openDayAnchorPlanner(date);toast(fixed?'Restored to its fixed time':'Restored','Undo',()=>restoreDaySnapshot(key,before));};
-  if($('#deletePlanOneOff'))$('#deletePlanOneOff').onclick=()=>{const idx=state.oneOffTasks.findIndex(x=>x.id===item.id);if(idx<0)return;const removed=deepClone(state.oneOffTasks[idx]);state.oneOffTasks.splice(idx,1);save();openDayAnchorPlanner(date);toast(reminder?'Reminder deleted':'Item deleted','Undo',()=>{state.oneOffTasks.splice(Math.min(idx,state.oneOffTasks.length),0,removed);save();openDayAnchorPlanner(date);});};
+  if(!modal.open)openAppSheet(modal);
+  sheetScrollState.onDismiss=()=>returnToDayPlan(date);
+  $('#backToPlan').onclick=()=>returnToDayPlan(date);
+  if($('#savePlanMove'))$('#savePlanMove').onclick=()=>{const swapOcc=$('#planSwapTask')?.value||'',before=daySnapshot(key);if(swapOcc){const other=itemsForDate(date).find(x=>occurrenceKey(x)===swapOcc);if(!other)return toast('That task is no longer available');createSafetySnapshot(`Before swapping tasks on ${key}`);if(!recordSwapIntent(item,other,date))return toast(__manualSwapError||'Those tasks cannot be swapped right now');const plan=rebuildAfterManualSwap(date);returnToDayPlan(date);toast(plan.unplaced.length?'Swapped, but this day still needs attention':'Tasks swapped and day repacked','Undo',()=>restoreDaySnapshot(key,before));return;}const time=$('#planMoveTime').value;if(!time)return toast('Choose a time');if(moveWouldHitLocked(item,date,time))return toast('That time overlaps an active locked item');setItemTimeOverride(item,key,time);save();returnToDayPlan(date);toast(reminder?'Reminder moved':'Task moved','Undo',()=>restoreDaySnapshot(key,before));};
+  if($('#editPlanOneOff'))$('#editPlanOneOff').onclick=()=>{closeAppSheet(modal);openOneOffTaskModal(item.id,{returnToPlan:key});};
+  if($('#cancelPlanItem'))$('#cancelPlanItem').onclick=()=>{const before=daySnapshot(key);setStatus(item,key,'cancelled');save();returnToDayPlan(date);toast('Cancelled for this day','Undo',()=>restoreDaySnapshot(key,before));};
+  if($('#restorePlanItem'))$('#restorePlanItem').onclick=()=>{const before=daySnapshot(key);setStatus(item,key,'pending');save();returnToDayPlan(date);toast(fixed?'Restored to its fixed time':'Restored','Undo',()=>restoreDaySnapshot(key,before));};
+  if($('#deletePlanOneOff'))$('#deletePlanOneOff').onclick=()=>{const idx=state.oneOffTasks.findIndex(x=>x.id===item.id);if(idx<0)return;const removed=deepClone(state.oneOffTasks[idx]);state.oneOffTasks.splice(idx,1);save();returnToDayPlan(date);toast(reminder?'Reminder deleted':'Item deleted','Undo',()=>{state.oneOffTasks.splice(Math.min(idx,state.oneOffTasks.length),0,removed);save();returnToDayPlan(date);});};
 }
+
+function returnToDayPlan(date){const top=planReturnScroll;openDayAnchorPlanner(date);modalContent.scrollTop=top;}
 
 function resetDateToRoutine(date){
   const key=todayKey(date),rec=ensureRecord(key);createSafetySnapshot(`Before resetting ${key} to routine`);
@@ -2552,4 +2738,266 @@ function resetDateToRoutine(date){
 }
 /* ===== end Reset v3.6.1 swap/order hotfix ===== */
 
+/* ===== v3.6.2 history and recurring-item reliability ===== */
+function validDateKey(value){return /^\d{4}-\d{2}-\d{2}$/.test(String(value||''))&&!Number.isNaN(parseDateKey(value).getTime())&&todayKey(parseDateKey(value))===value;}
+function trackingStartKey(data=state){const explicit=data.settings?.trackingStartDate;if(validDateKey(explicit))return explicit;const created=String(data.meta?.createdAt||todayKey()).slice(0,10);return validDateKey(created)?created:todayKey();}
+function isTrackedDate(date,data=state){const key=typeof date==='string'?date:todayKey(date);return validDateKey(key)&&key>=trackingStartKey(data);}
+function appStartDate(){return parseDateKey(trackingStartKey());}
+function rawItemsForDate(data,date,options={}){
+  const key=todayKey(date),rec=data.records?.[key]||{},dow=date.getDay();
+  const apply=item=>options.ignoreOverrides?item:{...item,...(rec.timeOverrides?.[occurrenceKey(item)]||{})};
+  const recurring=(data.schedule||[]).filter(x=>x.active!==false&&Array.isArray(x.days)&&x.days.includes(dow)&&dateInRange(key,x)).map(x=>apply({...x,source:'schedule',date:key}));
+  const oneOff=(data.oneOffTasks||[]).filter(x=>x.date===key).map(x=>apply({...x,source:'oneoff'}));
+  const ids=new Set([...recurring,...oneOff].map(occurrenceKey));
+  const retained=(rec.retainedItems||[]).filter(x=>!ids.has(occurrenceKey(x))).map(apply);
+  return [...recurring,...oneOff,...retained].sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b)||String(a.title).localeCompare(String(b.title)));
+}
+function itemsForDate(date,options={}){
+  const key=todayKey(date);if(!isTrackedDate(key))return [];
+  const rec=state.records[key],snapshot=rec?.daySnapshot;
+  if(key<todayKey()&&Array.isArray(snapshot?.items)){
+    const excluded=new Set(rec.historyExcluded||[]),list=options.ignoreOverrides?(snapshot.baseItems||snapshot.items):snapshot.items;
+    return list.filter(x=>!excluded.has(occurrenceKey(x))).map(x=>({...x}));
+  }
+  return rawItemsForDate(state,date,options);
+}
+function progressCounts(items,rec={}){
+  const counts={total:0,done:0,mealTotal:0,mealsDone:0,classTotal:0,classDone:0,gymDone:false};
+  for(const item of items){
+    if(!itemIncludedForMode(item,rec.mode||'normal'))continue;
+    const status=rec.itemStatus?.[occurrenceKey(item)]||'pending';if(status==='cancelled')continue;
+    if(itemCountsForProgress(item)){counts.total++;if(status==='done')counts.done++;}
+    if(item.category==='Food'){counts.mealTotal++;if(status==='done')counts.mealsDone++;}
+    if(item.isClass){counts.classTotal++;if(status==='done')counts.classDone++;}
+    if(item.category==='Fitness'&&/gym/i.test(item.title||'')&&status==='done')counts.gymDone=true;
+  }
+  return counts;
+}
+function addCounts(a,b){const result={...a};for(const key of ['total','done','mealTotal','mealsDone','classTotal','classDone'])result[key]=Number(a[key]||0)+Number(b[key]||0);result.gymDone=!!(a.gymDone||b.gymDone);return result;}
+function summarizeHistoricalDay(data,key){
+  const rec=data.records[key],excluded=new Set(rec.historyExcluded||[]);
+  const counts=addCounts(progressCounts(rec.daySnapshot.items.filter(x=>!excluded.has(occurrenceKey(x))),rec),rec.redactedProgress||{});
+  rec.summaryStatusSignature=historicalStatusSignature(rec);
+  rec.completionSummary={...counts,percent:counts.total?Math.round(counts.done/counts.total*100):0,mealsComplete:counts.mealTotal>=3&&counts.mealTotal===counts.mealsDone};
+  return rec.completionSummary;
+}
+function historicalStatusSignature(rec){return JSON.stringify([(rec.daySnapshot?.items||[]).map(x=>[occurrenceKey(x),rec.itemStatus?.[occurrenceKey(x)]||'pending']),rec.historyExcluded||[],rec.redactedProgress||{}]);}
+function refreshHistoricalSummaries(){for(const [key,rec]of Object.entries(state.records))if(key<todayKey()&&isTrackedDate(key)&&rec.daySnapshot&&historicalStatusSignature(rec)!==rec.summaryStatusSignature)summarizeHistoricalDay(state,key);}
+function sealPastDays(data=state){
+  const end=todayKey(addDays(new Date(),-1)),start=trackingStartKey(data);
+  if(start>end||data.meta?.historySealedThrough===end)return;
+  data.meta??={};data.records??={};
+  for(const date of datesBetween(parseDateKey(start),parseDateKey(end))){
+    const key=todayKey(date);let rec=data.records[key];
+    if(!rec)rec=data.records[key]={itemStatus:{},timeOverrides:{},mode:'normal',resetCount:0};
+    if(!Array.isArray(rec.daySnapshot?.items)){
+      rec.daySnapshot={version:1,capturedAt:new Date().toISOString(),items:rawItemsForDate(data,date),baseItems:rawItemsForDate(data,date,{ignoreOverrides:true})};
+      summarizeHistoricalDay(data,key);
+    }else if(!rec.completionSummary)summarizeHistoricalDay(data,key);
+  }
+  data.meta.historySealedThrough=end;
+}
+function dayCompletion(date){
+  const key=todayKey(date);if(!isTrackedDate(key))return 0;
+  const rec=state.records[key];if(key<todayKey()&&rec?.completionSummary)return Number(rec.completionSummary.percent||0);
+  const counts=progressCounts(itemsForDate(date),rec);return counts.total?Math.round(counts.done/counts.total*100):0;
+}
+function requestedOctoberRepair(data){
+  if(data.meta?.october2026RepairApplied)return;
+  const target=data.schedule.find(x=>x.id==='catch_tue'&&x.title==='University catch-up');
+  if(String(data.meta?.createdAt||'').slice(0,10)!=='2026-10-17'||!target||!data.records['2026-10-17']||!data.records['2026-10-19'])return;
+  const alias={catch_mon:'catch_tue',catch_wed:'catch_tue',catch_thu:'catch_tue',catch_fri:'catch_tue',catch_sun:'catch_tue',outside_mon:'outside'};
+  const old=data.schedule.filter(x=>alias[x.id]);
+  target.days=[...new Set([...target.days,...old.filter(x=>alias[x.id]==='catch_tue').flatMap(x=>x.days||[])])].sort();
+  const rank={pending:0,missed:1,dropped:2,deferred:3,cancelled:4,done:5};
+  for(const [key,rec]of Object.entries(data.records)){
+    if(key<'2026-10-17')continue;rec.itemStatus??={};rec.timeOverrides??={};
+    for(const [from,to]of Object.entries(alias)){
+      const a='s:'+from,b='s:'+to,status=rec.itemStatus[a];
+      if(status&&(rank[status]??0)>(rank[rec.itemStatus[b]]??-1))rec.itemStatus[b]=status;
+      if(rec.timeOverrides[a]&&!rec.timeOverrides[b])rec.timeOverrides[b]=rec.timeOverrides[a];
+      delete rec.itemStatus[a];delete rec.timeOverrides[a];
+      if(rec.completedAt?.[a]){rec.completedAt[b]??=rec.completedAt[a];delete rec.completedAt[a];}
+      for(const field of ['manualOrder','unscheduledItems','autoMissedByWake'])if(Array.isArray(rec[field]))rec[field]=[...new Set(rec[field].map(x=>x===a?b:x))];
+      for(const list of [rec.daySnapshot?.items,rec.daySnapshot?.baseItems])if(Array.isArray(list)){
+        const replacement=data.schedule.find(x=>x.id===to),seen=new Set();
+        const mapped=list.map(x=>x.source==='schedule'&&x.id===from?{...x,id:to,title:replacement?.title||x.title}:x).filter(x=>{const k=occurrenceKey(x);if(seen.has(k))return false;seen.add(k);return true;});list.splice(0,list.length,...mapped);
+      }
+    }
+  }
+  data.schedule=data.schedule.filter(x=>!alias[x.id]);
+  data.deletedRecurringIds=[...new Set([...(data.deletedRecurringIds||[]),...Object.keys(alias)])];
+  for(const [key,ids]of Object.entries({'2026-10-17':['catch_tue','sat_reset'],'2026-10-18':['catch_tue'],'2026-10-19':['outside','mobility']})){
+    const rec=data.records[key];if(rec)for(const id of ids)rec.itemStatus['s:'+id]='done';
+  }
+  data.settings.trackingStartDate='2026-10-17';
+  data.meta.october2026RepairApplied=true;
+}
+function migrateState(parsed){
+  if(!parsed||typeof parsed!=='object'||!Array.isArray(parsed.schedule)||!parsed.records||typeof parsed.records!=='object'||Array.isArray(parsed.records)||!parsed.profile||!parsed.money||!parsed.gym)throw new Error('Invalid Reset backup');
+  // Recent versions already have a complete schema. Preserve their unrelated records exactly.
+  const next=Number(parsed.version||0)>=16?deepClone(parsed):migrateLegacyState(deepClone(parsed));
+  next.meta??={};next.settings??={};next.records??={};next.oneOffTasks??=[];next.recurringArchive??=[];next.deletedRecurringIds??=[];
+  next.settings.trackingStartDate=trackingStartKey(next);
+  if(Number(parsed.version||0)<17)requestedOctoberRepair(next);
+  const deleted=new Set(next.deletedRecurringIds);next.schedule=next.schedule.filter(x=>!deleted.has(x.id));
+  next.version=APP_VERSION;delete next.meta.historySealedThrough;sealPastDays(next);return next;
+}
+function dayAttentionDetails(date){if(!isTrackedDate(date)||todayKey(date)<todayKey())return [];return dayAttentionDetailsLive(date);}
+function dayPlanStatus(date){if(!isTrackedDate(date))return {label:'Not tracked',tone:'untracked',icon:'calendar'};return dayPlanStatusLegacy(date);}
+function perfectWeeksCount(){
+  let count=0;for(let start=startOfWeek(appStartDate());todayKey(start)<=todayKey();start=addDays(start,7)){
+    const days=Array.from({length:7},(_,i)=>addDays(start,i)).filter(d=>isTrackedDate(d));
+    if(!days.length||todayKey(addDays(start,6))>todayKey())continue;
+    if(days.every(d=>dayCompletion(d)===100))count++;
+  }return count;
+}
+function mealDayIsComplete(date){const key=todayKey(date),summary=state.records[key]?.completionSummary;if(key<todayKey()&&summary)return !!summary.mealsComplete;return mealDayIsCompleteLive(date);}
+function pastClassOccurrences(dates){
+  const out=[];for(const date of dates){const key=todayKey(date);if(!isTrackedDate(key))continue;const summary=state.records[key]?.completionSummary;
+    if(key<todayKey()&&summary){for(let i=0;i<summary.classTotal;i++)out.push({date,key,item:{id:'daily-class-total',category:'University',isClass:true},done:i<summary.classDone});}
+    else out.push(...pastClassOccurrencesLive([date]));
+  }return out;
+}
+function perfectClassDaysCount(){return dateRange('all').filter(date=>{const classes=pastClassOccurrences([date]);return classes.length&&classes.every(x=>x.done);}).length;}
+function gymSessionDates(){
+  const result=new Set((state.gym.sessions||[]).map(String));
+  for(const log of state.gym.logs||[])if(log.date)result.add(log.date);
+  for(const [key,rec]of Object.entries(state.records)){
+    if(rec.completionSummary){if(rec.completionSummary.gymDone)result.add(key);continue;}
+    if(!Object.values(rec.itemStatus||{}).includes('done'))continue;
+    if(itemsForDate(parseDateKey(key)).some(x=>x.category==='Fitness'&&/gym/i.test(x.title||'')&&getStatus(x,key)==='done'))result.add(key);
+  }
+  for(const key of state.gym.sessionExcluded||[])result.delete(key);return result;
+}
+
+function mutationSnapshot(){return deepClone({schedule:state.schedule,records:state.records,oneOffTasks:state.oneOffTasks,recurringArchive:state.recurringArchive,deletedRecurringIds:state.deletedRecurringIds,profile:state.profile});}
+function dataEqual(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+function undoMutation(before,after){
+  function restore(target,a,b){for(const key of new Set([...Object.keys(a||{}),...Object.keys(b||{})])){
+    if(dataEqual(a?.[key],b?.[key]))continue;
+    if(dataEqual(target[key],b?.[key])){if(a&&Object.hasOwn(a,key))target[key]=deepClone(a[key]);else delete target[key];}
+    else if(target[key]&&a?.[key]&&b?.[key]&&typeof target[key]==='object'&&!Array.isArray(target[key])&&!Array.isArray(a[key])&&!Array.isArray(b[key]))restore(target[key],a[key],b[key]);
+  }}restore(state,before,after);save();render();toast('Change undone');
+}
+function keepCompletedOccurrence(item){const key=todayKey(),rec=state.records[key];if(!rec||rec.itemStatus?.['s:'+item.id]!=='done')return;const current=rawItemsForDate(state,new Date()).find(x=>x.source==='schedule'&&x.id===item.id);if(current){rec.retainedItems??=[];if(!rec.retainedItems.some(x=>occurrenceKey(x)==='s:'+item.id))rec.retainedItems.push(deepClone(current));}}
+function finishRoutineMutation(){const hadParent=routineManagerReturnDay!==null;returnToRoutineManager();if(!hadParent)render();}
+function changeRecurringActive(id,active){
+  const item=state.schedule.find(x=>x.id===id);if(!item||isDayAnchor(item))return toast('Wake and Sleep remain daily anchors');
+  sealPastDays();const before=mutationSnapshot();createSafetySnapshot('Before changing recurring availability');if(!active)keepCompletedOccurrence(item);item.active=active;const after=mutationSnapshot();save();finishRoutineMutation();toast(active?'Recurring item resumed':'Recurring item paused','Undo',()=>undoMutation(before,after));
+}
+function duplicateRecurringItem(id){const item=state.schedule.find(x=>x.id===id);if(!item||isDayAnchor(item))return;openScheduleItemModal(null,{...deepClone(item),title:item.title+' (copy)',fixed:itemIsFixed(item)});}
+function deleteRecurringItem(id,deleteHistory=false){
+  const item=state.schedule.find(x=>x.id===id);if(!item||isDayAnchor(item))return false;
+  sealPastDays();const before=mutationSnapshot();createSafetySnapshot('Before deleting recurring item');const occ='s:'+id;
+  if(!deleteHistory){keepCompletedOccurrence(item);state.recurringArchive??=[];state.recurringArchive=state.recurringArchive.filter(x=>x.id!==id);state.recurringArchive.push({...deepClone(item),removedAt:new Date().toISOString()});
+    for(const [key,rec]of Object.entries(state.records))if(key>=todayKey()){
+      if(rec.itemStatus?.[occ]==='done'){
+        const retained=rawItemsForDate(state,parseDateKey(key)).find(x=>occurrenceKey(x)===occ)||{...deepClone(item),source:'schedule',date:key};
+        rec.retainedItems??=[];if(!rec.retainedItems.some(x=>occurrenceKey(x)===occ))rec.retainedItems.push(retained);
+      }else{if(rec.itemStatus)delete rec.itemStatus[occ];if(rec.timeOverrides)delete rec.timeOverrides[occ];}
+      for(const field of ['manualOrder','unscheduledItems','autoMissedByWake'])if(Array.isArray(rec[field]))rec[field]=rec[field].filter(x=>x!==occ);
+      if(!rec.unscheduledItems?.length)rec.schedulerAttention=[];
+    }
+  }
+  else{
+    const removed=new Set([occ]);let changed=true;
+    while(changed){changed=false;for(const task of state.oneOffTasks)if(removed.has(task.movedFrom?.occurrence)&&!removed.has('o:'+task.id)){removed.add('o:'+task.id);changed=true;}}
+    state.oneOffTasks=state.oneOffTasks.filter(x=>!removed.has('o:'+x.id));
+    for(const [key,rec]of Object.entries(state.records)){
+      if(rec.daySnapshot?.items){const erased=rec.daySnapshot.items.filter(x=>removed.has(occurrenceKey(x))&&!(rec.historyExcluded||[]).includes(occurrenceKey(x)));rec.redactedProgress=addCounts(rec.redactedProgress||{},progressCounts(erased,rec));}
+      for(const field of ['items','baseItems'])if(Array.isArray(rec.daySnapshot?.[field]))rec.daySnapshot[field]=rec.daySnapshot[field].filter(x=>!removed.has(occurrenceKey(x)));
+      if(Array.isArray(rec.retainedItems))rec.retainedItems=rec.retainedItems.filter(x=>!removed.has(occurrenceKey(x)));
+      for(const field of ['itemStatus','timeOverrides','completedAt'])if(rec[field])for(const key of removed)delete rec[field][key];
+      for(const field of ['manualOrder','unscheduledItems','autoMissedByWake','historyExcluded'])if(Array.isArray(rec[field]))rec[field]=rec[field].filter(x=>!removed.has(x));
+      if(rec.lastRebuildSummary){
+        const summary=rec.lastRebuildSummary;summary.moved=summary.moved.filter(x=>!removed.has(x.occurrence));
+        const kept=(summary.unplacedOccurrences||[]).map((x,index)=>({x,index})).filter(row=>!removed.has(row.x));
+        summary.unplaced=kept.map(row=>summary.unplaced[row.index]);summary.unplacedOccurrences=kept.map(row=>row.x);
+      }
+      if(!rec.unscheduledItems?.length)rec.schedulerAttention=[];
+      if(key<todayKey()&&rec.daySnapshot)summarizeHistoricalDay(state,key);
+    }
+    state.recurringArchive=(state.recurringArchive||[]).filter(x=>x.id!==id);
+  }
+  state.schedule=state.schedule.filter(x=>x.id!==id);state.deletedRecurringIds=[...new Set([...(state.deletedRecurringIds||[]),id])];
+  const after=mutationSnapshot();save();finishRoutineMutation();toast(deleteHistory?'Item history removed. Past completion preserved.':'Recurring item removed. History kept.','Undo',()=>undoMutation(before,after));return true;
+}
+function openRecurringDeleteChoice(id){
+  const item=state.schedule.find(x=>x.id===id);if(!item||isDayAnchor(item))return;
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">REMOVE RECURRING ITEM</p><h2>${escapeHTML(item.title)}</h2><p>Choose what to keep. Both options stop future occurrences.</p><button class="secondary full" id="deleteKeepHistory"><b>Keep its history</b><small class="field-help">Past entries and completions remain.</small></button><button class="danger-btn full" id="deleteFullHistory" style="margin-top:10px"><b>Delete its task history too</b><small class="field-help">Remove past task entries. Daily completion totals, achievements and other app logs stay.</small></button><button class="secondary full" id="cancelModal" style="margin-top:10px">Cancel</button>`;
+  openAppSheet(modal);$('#deleteKeepHistory').onclick=()=>deleteRecurringItem(id,false);$('#deleteFullHistory').onclick=()=>deleteRecurringItem(id,true);$('#cancelModal').onclick=()=>openScheduleItemModal(id);sheetScrollState.onDismiss=()=>openScheduleItemModal(id);
+}
+function openScheduleItemModal(id=null,preset={}){
+  openScheduleItemModalBase(id,preset);
+  const existing=id?state.schedule.find(x=>x.id===id):null,saveButton=$('#saveSchedule'),saveOriginal=saveButton.onclick;
+  const error=document.createElement('p');error.id='recurringFormError';error.className='form-error';error.setAttribute('role','alert');modalContent.appendChild(error);
+  const submit=()=>{
+    if(!$('#schedTitle').value.trim()){error.textContent='Enter a title.';return;}
+    const start=$('#schedStart').value,end=$('#schedEnd').value;
+    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||(!isDayAnchor(existing)&&(!/^([01]\d|2[0-3]):[0-5]\d$/.test(end)||minutesFromTime(end)<=minutesFromTime(start)))){error.textContent='Choose a valid start and an end after it.';return;}
+    if(!$$('[data-repeat-day]',modalContent).some(x=>x.checked)){error.textContent='Choose at least one repeat day.';return;}
+    if($('#schedStartDate').value&&$('#schedEndDate').value&&$('#schedEndDate').value<$('#schedStartDate').value){error.textContent='The end date must be on or after the start date.';return;}
+    sealPastDays();const before=mutationSnapshot();saveOriginal();
+    if($('#schedTitle',modalContent))return;
+    const after=mutationSnapshot();toast('Recurring item saved. Past days are protected.','Undo',()=>undoMutation(before,after));
+  };saveButton.onclick=submit;
+  if(existing&&!isDayAnchor(existing)){
+    $('#deleteSchedule').onclick=()=>openRecurringDeleteChoice(id);
+    const controls=document.createElement('div');controls.className='recurring-extra-actions';controls.innerHTML=`<button class="secondary full" id="toggleRecurringActive">${existing.active===false?'Resume':'Pause'} recurring item</button><button class="secondary full" id="duplicateRecurring">Duplicate item</button>`;modalContent.appendChild(controls);
+    $('#toggleRecurringActive').onclick=()=>changeRecurringActive(id,existing.active===false);$('#duplicateRecurring').onclick=()=>duplicateRecurringItem(id);
+  }
+}
+var routineAllView={open:false,query:'',filter:'all',sort:'name'};
+function attachAllRecurringItems(selectedDay){
+  const details=document.createElement('details');details.id='allRecurringItems';details.className='all-recurring';details.open=routineAllView.open;
+  details.innerHTML=`<summary>All recurring items <span>${state.schedule.length}</span></summary><div class="all-recurring-controls"><input class="input" id="recurringSearch" type="search" aria-label="Search all recurring items" placeholder="Search every recurring item"><div class="form-grid"><select id="recurringFilter" aria-label="Filter recurring items"><option value="all">All items</option><option value="active">Active</option><option value="paused">Paused</option><option value="fixed">Fixed / anchors</option><option value="flexible">Flexible</option></select><select id="recurringSort" aria-label="Sort recurring items"><option value="name">By name</option><option value="time">By time</option></select></div><div id="allRecurringResults"></div><button class="primary full" id="allRecurringAdd">Add recurring item</button></div>`;modalContent.appendChild(details);
+  const search=$('#recurringSearch'),filter=$('#recurringFilter'),sort=$('#recurringSort');search.value=routineAllView.query;filter.value=routineAllView.filter;sort.value=routineAllView.sort;
+  const remember=()=>{routineAllView.open=true;routineManagerReturnDay=selectedDay;routineManagerReturnScroll=modalContent.scrollTop;};
+  const draw=()=>{const query=search.value.trim().toLowerCase();let list=state.schedule.filter(x=>(!query||[x.title,x.category,x.detail].join(' ').toLowerCase().includes(query))&&(filter.value==='all'||(filter.value==='active'&&x.active!==false)||(filter.value==='paused'&&x.active===false)||(filter.value==='fixed'&&itemIsFixed(x))||(filter.value==='flexible'&&!itemIsFixed(x))));
+    list.sort(sort.value==='time'?(a,b)=>minutesFromTime(a.start)-minutesFromTime(b.start):(a,b)=>a.title.localeCompare(b.title));
+    $('#allRecurringResults').innerHTML=list.length?list.map(item=>`<div class="all-recurring-row"><button type="button" data-all-edit="${escapeAttr(item.id)}"><b>${escapeHTML(item.title)}</b><small>${escapeHTML(timeWindow(item))} · ${(item.days||[]).map(dayShort).join(', ')} · ${escapeHTML(item.category||'Routine')} · ${item.active===false?'Paused':itemIsFixed(item)?'Fixed':'Flexible'}</small></button>${!isDayAnchor(item)?`<div><button class="text-button" data-all-toggle="${escapeAttr(item.id)}">${item.active===false?'Resume':'Pause'}</button><button class="text-button" data-all-copy="${escapeAttr(item.id)}">Duplicate</button><button class="text-button danger-text" data-all-delete="${escapeAttr(item.id)}">Remove</button></div>`:''}</div>`).join(''):'<p class="empty-state">No matching recurring items.</p>';
+    $$('[data-all-edit]',details).forEach(b=>b.onclick=()=>{remember();openScheduleItemModal(b.dataset.allEdit);});
+    $$('[data-all-toggle]',details).forEach(b=>b.onclick=()=>{remember();const item=state.schedule.find(x=>x.id===b.dataset.allToggle);changeRecurringActive(item.id,item.active===false);});
+    $$('[data-all-copy]',details).forEach(b=>b.onclick=()=>{remember();duplicateRecurringItem(b.dataset.allCopy);});
+    $$('[data-all-delete]',details).forEach(b=>b.onclick=()=>{remember();openRecurringDeleteChoice(b.dataset.allDelete);});
+  };
+  const refresh=()=>{routineAllView.query=search.value;routineAllView.filter=filter.value;routineAllView.sort=sort.value;draw();};search.oninput=refresh;filter.onchange=refresh;sort.onchange=refresh;details.addEventListener('toggle',()=>{routineAllView.open=details.open;});$('#allRecurringAdd').onclick=()=>{remember();openScheduleItemModal(null,{days:[selectedDay]});};draw();
+}
+function openHistoryDayEditor(date){
+  const key=todayKey(date);if(!isTrackedDate(key)||key>=todayKey())return;
+  sealPastDays();const rec=ensureRecord(key),all=rec.daySnapshot.items;
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">CORRECT PAST DAY</p><h2>${escapeHTML(formatDateShort(date))}</h2><p>Correct only this date. Exclude items that did not belong to this day. Actual sleep/wake logs and other app records stay unchanged.</p><div class="history-correction-list">${all.map(item=>{const value=(rec.historyExcluded||[]).includes(occurrenceKey(item))?'exclude':getStatus(item,key);return `<label><b>${escapeHTML(item.title)}</b><small>${escapeHTML(timeWindow(item))}</small><select data-history-status="${escapeAttr(occurrenceKey(item))}">${[['done','Complete'],['pending','Incomplete'],['missed','Missed'],['cancelled','Cancelled'],['deferred','Moved to another day'],['dropped','Dropped'],['exclude','Did not belong to this day']].map(([id,label])=>`<option value="${id}" ${id===value?'selected':''}>${label}</option>`).join('')}</select></label>`;}).join('')}</div><button class="primary full" id="saveHistoryCorrection">Save corrections</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  openAppSheet(modal);$('#saveHistoryCorrection').onclick=()=>{const before=deepClone(rec);createSafetySnapshot('Before correcting past day');rec.historyExcluded=[];$$('[data-history-status]',modalContent).forEach(select=>{const occ=select.dataset.historyStatus;if(select.value==='exclude')rec.historyExcluded.push(occ);else if(select.value==='pending')delete rec.itemStatus[occ];else rec.itemStatus[occ]=select.value;});rec.historyCorrectedAt=new Date().toISOString();summarizeHistoricalDay(state,key);save();closeAppSheet(modal);renderWeek();toast('Past day corrected','Undo',()=>restoreDaySnapshot(key,before));};$('#cancelModal').onclick=()=>closeAppSheet(modal);
+}
+function renderWeek(){
+  renderWeekBase();const key=state.settings.selectedWeekDate||todayKey(),date=parseDateKey(key);
+  $$('[data-day-key]').forEach(button=>{if(!isTrackedDate(button.dataset.dayKey))button.classList.add('not-tracked');});
+  const trackedDays=Array.from({length:7},(_,i)=>addDays(startOfWeek(date),i)).filter(d=>isTrackedDate(d));
+  const count=$('[data-week-summary="complete"] b');if(count)count.textContent=`${trackedDays.filter(d=>todayKey(d)<=todayKey()&&dayCompletion(d)===100).length} / ${trackedDays.length}`;
+  if(!isTrackedDate(key)){const selected=$('.week-selected-card');if(selected)selected.innerHTML=`<div class="week-selected-head"><div><small>${dayLong(date.getDay()).toUpperCase()}</small><h2>${formatDateShort(date)}</h2></div><span class="week-status-pill untracked">Not tracked</span></div><p class="muted">Tracking starts on ${formatDateShort(appStartDate())} ${appStartDate().getFullYear()}.</p>`;}
+  else if(key<todayKey()){
+    const selected=$('.week-selected-card'),button=document.createElement('button');button.id='correctPastDay';button.className='secondary full';button.textContent='Correct this past day';button.onclick=()=>openHistoryDayEditor(date);selected.appendChild(button);
+  }
+  const summary=state.records[key]?.lastRebuildSummary;if(summary){const selected=$('.week-selected-card'),details=document.createElement('details');details.className='rebuild-results';details.innerHTML=`<summary>Last rebuild: ${summary.moved.length} moved · ${summary.unplaced.length} could not fit</summary><p>${summary.fixed} fixed events kept their times.</p>${summary.moved.map(x=>`<div>${escapeHTML(x.title)} · ${escapeHTML(formatClock(x.start))}</div>`).join('')}${summary.unplaced.map(x=>`<p class="form-error">${escapeHTML(x)} could not fit before sleep.</p>`).join('')}`;selected.appendChild(details);}
+}
+function recordRebuildSummary(plan){const rec=ensureRecord(plan.key);rec.lastRebuildSummary={at:new Date().toISOString(),moved:plan.moved.map(x=>({occurrence:occurrenceKey(x),title:x.title,start:x.start})),unplaced:plan.unplaced.map(x=>x.title),unplacedOccurrences:plan.unplaced.map(occurrenceKey),fixed:itemsForDate(parseDateKey(plan.key)).filter(x=>!isDayAnchor(x)&&itemIsFixed(x)&&getStatus(x,plan.key)!=='cancelled').length};}
+function setStatus(item,key,status){
+  const rec=ensureRecord(key),occ=occurrenceKey(item);
+  if(status==='pending'){delete rec.itemStatus[occ];rec.finishCelebrated='';if(rec.completedAt)delete rec.completedAt[occ];}
+  else rec.itemStatus[occ]=status;
+  if(status==='done'){
+    rec.completedAt??={};rec.completedAt[occ]??=new Date().toISOString();
+    rec.unscheduledItems=(rec.unscheduledItems||[]).filter(x=>x!==occ);
+    if(!rec.unscheduledItems.length)rec.schedulerAttention=[];
+    if(item.category==='Fitness'&&/gym/i.test(item.title||''))state.gym.sessionExcluded=(state.gym.sessionExcluded||[]).filter(k=>k!==key);
+  }else if(rec.completedAt)delete rec.completedAt[occ];
+  if(key<todayKey()&&rec.daySnapshot)summarizeHistoricalDay(state,key);
+  save();
+}
+function daySnapshot(key){const snapshot=deepClone(ensureRecord(key));Object.defineProperty(snapshot,'__gymExcluded',{value:(state.gym.sessionExcluded||[]).includes(key),enumerable:false});return snapshot;}
+function restoreDaySnapshot(key,snapshot){state.records[key]=deepClone(snapshot);if(Object.hasOwn(snapshot,'__gymExcluded')){state.gym.sessionExcluded=(state.gym.sessionExcluded||[]).filter(x=>x!==key);if(snapshot.__gymExcluded)state.gym.sessionExcluded.push(key);}save();render();}
+/* ===== End v3.6.2 reliability ===== */
+
+initializeSheetScrolling();
 initializeApp();

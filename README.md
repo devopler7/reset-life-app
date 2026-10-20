@@ -1,23 +1,32 @@
-# Reset v3.6.1 — Personal Edition
+# Reset v3.6.2 - Personal Edition
 
-Reset is a local-first personal dashboard built for iPhone Home Screen use. Personal records stay on the device unless you manually export a backup.
+## Uploading the update
 
-## v3.6.1 hotfix
+Export a fresh JSON backup from the installed app first. Upload the CONTENTS of life-reset-app, including the icons folder, to the root of the existing GitHub Pages repository. Wait for deployment, fully close and reopen Reset, and confirm Settings shows v3.6.2. If the previous version is still shown, refresh the Pages URL in Safari once and reopen the Home Screen app.
 
-- **Swap now means swap positions, not raw clock times.** Different-duration tasks are repacked around the swap instead of being allowed to overlap nearby tasks.
-- The order you choose is stored as a **one-day manual order** and survives **Rebuild + keep my moves**.
-- Rebuilding the day no longer silently puts `Shower + grooming` back ahead of a task you deliberately swapped it with once the morning sequence has already moved into the day.
-- Fixed events still protect their real time, while fixed events cancelled for the day do not block the repack.
-- Natural hard ordering is still protected. Reset refuses a swap that would deliberately put Lunch before Breakfast, Dinner before Lunch, or Shower after Breakfast while both morning items are still pending.
-- Resetting the day to routine or choosing **Reset my moves + rebuild** clears the manual swap order.
-- v3.6 reminders, intentional overlaps, editable Plan Day, and all v3.5 features are retained.
+The app reads the existing local data. No backup import is required for the upgrade. Your JSON backup is not included in this public site package.
 
-## Storage and privacy
+## Included changes
 
-Reset has no account, cloud database, analytics, AI service or external personal-data API. The working state is stored locally with an IndexedDB browser copy plus optional manual JSON export/import and local recovery snapshots.
+- Past days keep independent task snapshots and saved completion summaries. Later recurring-item changes no longer rewrite those days.
+- For the matching existing 17 October setup, the requested 17-19 October corrections run once during migration. University catch-up and Room + personal reset on 17 October, University catch-up on 18 October, and Outside walk and Mobility exercises on 19 October are completed. Old catch-up and walk variants are consolidated into their replacements with completed statuses and explicit time changes carried across.
+- The existing setup starts tracking on 17 October 2026. Earlier calendar cells are Not tracked and do not count toward routine completion or missed days. Older unrelated logs remain stored.
+- Past dates offer Correct this past day. Changes affect that date's task statuses or task membership without altering actual sleep/wake timestamps or unrelated logs.
+- Manage routine retains the day-specific view and adds a collapsed All recurring items list with search, filters, sorting, editing, adding, duplication, pause/resume and removal.
+- Removing a recurring item offers Keep its history or Delete its task history too. Full task-history removal retains anonymous daily progress totals, so past percentages and aggregate achievements remain. Other app logs, including exercise, spending and sleep logs, are retained. Wake and Sleep remain protected anchors.
+- Next-week navigation selects Monday. Previous-week navigation selects Sunday. Arrows and swipes share this behaviour.
+- Page and panel scrolling have a shared lock, return positions, visible-viewport sizing and cancellation lifecycle. The workout picker uses one vertical panel scroller. A global touchend cancellation was removed.
+- Wake/Sleep recurring start edits update their end time automatically. Invalid form entries remain visible with an inline explanation. Empty fixed-event messages show the day correctly.
+- Early-completed tasks remain completed and retain their times during rebuilds. Completed fixed occurrences no longer reserve future rebuild slots. Rebuild summaries explain moved tasks, fixed events and tasks that did not fit.
+- Undo for recurring changes restores affected fields while retaining unrelated subsequent changes. Deleted templates are not automatically re-added on reload.
+- Startup can recover from a newer automatic copy, and primary-storage failures are surfaced. New worker versions wait for a reload action instead of force-navigating an open editor.
 
-Export a JSON backup before major updates.
+## Data protection and testing
 
-## Updating
+The existing data schema is upgraded to version 17. A pre-migration safety snapshot is retained locally when possible. The supplied backup was used only as a private test fixture. Money, gym, health, car, courses, uni tasks, projects, weekly reviews, profile data, existing one-off tasks and actual sleep/wake timestamps were compared against it and preserved.
 
-Upload the contents of this folder to the **root** of the existing GitHub Pages repository. Wait for the newest Pages deployment to finish, then fully close and reopen the Home Screen app. Settings should show **v3.6.1**.
+65 local UI/state assertions, 22 reliability groups, 7 startup/storage groups, 48 scheduling combinations and 36 swap cases passed. These use a simulated DOM and VM, not a live browser. Live layout, wheel/touch scrolling, physical iPhone keyboard behaviour and Home Screen mode remain unverified because browser preview access was blocked. See TEST_REPORT.txt.
+
+## Privacy
+
+Reset remains local-first, without accounts, analytics or a cloud database. A public GitHub repository receives app code only. Keep JSON backups private.

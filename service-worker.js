@@ -1,12 +1,11 @@
-const CACHE = 'reset-life-v3.6.1';
+const CACHE = 'reset-life-v3.6.2-final';
 const ASSETS = [
-  './', './index.html', './styles.css?v=3.6.1', './app.js?v=3.6.1', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=3.6.2-final', './app.js?v=3.6.2-final', './manifest.webmanifest',
   './VERSION.txt', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
@@ -14,8 +13,6 @@ self.addEventListener('activate', event => {
     const keys = await caches.keys();
     await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
     await self.clients.claim();
-    const windows = await self.clients.matchAll({type:'window', includeUncontrolled:true});
-    await Promise.all(windows.map(client => client.navigate(client.url).catch(() => null)));
   })());
 });
 
