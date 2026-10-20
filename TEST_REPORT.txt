@@ -1,67 +1,88 @@
-RESET v3.4.0 TEST REPORT
+RESET v3.5.0 TEST REPORT
+Date: 20 October 2026
 
-Scope
------
-This release was tested as an update from the previous local-state shape and as a clean state. Testing focused on the scheduler rewrite, Wake/Sleep separation, Week/Plan Day, cancellations/restores, meal ordering, manual moves, Gym polish, Money allocation states, Sleep duration handling, responsive layouts, migration and large local histories.
+SCOPE
+This release was tested as a browser-based PWA build. Automated browser testing used headless Chromium with mobile-sized viewports. Adelaide timezone was also used for sleep/DST checks. These tests do not claim to be a physical iPhone/Safari device test.
 
-Final deterministic browser-simulation suite
--------------------------------------------
-45 / 45 checks passed.
+DETERMINISTIC BROWSER REGRESSION SUITE
+53 / 53 checks passed.
 
-The checks include:
-- v3.4.0/version wiring and English-only UI
-- reported 11:00 AM Wake rebuild scenario
-- Wake remains the first flexible-day boundary
-- 4:00 AM rebuild does not silently turn Wake into the current time
-- actual early Wake moves the remaining morning while planned Wake stays unchanged
-- unmarking Wake restores the planned Wake time
-- after-midnight Sleep remains attached to the intended night
-- actual Sleep does not overwrite planned Sleep
-- cancelled fixed events stay cancelled during rebuild and restore to their exact fixed time
-- Breakfast -> Lunch -> Dinner ordering and spacing
-- impossible-day behavior produces Needs attention instead of silently dropping tasks
-- repeated rebuild stability, including manual-move collision cases
-- Adelaide DST-boundary sleep-duration calculation
-- state migration and data preservation
-- Money allocation color thresholds
-- Gym workout-picker scroll retention and numeric Sets/Reps input
-- Week redesign and Plan Day structure
-- interactive Week summary cards
-- update-ready control/version display
-- no horizontal overflow at 320, 375, 390 and 430 px widths
-- no runtime JavaScript errors during the suite
+The suite covered:
+- clean boot and v3.5.0 version wiring
+- no runtime JavaScript errors during the interaction suite
+- planned Wake remaining separate from an actual 11:40 AM Wake
+- uncheck/recheck restoring the previous actual Wake rather than using the later current time
+- explicit one-day Wake override remaining independent from actual Wake
+- legacy v3.3/v3.4 actual-as-planned Wake migration repair
+- genuine non-matching planned Wake overrides preserved during migration
+- planned Sleep remaining separate from actual after-midnight sleep logging
+- Sleep completion state changes not silently rewriting the planned anchor
+- intentional fixed-event cancellation not creating a Needs attention problem
+- fixed-event restoration returning to the original fixed time
+- Week attention summary counting days, not raw problem/task count
+- late-wake hard boundary behavior
+- Breakfast -> Lunch -> Dinner order and minimum spacing
+- fixed events remaining at their original times during rebuild
+- repeated rebuild idempotency
+- Gym selector scroll-position retention at the bottom of the list
+- two consecutive bottom-of-list Gym selections without scroll jump
+- fast in-place Gym selection handler
+- numeric-only Sets and Reps inputs
+- redesigned Weekly Routine day tabs, fixed/flexible sections and Wake/Sleep controls
+- Data Health detection/repair for duplicate/invalid gym data
+- local safety snapshot creation
+- Plan Day note field
+- large-history render smoke tests
+- responsive horizontal-overflow checks at 320, 375, 390 and 430 px for Week, Weekly Routine and Workout Builder
+- Settings Data Health and recovery controls
 
-Randomized scheduler stress
----------------------------
-Four final randomized passes completed successfully:
-- 6,000 generated day scenarios
-- 12,000 consecutive rebuild operations
-- randomized Wake/Sleep overrides, cancellations and manual moves
-- 0 scheduler invariant failures
-- 0 rebuild-stability failures
-- 0 runtime JavaScript errors
+RANDOMIZED SCHEDULER STRESS
+5,000 randomized future-day scenarios were generated.
+10,000 rebuild calculations were compared for repeatability.
+1,512 randomized intentional-cancellation cases were included.
+0 scheduler invariant failures were found in the final run.
 
-Large-history synthetic load
-----------------------------
-The app was also rendered with synthetic long-term data including:
-- 6,000 Money transactions
-- 3,500 Gym logs
-- 700 body-weight logs
-- about 500 Sleep records
+Stress invariants included:
+- flexible tasks do not cross the effective Wake boundary
+- flexible tasks do not run past planned Sleep
+- fixed non-anchor events do not move
+- intentional cancellations do not become attention errors
+- Breakfast, Lunch and Dinner remain ordered and sensibly spaced
+- repeating a rebuild with no new changes produces the same overrides
 
-All major sections rendered without runtime JavaScript errors in the browser simulation.
+A randomized test initially exposed three cases where an old manual Dinner move could violate meal order. The scheduler was changed so manual choices are respected unless they break a semantic routine rule, then the entire 5,000-scenario stress run was repeated with 0 failures.
 
-Migration and storage
----------------------
-Migration checks preserved representative Money, Gym, Project and Wake data while upgrading to app state version 13. The removed language preference is discarded. Local-first storage and the IndexedDB backup path remain in place.
+INTERACTION / PERFORMANCE STRESS
+- 103 rapid cross-page/modal interaction actions: 0 JavaScript errors.
+- Synthetic large-data set: 10,000 money transactions, 6,000 gym logs and 1,500 weight logs.
+- Final Chromium render sample maximums in that run:
+  Money 14.6 ms
+  Gym 3.9 ms
+  Health 280.3 ms
+  Week 100.2 ms
+  Today 52.9 ms
 
-Static checks
--------------
-- app.js syntax validation passed
-- cache/app version wiring checked for v3.4.0
-- responsive mobile layouts checked in Chromium mobile-size simulation, including 52 cross-section/modal width checks
-- English-only release files; the removed language UI/settings are absent
+These timings are synthetic browser measurements on the test environment, not promises of exact iPhone performance.
 
-Important limitation
---------------------
-These are automated/browser-simulation tests, not physical iPhone Safari/Home Screen hardware tests. The real iPhone remains the final smoke test for iOS-specific touch, keyboard, Home Screen caching and standalone-PWA behavior.
+ADELAIDE TIME / DST
+A browser context using Australia/Adelaide verified:
+- DST-aware elapsed-duration calculation across the October clock change
+- after-midnight Sleep remains associated with the previous night
+- planned Sleep/Wake anchors remain separate from actual logged times
+- no runtime errors in the timezone test
+
+MIGRATION / RECOVERY
+Representative Money, Gym, Project and Car data were preserved while upgrading an old v3.4-style state to app-state version 14.
+A pre-migration local recovery snapshot was also verified.
+The removed language preference does not return after migration.
+
+STATIC / PWA CHECKS
+- app.js syntax: passed
+- service-worker.js syntax: passed
+- manifest JSON: valid
+- icon files verified at 180x180, 192x192 and 512x512
+- runtime files use the v3.5.0 cache/version wiring
+- no old v3.4/v3.3 runtime version strings remain in deployable runtime files
+
+LIMITATION
+A physical iPhone Home Screen install, real iOS keyboard behavior and Safari service-worker lifecycle cannot be perfectly reproduced in this environment. The installed iPhone app should therefore receive a short real-device smoke test after deployment.

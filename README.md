@@ -1,31 +1,31 @@
-# Reset v3.4.0 — Personal Edition
+# Reset v3.5.0 — Personal Edition
 
-Reset is a local-first personal life dashboard designed primarily for iPhone Home Screen use. It keeps Today, Week, University, Money, Gym, Health, Sleep, Car, Projects and Progress in one dark OLED-friendly app.
+Reset is a local-first personal dashboard built for iPhone Home Screen use. It keeps Today, Week, University, Money, Gym, Health, Sleep, Car, Projects and Progress in one lightweight PWA. Personal records stay in the browser on the device unless you manually export a backup.
 
-## v3.4 highlights
+## v3.5 highlights
 
-- Rebuilt day scheduler with Wake and Sleep as hard anchors.
-- Planned Wake/Sleep and actual Wake/Sleep are stored separately.
-- Early and late waking can intelligently rebuild the remaining flexible day without changing the planned anchor.
-- Rebuild keeps fixed classes/appointments at their real times, preserves cancellations, keeps meals in order and surfaces impossible days as Needs attention instead of creating nonsense times.
-- Missed & Cancelled items now live in a compact collapsible section with restore behavior.
-- Manual moves remain stable across repeated rebuilds, and Rebuild provides Undo.
-- Week redesigned around the new Week and Plan Day experience: swipeable weeks, day status, previews, day-specific Wake/Sleep overrides, one-off tasks, quick day status, copy setup, rebuild and reset-to-routine tools.
-- More consistent SVG icon system across the app. The main navigation keeps the established icons with the updated graduation-cap Uni icon.
-- Gym polish: exercise selection no longer jumps the workout picker back to the top, Sets/Reps use numeric-only entry, and the redundant workout guide was removed.
-- Money remains intentionally unchanged except for smarter allocation feedback: blue normally, amber near the limit, red at/over budget.
-- Sleep history uses stored local timezone offsets for more stable duration calculations across DST/timezone changes.
-- Automatic midnight refresh keeps Today/Week current when the app remains open overnight.
-- English-only personal build.
-- Subtle update-ready checking in Settings.
-- Quiet local safety snapshots before important rebuild/reset/import operations.
+- Wake and Sleep now keep **planned times and actual times separate**. Unchecking and rechecking Wake restores the last actual wake time instead of replacing it with the current clock.
+- Legacy v3.3/v3.4 Wake/Sleep records that likely mixed actual and planned anchors are repaired during migration.
+- The scheduler has stricter hard-anchor, fixed-event, meal-order and spacing rules. Repeated rebuilds are designed to be stable.
+- Week summary cards now use one unit consistently: **days complete, days needing attention and planned days**.
+- Intentional cancellations are informational and do not create a Needs attention state.
+- Needs attention now explains the actual scheduling problem.
+- Weekly Routine / Manage Routine has a redesigned day-by-day editor with Wake/Sleep anchors plus separate fixed and flexible sections.
+- Plan Day supports a short optional day note.
+- Gym exercise selection updates in place without re-rendering or jumping the list, and Sets/Reps use numeric-only inputs.
+- Normal saves are batched briefly to reduce unnecessary synchronous storage work.
+- Consequential actions have more Undo coverage, including task moves and money-plan changes.
+- Settings includes **Check Reset data** and local recovery snapshots.
+- Safety snapshots are created before imports, migrations, routine changes, day resets/rebuilds and other risky repairs.
+- Fast repeated taps on the same control are guarded against accidental double execution.
+- Arabic/localization UI has been removed from this personal build. The app is English-only.
 
 ## Storage and privacy
 
-Reset has no account, cloud database, analytics service, AI service or external personal-data backend. Your personal records stay in this browser/device storage. Reset also keeps a second local IndexedDB copy and supports manual JSON export/import from Settings.
+Reset has no account, cloud database, analytics, AI service or external personal-data API. The working state is stored locally with a second IndexedDB browser copy plus optional manual JSON export/import. A small rolling local recovery snapshot system keeps up to three safety points for risky operations.
 
-Clearing website data or deleting the web app can still remove local browser storage, so keep periodic exported backups.
+Clearing website data or deleting browser/app storage can still remove local copies, so export a JSON backup before major updates.
 
 ## Updating
 
-Back up from Settings first. Upload the contents of this folder to the root of the existing GitHub Pages repository and wait for the newest Pages deployment to finish. Then fully close and reopen the Home Screen app. If an older cached version remains, refresh the GitHub Pages URL once in Safari and reopen Reset.
+Upload the contents of this folder to the **root** of the existing GitHub Pages repository. Wait for the newest Pages deployment to finish, then fully close and reopen the Home Screen app. Settings should show **v3.5.0**.

@@ -1,15 +1,16 @@
-RESET v3.4.0 — PERSONAL EDITION
+RESET v3.5.0 — PERSONAL EDITION
 
-Before updating:
-1. Open Reset -> Settings -> Export backup.
+UPDATE CHECKLIST
+1. Open your current Reset app and export a JSON backup from Settings.
+2. Unzip this package.
+3. Open the life-reset-app folder.
+4. Upload EVERYTHING INSIDE that folder to the ROOT of your existing GitHub repo.
+5. Commit the upload and wait for the newest GitHub Pages deployment to show a green check.
+6. Open the GitHub Pages site once in Safari if needed, then fully close and reopen the Home Screen app.
+7. Open Settings and confirm App version says v3.5.0.
 
-Update GitHub Pages:
-2. Open your reset-life-app GitHub repository.
-3. Upload ALL files/folders inside this life-reset-app folder to the repository root.
-4. Commit the upload and wait until the newest GitHub Pages deployment has a green check.
-5. Fully close the Reset Home Screen app and reopen it.
-6. Open Settings and confirm App version says v3.4.0.
-
-If Safari/Home Screen still shows an older version, refresh the GitHub Pages website once in Safari, then fully close and reopen Reset.
-
-Your existing local Reset data is migrated automatically. Keep the exported JSON backup until you have checked the update.
+IMPORTANT
+- Do not upload the outer ZIP itself as the website.
+- index.html, app.js, styles.css, service-worker.js and manifest.webmanifest must remain at repo root.
+- Keep the icons folder at repo root too.
+- Your existing local data should migrate automatically, but the exported JSON backup is the safest fallback.

@@ -976,3 +976,143 @@ h3{font-size:16px;font-weight:720;}
 .week-summary-v34 button{position:relative;padding-right:24px}
 .week-summary-v34 button>i{position:absolute;right:7px;top:50%;transform:translateY(-50%);display:grid;place-items:center;color:#636366;font-style:normal}
 .week-summary-v34 button>i .ui-icon{width:11px;height:11px}
+
+/* =========================================================
+   Reset 3.5 — stability, routine polish and fast interactions
+   ========================================================= */
+
+/* Keep high-frequency workout selection cheap and visually stable. */
+.exercise-pick-grid{
+  contain:layout paint style;
+  overscroll-behavior:contain;
+  overflow-anchor:none;
+  scroll-behavior:auto;
+}
+button.exercise-pick{
+  width:100%;
+  color:inherit;
+  font:inherit;
+  text-align:left;
+  appearance:none;
+  -webkit-appearance:none;
+  touch-action:manipulation;
+}
+button.exercise-pick:active{transform:none;filter:brightness(1.06)}
+.exercise-pick-check{font-size:15px;font-weight:900;line-height:1}
+
+/* Week summary uses one unit everywhere: days. */
+.week-summary-v35 small{line-height:1.25}
+.week-attention-card{
+  margin:10px 0 12px;
+  padding:12px 13px;
+  border:1px solid rgba(255,159,10,.28);
+  background:rgba(255,159,10,.07);
+  border-radius:15px;
+}
+.week-attention-card>div{display:flex;align-items:center;gap:8px;color:#ffb340;font-size:10px;font-weight:850}
+.week-attention-card .ui-icon{width:15px;height:15px;flex:0 0 15px}
+.week-attention-card ul{margin:8px 0 0;padding-left:18px;color:#b8b8bd;font-size:9px;line-height:1.55}
+.week-cancelled-note{display:flex;align-items:center;gap:7px;margin:8px 0;color:#8e8e93;font-size:9px}
+.week-cancelled-note .ui-icon{width:14px;height:14px;color:#ff9f0a}
+.week-day-note{margin:6px 0 10px;padding:9px 11px;border-radius:12px;background:#15171a;border:1px solid #292b30;color:#b8b8bd;font-size:9px;line-height:1.45}
+
+/* Plan Day note belongs to the day without becoming a journal. */
+.day-note-field{margin:4px 0 12px}
+.day-note-field input{font-size:12px}
+
+/* Weekly Routine: purpose-built recurring-plan editor. */
+.routine-v35-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.routine-v35-head h2{margin-top:2px}
+.routine-v35-head .icon-button{flex:0 0 auto}
+.routine-day-tabs{
+  display:grid;
+  grid-template-columns:repeat(7,minmax(42px,1fr));
+  gap:6px;
+  overflow-x:auto;
+  padding:2px 0 10px;
+  scrollbar-width:none;
+}
+.routine-day-tabs::-webkit-scrollbar{display:none}
+.routine-day-tab{
+  min-width:42px;
+  min-height:55px;
+  border:1px solid #2d2f34;
+  background:#111317;
+  border-radius:14px;
+  color:#8e8e93;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  gap:2px;
+  padding:7px 4px;
+  touch-action:manipulation;
+}
+.routine-day-tab small{font-size:8px;font-weight:850;letter-spacing:.06em}
+.routine-day-tab b{font-size:12px;color:#d1d1d6}
+.routine-day-tab.active{background:#0c2238;border-color:#245d8e;color:#64b5ff;box-shadow:inset 0 0 0 1px rgba(10,132,255,.10)}
+.routine-day-tab.active b{color:#fff}
+.routine-v35-summary{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
+.routine-anchor-card{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;border:1px solid #2c2d32;background:#111317;border-radius:16px;padding:12px}
+.routine-anchor-icon{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:#142239;color:#64b5ff}
+.routine-anchor-card.sleep .routine-anchor-icon{background:#241b35;color:#bf5af2}
+.routine-anchor-icon .ui-icon{width:17px;height:17px}
+.routine-anchor-card small,.routine-anchor-card b{display:block}
+.routine-anchor-card small{font-size:8px;color:#8e8e93}
+.routine-anchor-card b{font-size:14px;margin-top:2px}
+.routine-counts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.routine-counts>div{border-radius:13px;background:#14161a;border:1px solid #292b30;padding:9px 11px}
+.routine-counts small,.routine-counts b{display:block}.routine-counts small{font-size:8px;color:#8e8e93}.routine-counts b{font-size:13px;margin-top:3px}
+.routine-v35-section{margin-top:12px}
+.routine-v35-section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;padding:0 2px}
+.routine-v35-section-head span{display:flex;align-items:center;gap:7px;font-size:10px;font-weight:850;color:#d1d1d6}
+.routine-v35-section-head .ui-icon{width:14px;height:14px;color:#8e8e93}
+.routine-v35-section-head small{font-size:8px;color:#6e6e73}
+.routine-v35-list{border:1px solid #2a2b30;border-radius:16px;background:#101215;overflow:hidden}
+.routine-v35-item{width:100%;display:grid;grid-template-columns:34px minmax(0,1fr) 16px;align-items:center;gap:10px;padding:11px 12px;border:0;border-bottom:1px solid #24262a;background:transparent;color:inherit;text-align:left;touch-action:manipulation}
+.routine-v35-item:last-child{border-bottom:0}
+.routine-v35-item:active{background:#16191d}
+.routine-v35-item .task-symbol{width:34px;height:34px;flex-basis:34px}
+.routine-v35-copy{min-width:0}.routine-v35-copy b,.routine-v35-copy small{display:block}.routine-v35-copy b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.routine-v35-copy small{font-size:8px;color:#8e8e93;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.routine-v35-chevron{color:#6e6e73}.routine-v35-chevron .ui-icon{width:14px;height:14px}
+.routine-paused{opacity:.62}
+.routine-add-v35{margin-top:14px;min-height:46px}
+.routine-empty{padding:15px;text-align:center;color:#6e6e73;font-size:9px}
+
+/* Data-health and recovery surfaces stay calm unless action is needed. */
+.health-check-list{display:grid;gap:7px;margin:14px 0;padding:11px;border:1px solid #3c311f;background:#17130d;border-radius:15px}
+.health-check-list>div{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start;font-size:9px;color:#d1d1d6;line-height:1.45}
+.health-check-list .ui-icon{width:15px;height:15px;color:#ff9f0a;margin-top:1px}
+.health-check-list>small{font-size:8px;color:#8e8e93;padding-left:26px}
+.health-ok-card{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;margin:14px 0;padding:12px;border:1px solid rgba(48,209,88,.24);background:rgba(48,209,88,.07);border-radius:15px}
+.health-ok-card>.ui-icon{width:22px;height:22px;color:#30d158}
+.health-ok-card b,.health-ok-card small{display:block}.health-ok-card b{font-size:11px}.health-ok-card small{font-size:8px;color:#8e8e93;margin-top:2px}
+
+/* App-wide input and interaction polish. */
+button,.check,.day-toggle,.switch-row{touch-action:manipulation}
+.primary,.secondary,.danger-btn{min-height:44px}
+.icon-button,.round-icon{min-width:42px;min-height:42px}
+.sheet::backdrop{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(0,0,0,.64)}
+.empty-state{line-height:1.45}
+
+@media(max-width:390px){
+  .routine-day-tabs{grid-template-columns:repeat(7,42px)}
+  .routine-v35-summary{grid-template-columns:1fr 1fr}
+}
+@media(max-width:340px){
+  .routine-v35-summary,.routine-counts{grid-template-columns:1fr}
+}
+/* Routine manager markup-specific finishing pass. */
+.routine-day-tabs>button{
+  min-width:42px;min-height:55px;border:1px solid #2d2f34;background:#111317;border-radius:14px;color:#8e8e93;
+  display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;padding:7px 4px;touch-action:manipulation;
+}
+.routine-day-tabs>button small{font-size:8px;font-weight:850;letter-spacing:.06em}.routine-day-tabs>button b{font-size:12px;color:#d1d1d6}
+.routine-day-tabs>button.active{background:#0c2238;border-color:#245d8e;color:#64b5ff;box-shadow:inset 0 0 0 1px rgba(10,132,255,.10)}.routine-day-tabs>button.active b{color:#fff}
+.routine-v35-summary>div:not(.routine-counts){display:grid;grid-template-columns:34px minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:10px;align-items:center;border:1px solid #2c2d32;background:#111317;border-radius:16px;padding:12px;min-width:0}
+.routine-v35-summary>div:not(.routine-counts)>.routine-anchor-icon{grid-row:1/3}.routine-v35-summary>div:not(.routine-counts)>small{grid-column:2;font-size:8px;color:#8e8e93}.routine-v35-summary>div:not(.routine-counts)>b{grid-column:2;font-size:14px;margin-top:2px}.routine-v35-summary>div:not(.routine-counts)>button{grid-column:3;grid-row:1/3;border:1px solid #34363b;background:#191b20;color:#64b5ff;border-radius:10px;padding:7px 9px;font-size:9px;font-weight:800}
+.routine-v35-summary>.routine-counts{grid-column:1/-1;margin-bottom:0}
+.routine-counts span{display:block;border-radius:13px;background:#14161a;border:1px solid #292b30;padding:9px 11px}.routine-counts span small,.routine-counts span b{display:block}.routine-counts span small{font-size:8px;color:#8e8e93}.routine-counts span b{font-size:13px;margin-bottom:2px}
+.routine-v35-section-head>div{display:grid;grid-template-columns:32px minmax(0,1fr);gap:9px;align-items:center}.routine-v35-section-head>div>.routine-section-icon{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:#142239;color:#64b5ff}.routine-v35-section-head>div>.routine-section-icon.flexible{background:#16271e;color:#30d158}.routine-v35-section-head>div>.routine-section-icon .ui-icon{width:15px;height:15px}.routine-v35-section-head>div>span:last-child b,.routine-v35-section-head>div>span:last-child small{display:block}.routine-v35-section-head>div>span:last-child b{font-size:10px}.routine-v35-section-head>div>span:last-child small{font-size:8px;color:#8e8e93;margin-top:2px}
+.routine-v35-copy em{display:block;margin-top:3px;font-size:7px;color:#6e6e73;font-style:normal;text-transform:uppercase;letter-spacing:.05em;font-weight:800}
+.routine-paused{margin-top:12px;border:1px solid #292b30;border-radius:14px;overflow:hidden}.routine-paused>summary{padding:10px 12px;font-size:9px;color:#8e8e93;cursor:pointer}.routine-paused>div{border-top:1px solid #292b30}

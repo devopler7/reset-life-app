@@ -1,6 +1,6 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 13;
-const APP_DISPLAY_VERSION = '3.4.0';
+const APP_VERSION = 14;
+const APP_DISPLAY_VERSION = '3.5.0';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -361,6 +361,27 @@ function migrateState(parsed) {
     if(!Number.isFinite(r.resetCount)) r.resetCount=0;
     if(!r.mode) r.mode='normal';
     if(!('finishCelebrated' in r)) r.finishCelebrated='';
+    if(!('dayNote' in r)) r.dayNote='';
+    if(!('lastActualWakeAt' in r)) r.lastActualWakeAt=r.actualWakeAt||'';
+    if(!('lastActualSleepAt' in r)) r.lastActualSleepAt=r.actualSleepAt||'';
+    if(!r.explicitAnchors || typeof r.explicitAnchors!=='object') r.explicitAnchors={};
+
+    // v3.3 could accidentally turn an actual Wake/Sleep completion into a planned
+    // one-day anchor. Repair only records that do not show evidence of an explicit
+    // Plan Day edit, so genuine one-day plans are preserved.
+    if(Number(parsed.version||0)<14){
+      const wakeOv=r.timeOverrides['s:wake'], sleepOv=r.timeOverrides['s:sleep'];
+      const wakeClock=r.actualWakeAt&&String(r.actualWakeAt).includes('T')?String(r.actualWakeAt).slice(11,16):'';
+      const sleepClock=r.actualSleepAt&&String(r.actualSleepAt).includes('T')?String(r.actualSleepAt).slice(11,16):'';
+      // Older builds never stored an explicit flag on day anchors. If an old
+      // anchor exactly equals an actual completion timestamp, prefer safety:
+      // treat it as the known legacy mix-up rather than silently turning the
+      // actual event into tomorrow's plan. Non-matching Plan Day anchors stay.
+      if(wakeClock&&wakeOv?.dayAnchor&&!wakeOv.explicit&&wakeOv.start===wakeClock) delete r.timeOverrides['s:wake'];
+      else if(wakeOv?.dayAnchor)r.explicitAnchors.wake=true;
+      if(sleepClock&&sleepOv?.dayAnchor&&!sleepOv.explicit&&sleepOv.start===sleepClock) delete r.timeOverrides['s:sleep'];
+      else if(sleepOv?.dayAnchor)r.explicitAnchors.sleep=true;
+    }
   });
   return next;
 }
@@ -389,7 +410,16 @@ function loadState() {
     const raw = localStorage.getItem(APP_KEY);
     initialLocalStateFound=!!raw;
     if(!raw) return defaultState();
-    return migrateState(JSON.parse(raw));
+    const parsed=JSON.parse(raw);
+    // Keep the exact pre-migration state locally before upgrading schemas.
+    // This runs before the normal snapshot helpers are initialized.
+    if(Number(parsed?.version||0)<APP_VERSION){
+      try{
+        const listKey=`${APP_KEY}-safety-list-v2`,legacyKey=`${APP_KEY}-safety-v1`,snap={createdAt:new Date().toISOString(),reason:`Before v${APP_DISPLAY_VERSION} migration`,state:parsed};
+        const list=JSON.parse(localStorage.getItem(listKey)||'[]'),next=Array.isArray(list)?list:[];next.unshift(snap);localStorage.setItem(listKey,JSON.stringify(next.slice(0,3)));localStorage.setItem(legacyKey,JSON.stringify(snap));
+      }catch(e){}
+    }
+    return migrateState(parsed);
   } catch(e) {
     return defaultState();
   }
@@ -804,14 +834,14 @@ function openMoveItemModal(item,date){
       const other=itemsForDate(date).find(x=>occurrenceKey(x)===swapOcc); if(!other)return toast('That task is no longer available');
       const aStart=item.start, bStart=other.start;
       if(moveWouldHitLocked(item,date,bStart)||moveWouldHitLocked(other,date,aStart)) return toast('That swap would overlap a locked item');
-      setItemTimeOverride(item,key,bStart); setItemTimeOverride(other,key,aStart); save(); modal.close(); render(); toast('Tasks swapped'); return;
+      const before=daySnapshot(key);setItemTimeOverride(item,key,bStart); setItemTimeOverride(other,key,aStart); save(); modal.close(); render(); toast('Tasks swapped','Undo',()=>restoreDaySnapshot(key,before)); return;
     }
     const time=$('#moveTime').value; if(!time)return toast('Choose a time');
     if(moveWouldHitLocked(item,date,time)) return toast('That time overlaps a locked item');
-    setItemTimeOverride(item,key,time); modal.close(); render(); toast('Task moved');
+    const before=daySnapshot(key);setItemTimeOverride(item,key,time); modal.close(); render(); toast('Task moved','Undo',()=>restoreDaySnapshot(key,before));
   };
-  $('#moveTomorrow').onclick=()=>{if(moveItemToTomorrow(item,key)){modal.close();render();toast('Moved to tomorrow');}};
-  if($('#resetMove')) $('#resetMove').onclick=()=>{clearItemTimeOverride(item,key);modal.close();render();toast('Planned time restored');};
+  $('#moveTomorrow').onclick=()=>{const nextKey=todayKey(addDays(parseDateKey(key),1)),beforeRec=deepClone(state.records[key]||null),beforeNext=deepClone(state.records[nextKey]||null),beforeOneOff=deepClone(state.oneOffTasks);if(moveItemToTomorrow(item,key)){modal.close();render();toast('Moved to tomorrow','Undo',()=>{if(beforeRec)state.records[key]=beforeRec;else delete state.records[key];if(beforeNext)state.records[nextKey]=beforeNext;else delete state.records[nextKey];state.oneOffTasks=beforeOneOff;save();render();});}};
+  if($('#resetMove')) $('#resetMove').onclick=()=>{const before=daySnapshot(key);clearItemTimeOverride(item,key);modal.close();render();toast('Planned time restored','Undo',()=>restoreDaySnapshot(key,before));};
   $('#cancelModal').onclick=()=>modal.close();
 }
 function openEndOfDayCleanup(date=new Date()){
@@ -1279,10 +1309,12 @@ function openScheduleItemModal(id=null,preset={}) {
     if(startDate&&endDate&&endDate<startDate)return toast('End date must be after start date');
     const anchor=isDayAnchor(item);const data={title,days,start:startTime,end:endTime,category:$('#schedCategory').value,detail:$('#schedDetail').value.trim(),active:true,fixed:anchor?true:$('#schedFixed').checked,startDate,endDate};
     if(anchor){data.manualLocked=true;data.anchor=item.anchor;}
-    if(existing){Object.assign(existing,data);if(existing.id==='wake')state.profile.wakeTarget=data.start;if(existing.id==='sleep')state.profile.sleepTarget=data.start;}else state.schedule.push({id:uid('sched'),...data});save();modal.close();toast('Weekly schedule updated');renderAfterEditor();
+    createSafetySnapshot('Before weekly routine change');
+    const before=existing?structuredClone(existing):null;
+    if(existing){Object.assign(existing,data);if(existing.id==='wake')state.profile.wakeTarget=data.start;if(existing.id==='sleep')state.profile.sleepTarget=data.start;}else state.schedule.push({id:uid('sched'),...data});save();modal.close();toast('Weekly schedule updated',existing?'Undo':null,existing?()=>{Object.assign(existing,before);if(existing.id==='wake')state.profile.wakeTarget=existing.start;if(existing.id==='sleep')state.profile.sleepTarget=existing.start;save();renderAfterEditor();}:null);renderAfterEditor();
   };
-  if(existing&&!isDayAnchor(item)&&$('#deleteSchedule'))$('#deleteSchedule').onclick=()=>{state.schedule=state.schedule.filter(x=>x.id!==existing.id);save();modal.close();toast('Recurring item deleted');renderAfterEditor();};
-  $('#cancelModal').onclick=()=>modal.close();
+  if(existing&&!isDayAnchor(item)&&$('#deleteSchedule'))$('#deleteSchedule').onclick=()=>{createSafetySnapshot('Before deleting recurring item');const idx=state.schedule.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=structuredClone(state.schedule[idx]);state.schedule.splice(idx,1);save();modal.close();renderAfterEditor();toast('Recurring item deleted','Undo',()=>{state.schedule.splice(Math.min(idx,state.schedule.length),0,removed);save();renderAfterEditor();});};
+  $('#cancelModal').onclick=()=>{modal.close();if(routineManagerReturnDay!==null){const day=routineManagerReturnDay;routineManagerReturnDay=null;requestAnimationFrame(()=>openScheduleManager(day));}};
 }
 
 function openOneOffTaskModal(id=null,preset={}) {
@@ -1298,8 +1330,8 @@ function openOneOffTaskModal(id=null,preset={}) {
     <label><span class="label">Note</span><textarea id="oneDetail" placeholder="Keep it specific.">${escapeHTML(item.detail||'')}</textarea></label>
   </div><button class="primary full" id="saveOneTask" style="margin-top:14px">Save task</button>${existing?'<button class="danger-btn full" id="deleteOneTask" style="margin-top:8px">Delete task</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
   modal.showModal();
-  $('#saveOneTask').onclick=()=>{const title=$('#oneTitle').value.trim();if(!title)return toast('Add a task name');const startTime=$('#oneStart').value||'12:00', endTime=$('#oneEnd').value||'';if(endTime&&minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');const data={title,date:$('#oneDate').value||todayKey(),start:startTime,end:endTime,category:$('#oneCategory').value,detail:$('#oneDetail').value.trim(),fixed:$('#oneFixed').checked};if(existing)Object.assign(existing,data);else state.oneOffTasks.push({id:uid('one'),...data});save();modal.close();toast('Task scheduled');renderAfterEditor();};
-  if(existing)$('#deleteOneTask').onclick=()=>{state.oneOffTasks=state.oneOffTasks.filter(x=>x.id!==existing.id);save();modal.close();toast('Task deleted');renderAfterEditor();};
+  $('#saveOneTask').onclick=()=>{const title=$('#oneTitle').value.trim();if(!title)return toast('Add a task name');const startTime=$('#oneStart').value||'12:00', endTime=$('#oneEnd').value||'';if(endTime&&minutesFromTime(endTime)<=minutesFromTime(startTime))return toast('End time must be after start time');const data={title,date:$('#oneDate').value||todayKey(),start:startTime,end:endTime,category:$('#oneCategory').value,detail:$('#oneDetail').value.trim(),fixed:$('#oneFixed').checked},before=existing?deepClone(existing):null;if(existing)Object.assign(existing,data);else state.oneOffTasks.push({id:uid('one'),...data});save();modal.close();toast(existing?'Task updated':'Task scheduled',existing?'Undo':null,existing?()=>{Object.assign(existing,before);save();renderAfterEditor();}:null);renderAfterEditor();};
+  if(existing)$('#deleteOneTask').onclick=()=>{const idx=state.oneOffTasks.findIndex(x=>x.id===existing.id);if(idx<0)return;const removed=deepClone(state.oneOffTasks[idx]);state.oneOffTasks.splice(idx,1);save();modal.close();renderAfterEditor();toast('Task deleted','Undo',()=>{state.oneOffTasks.splice(Math.min(idx,state.oneOffTasks.length),0,removed);save();renderAfterEditor();});};
   $('#cancelModal').onclick=()=>modal.close();
 }
 
@@ -1327,7 +1359,7 @@ function openMoneyModal() {
   modal.showModal();
   $('#addBucketBtn').onclick=()=>{const wrap=document.createElement('div');wrap.innerHTML=bucketEditorRow({id:uid('bucket'),name:'New bucket',target:0});$('#bucketEditor').appendChild(wrap.firstElementChild);bindBucketDeleteButtons();};
   bindBucketDeleteButtons();
-  $('#saveMoney').onclick=()=>{state.money.income=Math.max(0,Number($('#incomeInput').value||0));state.profile.paydayDay=clamp(Number($('#paydayInput').value||29),1,31);state.money.buckets=$$('.bucket-editor').map(row=>({id:row.dataset.bucketId||uid('bucket'),name:$('.bucket-name',row).value.trim()||'Bucket',target:Math.max(0,Number($('.bucket-target',row).value||0))}));captureCurrentMoneyPlan();save();modal.close();renderMoney();};
+  $('#saveMoney').onclick=()=>{const beforeMoney=deepClone(state.money),beforePayday=state.profile.paydayDay;createSafetySnapshot('Before money allocation change');state.money.income=Math.max(0,Number($('#incomeInput').value||0));state.profile.paydayDay=clamp(Number($('#paydayInput').value||29),1,31);state.money.buckets=$$('.bucket-editor').map(row=>({id:row.dataset.bucketId||uid('bucket'),name:$('.bucket-name',row).value.trim()||'Bucket',target:Math.max(0,Number($('.bucket-target',row).value||0))}));captureCurrentMoneyPlan();save();modal.close();renderMoney();toast('Money plan updated','Undo',()=>{state.money=beforeMoney;state.profile.paydayDay=beforePayday;save();renderMoney();});};
   $('#cancelModal').onclick=()=>modal.close();
 }
 function bucketEditorRow(b){return `<div class="course bucket-editor" data-bucket-id="${escapeAttr(b.id)}"><div class="row"><label style="flex:1"><span class="label">Bucket</span><input class="input bucket-name" value="${escapeAttr(b.name)}"></label><label style="width:130px"><span class="label">Monthly SAR</span><input class="input bucket-target" type="number" min="0" value="${Number(b.target||0)}"></label></div><button class="text-button danger-text bucket-delete" type="button">Remove</button></div>`;}
@@ -1681,7 +1713,7 @@ function buildDaySchedulePlan(date,{kind='future',preserveManual=true,wakeTime=n
     if(!preserveManual||!ov?.manual||ov?.dayAnchor)return null;
     return minutesFromTime(ov.manualPreferredStart||ov.start||item.start);
   };
-  const pref=(item)=>{
+  const basePref=(item)=>{
     const preferred=manualPreferredMinutes(item),manual=preferred!=null;
     let desired=manual?preferred:itemSortMinutes(item);
     if(!manual&&['groom','breakfast'].includes(item.id))desired+=wakeShift;
@@ -1689,10 +1721,18 @@ function buildDaySchedulePlan(date,{kind='future',preserveManual=true,wakeTime=n
     if(kind==='today'&&itemEndSortMinutes(item)<floor)desired=floor;
     return Math.max(floor,desired);
   };
+  // Manual moves are respected unless they violate an obvious routine rule.
+  // Build meal preference floors first so Breakfast → Lunch → Dinner stays
+  // ordered even when a user previously dragged Dinner to an impossible time.
+  const mealDesired=new Map();let semanticMealEnd=null;
+  [...movable].filter(i=>mealRank(i)>0).sort((a,b)=>mealRank(a)-mealRank(b)||basePref(a)-basePref(b)).forEach(item=>{
+    let desired=basePref(item);if(semanticMealEnd!=null)desired=Math.max(desired,semanticMealEnd+120);
+    mealDesired.set(occurrenceKey(item),desired);semanticMealEnd=desired+durationMinutes(item);
+  });
+  const pref=(item)=>mealDesired.has(occurrenceKey(item))?mealDesired.get(occurrenceKey(item)):basePref(item);
   const originalMinutes=(item)=>{const original=baseRaw.find(x=>occurrenceKey(x)===occurrenceKey(item));return original?itemSortMinutes(original):itemSortMinutes(item);};
   movable.sort((a,b)=>{
     const ar=morningRank(a),br=morningRank(b);if(ar||br){if(ar&&br)return ar-br;return ar?-1:1;}
-    const am=mealRank(a),bm=mealRank(b);if(am||bm){if(am&&bm)return am-bm;if(am===1)return -1;if(bm===1)return 1;}
     return pref(a)-pref(b)||originalMinutes(a)-originalMinutes(b)||String(a.title).localeCompare(String(b.title));
   });
   const moved=[],unplaced=[];let lastMealEnd=null;
@@ -1807,7 +1847,7 @@ function renderToday(preserveScroll=false){
   bindTimeline(date);$('#addTodayBtn').onclick=()=>openOneOffTaskModal(null,{date:key,start:suggestTimeForNewTask(date)});$('#restartBtn').onclick=openRestartModal;$('#modeBtn').onclick=openModeModal;
   if($('#exceptionPanel'))$('#exceptionPanel').ontoggle=e=>{rec.exceptionPanelOpen=e.currentTarget.open;save();};
   if($('#logLastSleepBtn')&&lastSleep)$('#logLastSleepBtn').onclick=()=>openSleepLogModal(lastSleep.key);if($('#wrapDayBtn'))$('#wrapDayBtn').onclick=()=>openEndOfDayCleanup(date);
-  if($('#heroDoneBtn')&&hero)$('#heroDoneBtn').onclick=()=>{const completed=hero;if(completed.id==='sleep')return openSleepLogModal(key);if(completed.id==='wake'){const now=new Date();rec.actualWakeAt=localDateTimeInput(now);rec.actualWakeOffsetMin=now.getTimezoneOffset();markMissedBeforeWake(key,rec.actualWakeAt);}setStatus(completed,key,'done');renderToday();toast('Marked done','Undo',()=>{if(completed.id==='wake'){delete rec.actualWakeAt;delete rec.actualWakeOffsetMin;}setStatus(completed,key,'pending');renderToday();});requestAnimationFrame(()=>maybeCelebrateDayFinish(date));};
+  if($('#heroDoneBtn')&&hero)$('#heroDoneBtn').onclick=()=>{const completed=hero;if(completed.id==='sleep')return openSleepLogModal(key);if(completed.id==='wake'){completeWakeAnchor(key,{preferPrevious:true});renderToday();toast('Wake logged','Undo',()=>{uncompleteWakeAnchor(key);renderToday();});requestAnimationFrame(()=>maybeCelebrateDayFinish(date));return;}setStatus(completed,key,'done');renderToday();toast('Marked done','Undo',()=>{setStatus(completed,key,'pending');renderToday();});requestAnimationFrame(()=>maybeCelebrateDayFinish(date));};
   if($('#heroMoveBtn')&&hero)$('#heroMoveBtn').onclick=()=>openMoveItemModal(hero,date);if(preserveScroll)requestAnimationFrame(()=>window.scrollTo(0,scroll));
 }
 
@@ -1911,7 +1951,7 @@ function openWorkoutPlanner(){
 function openGymLogModal(id=null,presetExerciseId=null){
   const active=state.gym.activeWorkout?.date===todayKey()?state.gym.activeWorkout:null,workoutExisting=!id&&presetExerciseId&&active?sessionWorkoutLog(active.id,presetExerciseId):null,existing=id?(state.gym.logs||[]).find(x=>x.id===id):workoutExisting,lockedExercise=!!(presetExerciseId&&active),initialId=existing?.exerciseId||presetExerciseId||state.settings.selectedExerciseId,ex=state.gym.exercises.find(x=>x.id===initialId)||state.gym.exercises[0];
   const drawQuickWeights=(exerciseId,current=existing)=>smartWeightOptions(exerciseId,current).map(v=>`<button type="button" class="quick-value" data-quick-weight="${v}">${v}</button>`).join('');
-  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>${existing?'Update':'Log'} exercise</h2><div class="stack">${lockedExercise?`<div class="locked-exercise-name"><small>Exercise</small><b>${escapeHTML(ex?.name||'Exercise')}</b></div>`:`<label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label>`}<label><span class="label">Weight (kg)</span><div class="quick-value-row" id="quickWeightRow">${drawQuickWeights(ex?.id)}</div><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal" value="${existing?Number(existing.weight):''}" placeholder="Type another weight"></label><div class="quick-log-grid"><label><span class="label">Sets</span><div class="quick-value-row compact">${[2,3,4,5].map(v=>`<button type="button" class="quick-value ${Number(existing?.sets||3)===v?'active':''}" data-quick-sets="${v}">${v}</button>`).join('')}</div><input class="input" id="gymSets" type="text" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" value="${Number(existing?.sets||3)}"></label><label><span class="label">Reps</span><div class="quick-value-row compact">${[6,8,10,12,15].map(v=>`<button type="button" class="quick-value ${Number(existing?.reps||10)===v?'active':''}" data-quick-reps="${v}">${v}</button>`).join('')}</div><input class="input" id="gymReps" type="text" inputmode="numeric" pattern="[0-9]*" enterkeyhint="done" value="${Number(existing?.reps||10)}"></label></div>${lockedExercise?'':`<label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${existing?.date||todayKey()}"></label>`}</div><button class="primary full" id="saveGymLog" style="margin-top:14px">${existing?'Update log':'Save log'}</button>${existing&&!workoutExisting?'<button class="danger-btn full" id="deleteGymLog" style="margin-top:8px">Delete log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">GYM LOG</p><h2>${existing?'Update':'Log'} exercise</h2><div class="stack">${lockedExercise?`<div class="locked-exercise-name"><small>Exercise</small><b>${escapeHTML(ex?.name||'Exercise')}</b></div>`:`<label><span class="label">Exercise</span><select id="gymLogExercise">${state.gym.exercises.map(x=>`<option value="${x.id}" ${x.id===ex?.id?'selected':''}>${escapeHTML(x.name)}</option>`).join('')}</select></label>`}<label><span class="label">Weight (kg)</span><div class="quick-value-row" id="quickWeightRow">${drawQuickWeights(ex?.id)}</div><input class="input" id="gymWeight" type="number" min="0" step="0.5" inputmode="decimal" value="${existing?Number(existing.weight):''}" placeholder="Type another weight"></label><div class="quick-log-grid"><label><span class="label">Sets</span><div class="quick-value-row compact">${[2,3,4,5].map(v=>`<button type="button" class="quick-value ${Number(existing?.sets||3)===v?'active':''}" data-quick-sets="${v}">${v}</button>`).join('')}</div><input class="input" id="gymSets" type="number" min="1" max="20" step="1" inputmode="numeric" enterkeyhint="next" value="${Number(existing?.sets||3)}"></label><label><span class="label">Reps</span><div class="quick-value-row compact">${[6,8,10,12,15].map(v=>`<button type="button" class="quick-value ${Number(existing?.reps||10)===v?'active':''}" data-quick-reps="${v}">${v}</button>`).join('')}</div><input class="input" id="gymReps" type="number" min="1" max="100" step="1" inputmode="numeric" enterkeyhint="done" value="${Number(existing?.reps||10)}"></label></div>${lockedExercise?'':`<label><span class="label">Date</span><input class="input" id="gymDate" type="date" value="${existing?.date||todayKey()}"></label>`}</div><button class="primary full" id="saveGymLog" style="margin-top:14px">${existing?'Update log':'Save log'}</button>${existing&&!workoutExisting?'<button class="danger-btn full" id="deleteGymLog" style="margin-top:8px">Delete log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
   const bindQuick=()=>{$$('[data-quick-weight]',modalContent).forEach(b=>b.onclick=()=>{$('#gymWeight').value=b.dataset.quickWeight;$$('[data-quick-weight]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});$$('[data-quick-sets]',modalContent).forEach(b=>b.onclick=()=>{$('#gymSets').value=b.dataset.quickSets;$$('[data-quick-sets]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});$$('[data-quick-reps]',modalContent).forEach(b=>b.onclick=()=>{$('#gymReps').value=b.dataset.quickReps;$$('[data-quick-reps]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});};bindQuick();
   ['gymSets','gymReps'].forEach(id=>{const el=$(`#${id}`);if(el)el.addEventListener('input',()=>{el.value=String(el.value||'').replace(/[^0-9]/g,'');});});
   if($('#gymLogExercise'))$('#gymLogExercise').onchange=e=>{$('#quickWeightRow').innerHTML=drawQuickWeights(e.target.value,null);bindQuick();};
@@ -1924,13 +1964,311 @@ async function checkForAppUpdate(fromSettings=false){
   try{const response=await fetch(`./VERSION.txt?check=${Date.now()}`,{cache:'no-store'});if(!response.ok)return;const latest=(await response.text()).trim(),btn=$('#updateReadyBtn'),label=$('#updateReadyLabel');if(compareVersionStrings(latest,APP_DISPLAY_VERSION)>0){window.__resetUpdateVersion=latest;if(btn)btn.classList.remove('hidden');if(label)label.textContent=`v${latest}`;if(!fromSettings&&!window.__resetUpdateToast){window.__resetUpdateToast=true;toast(`Reset v${latest} is ready`,'Update',applyAppUpdate);}}else{if(btn)btn.classList.add('hidden');window.__resetUpdateVersion='';}}catch(e){}
 }
 async function applyAppUpdate(){try{const reg=await navigator.serviceWorker?.getRegistration();if(reg){await reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});}}catch(e){}setTimeout(()=>{const u=new URL(location.href);u.searchParams.set('update',Date.now());location.replace(u.toString());},350);}
+/* ===== Reset v3.5 reliability + polish layer ===== */
+const SAFETY_LIST_KEY = `${APP_KEY}-safety-list-v2`;
+let __resetSaveTimer = null;
+let __resetLastSerialized = '';
+let routineManagerReturnDay = null;
+
+function flushStateSave(){
+  if(!state.meta) state.meta={};
+  state.meta.lastSavedAt=new Date().toISOString();
+  let serialized='';
+  try{
+    serialized=JSON.stringify(state);
+    if(serialized!==__resetLastSerialized){localStorage.setItem(APP_KEY,serialized);__resetLastSerialized=serialized;}
+  }catch(e){}
+  if(appInitialized){clearTimeout(durableTimer);durableTimer=setTimeout(()=>durableWrite(),260);}
+}
+function save(){
+  if(!state.meta) state.meta={};
+  state.meta.lastSavedAt=new Date().toISOString();
+  clearTimeout(__resetSaveTimer);
+  __resetSaveTimer=setTimeout(()=>{__resetSaveTimer=null;flushStateSave();},70);
+}
+window.addEventListener('pagehide',()=>{if(__resetSaveTimer){clearTimeout(__resetSaveTimer);__resetSaveTimer=null;}flushStateSave();});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){if(__resetSaveTimer){clearTimeout(__resetSaveTimer);__resetSaveTimer=null;}flushStateSave();}});
+
+function readSafetySnapshots(){
+  try{const x=JSON.parse(localStorage.getItem(SAFETY_LIST_KEY)||'[]');return Array.isArray(x)?x:[];}catch(e){return [];}
+}
+function createSafetySnapshot(reason='Safety snapshot'){
+  try{
+    const snap={createdAt:new Date().toISOString(),reason,state:deepClone(state)};
+    const list=readSafetySnapshots();list.unshift(snap);localStorage.setItem(SAFETY_LIST_KEY,JSON.stringify(list.slice(0,3)));
+    localStorage.setItem(SAFETY_KEY,JSON.stringify(snap));
+    updateRecoverySnapshotRow();
+    return true;
+  }catch(e){return false;}
+}
+function clearSafetySnapshot(){try{localStorage.removeItem(SAFETY_KEY);localStorage.removeItem(SAFETY_LIST_KEY);}catch(e){}updateRecoverySnapshotRow();}
+function latestSafetySnapshot(){return readSafetySnapshots()[0]||null;}
+function updateRecoverySnapshotRow(){
+  const btn=$('#recoverySnapshotBtn'),label=$('#recoverySnapshotStatus');if(!btn||!label)return;
+  const snap=latestSafetySnapshot();btn.classList.toggle('hidden',!snap);
+  if(!snap)return;
+  const d=new Date(snap.createdAt);label.textContent=Number.isNaN(d.getTime())?'Restore':d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+}
+function openRecoverySnapshotModal(){
+  const snap=latestSafetySnapshot();if(!snap)return toast('No recovery snapshot is available');
+  settingsDialog?.close();
+  const d=new Date(snap.createdAt),when=Number.isNaN(d.getTime())?'an earlier point':d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">RECOVERY</p><h2>Restore safety snapshot?</h2><p class="muted">${escapeHTML(snap.reason||'Safety snapshot')} · ${escapeHTML(when)}</p><p class="muted tiny">Your current state will be saved as a new safety snapshot first, so this action is reversible.</p><button class="primary full" id="restoreSafetyNow">Restore snapshot</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modal.showModal();
+  $('#restoreSafetyNow').onclick=()=>{const old=deepClone(snap.state);createSafetySnapshot('Before restoring recovery snapshot');state=migrateState(old);flushStateSave();modal.close();render();toast('Recovery snapshot restored');};
+  $('#cancelModal').onclick=()=>modal.close();
+}
+
+function ensureRecord(key=todayKey()){
+  if(!state.records[key])state.records[key]={itemStatus:{},timeOverrides:{},resetCount:0,restartAt:null,mode:key===todayKey()?currentMode():'normal',finishCelebrated:'',unscheduledItems:[],schedulerAttention:[],dayNote:'',lastActualWakeAt:'',lastActualSleepAt:'',explicitAnchors:{},autoMissedByWake:[]};
+  const r=state.records[key];
+  if(!r.itemStatus)r.itemStatus={};if(!r.timeOverrides)r.timeOverrides={};if(!Array.isArray(r.unscheduledItems))r.unscheduledItems=[];if(!Array.isArray(r.schedulerAttention))r.schedulerAttention=[];if(!Array.isArray(r.autoMissedByWake))r.autoMissedByWake=[];
+  if(!r.mode)r.mode=key===todayKey()?currentMode():'normal';if(!('finishCelebrated' in r))r.finishCelebrated='';if(!('dayNote' in r))r.dayNote='';if(!('lastActualWakeAt' in r))r.lastActualWakeAt=r.actualWakeAt||'';if(!('lastActualSleepAt' in r))r.lastActualSleepAt=r.actualSleepAt||'';if(!r.explicitAnchors||typeof r.explicitAnchors!=='object')r.explicitAnchors={};
+  return r;
+}
+function setStatus(item,key,status){
+  const rec=ensureRecord(key),occ=occurrenceKey(item);
+  if(status==='pending'){delete rec.itemStatus[occ];rec.finishCelebrated='';}
+  else rec.itemStatus[occ]=status;
+  if(status==='done'&&item.category==='Fitness'&&/gym/i.test(item.title||''))state.gym.sessionExcluded=(state.gym.sessionExcluded||[]).filter(k=>k!==key);
+  save();
+}
+
+function setDayWakeOverride(date,time){
+  const key=todayKey(date),wake=dailyWakeItem(date);if(!wake)return false;
+  const rec=ensureRecord(key),occ=occurrenceKey(wake),normalized=minutesToTime(minutesFromTime(time)),routine=minutesToTime(minutesFromTime(wake.start));
+  if(normalized===routine){delete rec.timeOverrides[occ];delete rec.explicitAnchors.wake;return false;}
+  const dur=durationMinutes(wake),start=minutesFromTime(normalized);rec.timeOverrides[occ]={start:normalized,end:minutesToTime(start+dur),dayOffset:0,manual:true,adaptive:false,dayAnchor:true,explicit:true};rec.explicitAnchors.wake=true;return true;
+}
+function setDaySleepOverride(date,time){
+  const key=todayKey(date),sleep=dailySleepItem(date);if(!sleep)return false;
+  const rec=ensureRecord(key),occ=occurrenceKey(sleep),normalized=minutesToTime(minutesFromTime(time)),routine=minutesToTime(minutesFromTime(sleep.start));
+  if(normalized===routine){delete rec.timeOverrides[occ];delete rec.explicitAnchors.sleep;return false;}
+  const dur=durationMinutes(sleep),off=sleepDayOffsetForTime(normalized),start=minutesFromTime(normalized);rec.timeOverrides[occ]={start:normalized,end:minutesToTime(start+dur),dayOffset:off,manual:true,adaptive:false,dayAnchor:true,explicit:true};rec.explicitAnchors.sleep=true;return true;
+}
+
+function clearAutoMissedFromWake(key){
+  const rec=ensureRecord(key);for(const occ of rec.autoMissedByWake||[]){if(rec.itemStatus[occ]==='missed')delete rec.itemStatus[occ];}rec.autoMissedByWake=[];
+}
+function markMissedBeforeWake(key,wakeValue){
+  const rec=ensureRecord(key),date=parseDateKey(key),d=new Date(wakeValue);if(Number.isNaN(d.getTime()))return;
+  clearAutoMissedFromWake(key);const wakeMin=d.getHours()*60+d.getMinutes();
+  itemsForDate(date).forEach(item=>{if(isDayAnchor(item)||getStatus(item,key)!=='pending')return;if(itemEndSortMinutes(item)<=wakeMin){const occ=occurrenceKey(item);rec.itemStatus[occ]='missed';rec.autoMissedByWake.push(occ);}});
+}
+function validActualWakeForKey(value,key){return !!value&&String(value).slice(0,10)===key;}
+function setActualWake(key,value){
+  const rec=ensureRecord(key),d=new Date(value);if(Number.isNaN(d.getTime()))return false;
+  rec.actualWakeAt=value;rec.actualWakeOffsetMin=d.getTimezoneOffset();rec.lastActualWakeAt=value;rec.lastActualWakeOffsetMin=rec.actualWakeOffsetMin;markMissedBeforeWake(key,value);return true;
+}
+function completeWakeAnchor(key,{preferPrevious=true}={}){
+  const rec=ensureRecord(key),date=parseDateKey(key),item=itemsForDate(date).find(i=>i.id==='wake');if(!item)return false;
+  let value='';if(preferPrevious&&validActualWakeForKey(rec.lastActualWakeAt,key))value=rec.lastActualWakeAt;
+  if(!value){const d=key===todayKey()?new Date():new Date(`${key}T${dayWakeTime(date)}:00`);value=localDateTimeInput(d);}
+  setActualWake(key,value);setStatus(item,key,'done');return true;
+}
+function uncompleteWakeAnchor(key){
+  const rec=ensureRecord(key),date=parseDateKey(key),item=itemsForDate(date).find(i=>i.id==='wake');if(!item)return;
+  if(rec.actualWakeAt){rec.lastActualWakeAt=rec.actualWakeAt;rec.lastActualWakeOffsetMin=rec.actualWakeOffsetMin;}
+  delete rec.actualWakeAt;delete rec.actualWakeOffsetMin;clearAutoMissedFromWake(key);setStatus(item,key,'pending');
+}
+function openWakeLogModal(targetKey){
+  const date=parseDateKey(targetKey),item=itemsForDate(date).find(i=>i.id==='wake');if(!item)return toast('Wake anchor was not found for that day');
+  const rec=ensureRecord(targetKey);let value=rec.actualWakeAt||(validActualWakeForKey(rec.lastActualWakeAt,targetKey)?rec.lastActualWakeAt:'');
+  if(!value){const d=targetKey===todayKey()?new Date():new Date(`${targetKey}T${dayWakeTime(date)}:00`);value=localDateTimeInput(d);}
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">WAKE</p><h2>${rec.actualWakeAt?'Edit':'Log'} actual wake time</h2><p class="muted">Planned wake stays ${escapeHTML(formatClock(dayWakeTime(date)))}. This only records what actually happened.</p><label><span class="label">Actual wake time</span><input class="input" id="actualWakeInput" type="datetime-local" value="${escapeAttr(value)}"></label><button class="primary full" id="saveWakeLog" style="margin-top:14px">Save actual wake</button>${rec.actualWakeAt?'<button class="danger-btn full" id="clearWakeLog" style="margin-top:8px">Clear actual wake</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modal.showModal();
+  $('#saveWakeLog').onclick=()=>{const v=$('#actualWakeInput').value;if(!v||String(v).slice(0,10)!==targetKey)return toast('Use a time on this date');clearAutoMissedFromWake(targetKey);setActualWake(targetKey,v);setStatus(item,targetKey,'done');save();modal.close();render();toast(`Wake logged at ${actualSleepClock(v)}`);};
+  if($('#clearWakeLog'))$('#clearWakeLog').onclick=()=>{clearAutoMissedFromWake(targetKey);delete rec.actualWakeAt;delete rec.actualWakeOffsetMin;delete rec.lastActualWakeAt;delete rec.lastActualWakeOffsetMin;setStatus(item,targetKey,'pending');save();modal.close();render();toast('Actual wake cleared');};
+  $('#cancelModal').onclick=()=>modal.close();
+}
+
+function openSleepLogModal(targetKey){
+  const item=sleepItemForKey(targetKey);if(!item)return toast('Sleep anchor was not found for that day');
+  const rec=ensureRecord(targetKey),targetDate=parseDateKey(targetKey),nextKey=todayKey(addDays(targetDate,1));let defaultValue=rec.actualSleepAt||rec.lastActualSleepAt||'';
+  if(!defaultValue){const now=new Date();if(targetKey===todayKey(addDays(now,-1)))defaultValue=localDateTimeInput(now);else if(targetKey===todayKey()&&currentMinutes()>=daySleepAbsoluteMinutes(targetDate)%1440)defaultValue=localDateTimeInput(now);else{const planned=new Date(targetDate),off=daySleepOffset(targetDate);planned.setDate(planned.getDate()+off);const [h,m]=daySleepTime(targetDate).split(':').map(Number);planned.setHours(h,m,0,0);defaultValue=localDateTimeInput(planned);}}
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP</p><h2>Log when you actually went to sleep</h2><p class="muted">This belongs to the night of ${escapeHTML(formatDateShort(targetDate))}, even after midnight. Planned sleep stays ${escapeHTML(formatClock(daySleepTime(targetDate)))}.</p><label><span class="label">Actual sleep time</span><input class="input" id="actualSleepInput" type="datetime-local" value="${escapeAttr(defaultValue)}"></label><button class="primary full" id="saveSleepLog" style="margin-top:14px">Save sleep time</button>${rec.actualSleepAt?'<button class="danger-btn full" id="clearSleepLog" style="margin-top:8px">Clear sleep log</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  modal.showModal();
+  $('#saveSleepLog').onclick=()=>{const value=$('#actualSleepInput').value;if(!value||!value.includes('T'))return toast('Choose the actual sleep time');const actualKey=value.slice(0,10);if(actualKey!==targetKey&&actualKey!==nextKey)return toast('Use that evening or the following morning');rec.actualSleepAt=value;rec.actualSleepOffsetMin=localOffsetForInput(value);rec.lastActualSleepAt=value;rec.lastActualSleepOffsetMin=rec.actualSleepOffsetMin;setStatus(item,targetKey,'done');save();modal.close();render();toast(`Sleep logged at ${actualSleepClock(value)}`);requestAnimationFrame(()=>maybeCelebrateDayFinish(targetDate));};
+  if($('#clearSleepLog'))$('#clearSleepLog').onclick=()=>{delete rec.actualSleepAt;delete rec.actualSleepOffsetMin;delete rec.lastActualSleepAt;delete rec.lastActualSleepOffsetMin;setStatus(item,targetKey,'pending');save();modal.close();render();toast('Sleep log cleared');};
+  $('#cancelModal').onclick=()=>modal.close();
+}
+function openSleepNightModal(nightKey){
+  const r=sleepNightRecord(nightKey),night=parseDateKey(nightKey),next=addDays(night,1),nextKey=todayKey(next),plannedSleep=daySleepTime(night),plannedWake=dayWakeTime(next);let sleepValue=r.sleepValue,wakeValue=r.wakeValue;
+  if(!sleepValue){const d=new Date(night),off=sleepDayOffsetForTime(plannedSleep);d.setDate(d.getDate()+off);const [h,m]=plannedSleep.split(':').map(Number);d.setHours(h,m,0,0);sleepValue=localDateTimeInput(d);}if(!wakeValue){const d=new Date(next);const [h,m]=plannedWake.split(':').map(Number);d.setHours(h,m,0,0);wakeValue=localDateTimeInput(d);}
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SLEEP HISTORY</p><h2>${escapeHTML(formatDateShort(night))} night</h2><p class="muted">Correct actual times only. Planned Wake and Sleep anchors stay unchanged.</p><div class="stack"><label><span class="label">Went to sleep</span><input class="input" id="sleepNightBed" type="datetime-local" value="${escapeAttr(sleepValue)}"></label><label><span class="label">Woke up</span><input class="input" id="sleepNightWake" type="datetime-local" value="${escapeAttr(wakeValue)}"></label></div><button class="primary full" id="saveSleepNight" style="margin-top:14px">Save night</button>${r.sleepValue||r.wakeValue?'<button class="danger-btn full" id="deleteSleepNight" style="margin-top:8px">Clear this night</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;modal.showModal();
+  $('#saveSleepNight').onclick=()=>{const bed=$('#sleepNightBed').value,wake=$('#sleepNightWake').value;if(!bed||!wake)return toast('Choose both sleep and wake times');const bedOffset=localOffsetForInput(bed),wakeOffset=localOffsetForInput(wake),hours=stableDurationHours(bed,wake,bedOffset,wakeOffset);if(hours==null||hours<=0)return toast('Wake time must be after sleep time');if(hours>20)return toast('That sleep duration looks too long');const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);sleepRec.actualSleepAt=bed;sleepRec.actualSleepOffsetMin=bedOffset;sleepRec.lastActualSleepAt=bed;sleepRec.lastActualSleepOffsetMin=bedOffset;clearAutoMissedFromWake(nextKey);wakeRec.actualWakeAt=wake;wakeRec.actualWakeOffsetMin=wakeOffset;wakeRec.lastActualWakeAt=wake;wakeRec.lastActualWakeOffsetMin=wakeOffset;markMissedBeforeWake(nextKey,wake);const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'done');if(wakeItem)setStatus(wakeItem,nextKey,'done');save();modal.close();renderSleep();toast('Sleep night saved');};
+  if($('#deleteSleepNight'))$('#deleteSleepNight').onclick=()=>{const sleepRec=ensureRecord(nightKey),wakeRec=ensureRecord(nextKey);delete sleepRec.actualSleepAt;delete sleepRec.actualSleepOffsetMin;delete sleepRec.lastActualSleepAt;delete sleepRec.lastActualSleepOffsetMin;clearAutoMissedFromWake(nextKey);delete wakeRec.actualWakeAt;delete wakeRec.actualWakeOffsetMin;delete wakeRec.lastActualWakeAt;delete wakeRec.lastActualWakeOffsetMin;const sleepItem=sleepItemForKey(nightKey),wakeItem=itemsForDate(next).find(i=>i.id==='wake');if(sleepItem)setStatus(sleepItem,nightKey,'pending');if(wakeItem)setStatus(wakeItem,nextKey,'pending');save();modal.close();renderSleep();toast('Sleep night cleared');};$('#cancelModal').onclick=()=>modal.close();
+}
+
+function timelineItemHTML(item,date,showActions=false){
+  const key=todayKey(date),status=getStatus(item,key),timeState=statusForTime(item,date),futureDate=key>todayKey();
+  const isNext=timeState==='future'&&!isClosedStatus(status),nowClass=timeState==='now'&&status==='pending'?'now':'',nextClass=isNext?'next':'',closedStatus=['missed','deferred','dropped','cancelled'].includes(status),locked=itemManualMoveLocked(item),anchor=isDayAnchor(item);
+  const statusBadge=status==='deferred'?'<span class="badge blue">MOVED</span>':status==='dropped'?'<span class="badge muted-badge">DROPPED</span>':item.adjusted&&!anchor?'<span class="badge adjusted-badge">ADJUSTED</span>':nowClass?'<span class="badge">NOW</span>':'';
+  const rec=state.records[key]||{},actualSleep=item.id==='sleep'?rec.actualSleepAt:'',actualWake=item.id==='wake'?rec.actualWakeAt:'',planned=item.actualized&&item.plannedStart?`<span class="badge planned-anchor-badge">PLANNED ${escapeHTML(formatClock(item.plannedStart))}</span>`:'';
+  const anchorBadge=anchor?`<span class="badge anchor-badge">${item.id==='wake'?'WAKE':'SLEEP'} ANCHOR</span>`:'',sleepBadge=actualSleep?`<span class="badge sleep-badge">ACTUAL ${escapeHTML(actualSleepClock(actualSleep))}</span>`:'',wakeBadge=actualWake?`<span class="badge sleep-badge">ACTUAL ${escapeHTML(actualSleepClock(actualWake))}</span>`:'';
+  const canMarkMissed=!anchor&&status==='pending'&&key<=todayKey(),canCancel=!anchor&&!['done','deferred','dropped','cancelled'].includes(status),canRestore=status==='dropped';
+  const anchorActions=anchor?`<button data-plan-anchors="${key}" type="button">${svgIcon('clock')} Adjust day</button>${item.id==='wake'?`<button data-log-wake="${key}" type="button">${svgIcon('sun')} ${actualWake?'Edit wake':'Log wake'}</button>`:`<button data-log-sleep="${key}" type="button">${svgIcon('moon')} ${actualSleep?'Edit sleep':'Log sleep'}</button>`}`:'';
+  return `<div class="timeline-item ${anchor?'anchor-item':''} ${nowClass} ${nextClass} ${status}" data-timeline-occ="${escapeAttr(occurrenceKey(item))}"><div class="timeline-time">${formatClock(item.start)}${Number(item.dayOffset||0)>0?'<small>+1</small>':''}</div><span class="timeline-dot"></span><div class="timeline-body"><div class="timeline-main"><input class="check" type="checkbox" data-occ="${escapeAttr(occurrenceKey(item))}" data-date="${key}" ${status==='done'?'checked':''} ${(closedStatus||futureDate)?'disabled':''} aria-label="Mark ${escapeAttr(item.title)} done">${taskIconHTML(item,'timeline-task-icon')}<div class="timeline-copy"><b>${escapeHTML(item.title)}</b><small>${escapeHTML(item.detail||'')}</small><div class="timeline-meta">${anchorBadge}${categoryBadge(item.category)}<span class="badge blue">${escapeHTML(timeWindow(item))}</span>${planned}${locked&&!anchor?'<span class="badge lock-badge">LOCKED</span>':''}${statusBadge}${sleepBadge}${wakeBadge}</div></div></div>${showActions?`<div class="quick-actions">${anchor?anchorActions:`<button data-edit-item="${item.source}:${item.id}" type="button">Edit</button>${!locked&&!isClosedStatus(status)&&status!=='done'?`<button data-move-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">${svgIcon('arrowUpRight')} Move</button>`:''}${canMarkMissed?`<button data-miss-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Mark missed</button>`:''}${canCancel?`<button data-cancel-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Cancel for day</button>`:''}${canRestore?`<button data-restore-item="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Restore</button>`:''}${status==='deferred'?`<button data-undo-defer="${escapeAttr(occurrenceKey(item))}" data-date="${key}" type="button">Undo move</button>`:''}`}</div>`:''}</div></div>`;
+}
+function bindTimeline(date){
+  const key=todayKey(date);
+  $$('[data-occ]').forEach(cb=>cb.addEventListener('change',()=>{const occ=cb.dataset.occ,item=itemsForDate(date).find(x=>occurrenceKey(x)===occ);if(!item)return;if(item.id==='sleep'&&cb.checked){cb.checked=false;openSleepLogModal(key);return;}if(item.id==='wake'){if(cb.checked)completeWakeAnchor(key,{preferPrevious:true});else uncompleteWakeAnchor(key);}else setStatus(item,key,cb.checked?'done':'pending');const y=window.scrollY;render();requestAnimationFrame(()=>{window.scrollTo(0,y);if(cb.checked)maybeCelebrateDayFinish(date);});}));
+  $$('[data-edit-item]').forEach(btn=>btn.addEventListener('click',()=>{const [source,id]=btn.dataset.editItem.split(':');if(source==='schedule')openScheduleItemModal(id);else openOneOffTaskModal(id);}));
+  $$('[data-plan-anchors]').forEach(btn=>btn.addEventListener('click',()=>openDayAnchorPlanner(parseDateKey(btn.dataset.planAnchors))));
+  $$('[data-log-wake]').forEach(btn=>btn.addEventListener('click',()=>openWakeLogModal(btn.dataset.logWake)));
+  $$('[data-log-sleep]').forEach(btn=>btn.addEventListener('click',()=>openSleepLogModal(btn.dataset.logSleep)));
+  $$('[data-move-item]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.moveItem);if(item)openMoveItemModal(item,date);}));
+  $$('[data-miss-item]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.missItem);if(item){const before=daySnapshot(key);ensureRecord(key).exceptionPanelOpen=true;setStatus(item,key,'missed');render();toast('Marked missed','Undo',()=>restoreDaySnapshot(key,before));}}));
+  $$('[data-cancel-item]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.cancelItem);if(item){const before=daySnapshot(key);ensureRecord(key).exceptionPanelOpen=true;setStatus(item,key,'cancelled');render();toast('Cancelled for this day','Undo',()=>restoreDaySnapshot(key,before));}}));
+  $$('[data-restore-item]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.restoreItem);if(item){const before=daySnapshot(key);restoreMissedItem(item,key);render();toast('Restored','Undo',()=>restoreDaySnapshot(key,before));}}));
+  $$('[data-undo-defer]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.undoDefer);if(item){const before=daySnapshot(key);restoreDeferredItem(item,key);render();toast('Move undone','Undo',()=>restoreDaySnapshot(key,before));}}));
+  $$('[data-exception-restore]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.exceptionRestore);if(item){const before=daySnapshot(key);restoreMissedItem(item,key);render();toast(itemIsFixed(item)?'Restored to its original fixed time':'Restored','Undo',()=>restoreDaySnapshot(key,before));}}));
+  $$('[data-attention-move]').forEach(btn=>btn.addEventListener('click',()=>{const item=itemsForDate(date).find(x=>occurrenceKey(x)===btn.dataset.attentionMove);if(item)openMoveItemModal(item,date);}));
+  const panel=$('#exceptionPanel');if(panel)panel.addEventListener('toggle',()=>{ensureRecord(key).exceptionPanelOpen=panel.open;save();});
+}
+
+function dayAttentionDetails(date){
+  const key=todayKey(date),rec=ensureRecord(key),details=[],all=itemsForMode(itemsForDate(date),modeForDate(key)),unscheduled=new Set(rec.unscheduledItems||[]);
+  if(unscheduled.size)details.push({code:'unscheduled',text:`${unscheduled.size} task${unscheduled.size===1?'':'s'} could not fit before sleep`,count:unscheduled.size});
+  const active=all.filter(i=>!['cancelled','dropped','deferred','missed'].includes(getStatus(i,key))&&!unscheduled.has(occurrenceKey(i))),wakeEnd=effectiveWakeEnd(date),sleepLimit=plannedSleepAbsolute(date);
+  const beforeWake=active.filter(i=>!isDayAnchor(i)&&getStatus(i,key)!=='done'&&itemSortMinutes(i)<wakeEnd);
+  if(beforeWake.length){const fixed=beforeWake.find(itemIsFixed);details.push({code:'before-wake',text:fixed?`${fixed.title} overlaps your wake boundary`:`${beforeWake.length} task${beforeWake.length===1?' starts':'s start'} before your wake boundary`,count:beforeWake.length});}
+  const afterSleep=active.filter(i=>!isDayAnchor(i)&&getStatus(i,key)!=='done'&&itemEndSortMinutes(i)>sleepLimit);
+  if(afterSleep.length)details.push({code:'after-sleep',text:`${afterSleep.length} task${afterSleep.length===1?' runs':'s run'} past sleep`,count:afterSleep.length});
+  const meals=active.filter(i=>mealRank(i)>0&&getStatus(i,key)!=='done').sort((a,b)=>mealRank(a)-mealRank(b));for(let i=1;i<meals.length;i++){if(itemSortMinutes(meals[i])<=itemSortMinutes(meals[i-1])){details.push({code:'meal-order',text:'Meal order is not Breakfast → Lunch → Dinner',count:1});break;}if(itemSortMinutes(meals[i])-itemEndSortMinutes(meals[i-1])<90){details.push({code:'meal-spacing',text:'Two meals are scheduled too close together',count:1});break;}}
+  const timed=active.filter(i=>!isDayAnchor(i)).sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b));for(let i=1;i<timed.length;i++){const a=timed[i-1],b=timed[i];if(itemSortMinutes(b)<itemEndSortMinutes(a)&&getStatus(a,key)!=='done'&&getStatus(b,key)!=='done'&&(itemIsFixed(a)||itemIsFixed(b))){details.push({code:'overlap',text:'A fixed event overlaps another task',count:1});break;}}
+  return details;
+}
+function dayAttentionIssues(date){return dayAttentionDetails(date).map(x=>x.text).slice(0,5);}
+function isDayPlanned(date){const key=todayKey(date),rec=state.records[key]||{};return !!(rec.futurePlannedAt||(rec.dayPlanType&&rec.dayPlanType!=='planned')||String(rec.dayNote||'').trim()||Object.values(rec.timeOverrides||{}).some(x=>x?.manual)||state.oneOffTasks.some(x=>x.date===key));}
+function dayPlanStatus(date){const key=todayKey(date),issues=dayAttentionIssues(date),completion=dayCompletion(date),rec=state.records[key]||{};if(issues.length)return {label:'Needs attention',tone:'attention',icon:'warning'};if(key<=todayKey()&&completion===100)return {label:'Complete',tone:'complete',icon:'check'};if(isDayPlanned(date))return {label:rec.dayPlanType==='focus'?'Focus day':rec.dayPlanType==='travel'?'Travel':rec.dayPlanType==='rest'?'Rest day':'Planned',tone:'planned',icon:rec.dayPlanType==='focus'?'target':rec.dayPlanType==='travel'?'plane':rec.dayPlanType==='rest'?'bed':'calendar'};return {label:'On track',tone:'track',icon:'check'};}
+
+function resetDateToRoutine(date){
+  const key=todayKey(date),rec=ensureRecord(key);createSafetySnapshot(`Before resetting ${key} to routine`);
+  const keep={actualWakeAt:rec.actualWakeAt,actualSleepAt:rec.actualSleepAt,actualWakeOffsetMin:rec.actualWakeOffsetMin,actualSleepOffsetMin:rec.actualSleepOffsetMin,lastActualWakeAt:rec.lastActualWakeAt,lastActualSleepAt:rec.lastActualSleepAt,lastActualWakeOffsetMin:rec.lastActualWakeOffsetMin,lastActualSleepOffsetMin:rec.lastActualSleepOffsetMin},doneStatuses=Object.fromEntries(Object.entries(rec.itemStatus||{}).filter(([,v])=>v==='done'));
+  state.oneOffTasks=state.oneOffTasks.filter(x=>x.date!==key);rec.timeOverrides={};rec.itemStatus=doneStatuses;rec.unscheduledItems=[];rec.schedulerAttention=[];rec.autoMissedByWake=[];rec.explicitAnchors={};rec.dayNote='';delete rec.futurePlannedAt;delete rec.dayPlanType;Object.entries(keep).forEach(([k,v])=>{if(v!==undefined&&v!=='')rec[k]=v;else delete rec[k];});save();
+}
+
+function openDayAnchorPlanner(date){
+  const key=todayKey(date);if(key<todayKey())return toast('Past day anchors can be corrected from their history instead');
+  const rec=ensureRecord(key),currentWake=dayWakeTime(date),currentSleep=daySleepTime(date),isToday=key===todayKey(),items=itemsForDate(date),routine=items.filter(i=>i.source==='schedule'&&!isDayAnchor(i)),oneoffs=items.filter(i=>i.source==='oneoff'),cancelled=items.filter(i=>getStatus(i,key)==='cancelled').length,planType=rec.dayPlanType||'planned';
+  modalContent.innerHTML=`<div class="sheet-handle"></div><div class="day-plan-modal-head"><button class="round-icon" id="cancelModal" aria-label="Back">${svgIcon('chevronLeft')}</button><div><h2>${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}</h2><p>Plan this day without changing your recurring routine.</p></div><button class="round-icon" id="dayPlanMoreBtn" aria-label="More">${svgIcon('more')}</button></div>
+  <section class="day-settings-card"><h3>Day settings</h3><div class="day-anchor-grid"><label><span class="day-setting-icon wake">${svgIcon('sun')}</span><span><small>Wake time</small><input id="futureWakeTime" type="time" value="${escapeAttr(currentWake)}"><em>${hasDayAnchorOverride(date,'wake')?`Override · routine ${formatClock(dailyWakeItem(date)?.start||state.profile.wakeTarget)}`:'From routine'}</em></span></label><label><span class="day-setting-icon sleep">${svgIcon('moon')}</span><span><small>Sleep time</small><input id="futureSleepTime" type="time" value="${escapeAttr(currentSleep)}"><em>${hasDayAnchorOverride(date,'sleep')?`Override · routine ${formatClock(dailySleepItem(date)?.start||state.profile.sleepTarget)}`:'From routine'}</em></span></label></div><label class="day-note-field"><span class="label">Day note <small>optional</small></span><input class="input" id="dayNoteInput" maxlength="80" value="${escapeAttr(rec.dayNote||'')}" placeholder="Exam day, feeling sick, travel…"></label></section>
+  <section class="quick-status-card"><h3>Quick status</h3><p>Set the feel of this day. It does not rewrite your routine.</p><div class="day-type-grid"><button data-day-type="planned" class="${planType==='planned'?'active':''}">${svgIcon('check')} Planned</button><button data-day-type="focus" class="${planType==='focus'?'active':''}">${svgIcon('target')} Focus Day</button><button data-day-type="travel" class="${planType==='travel'?'active':''}">${svgIcon('plane')} Travel</button><button data-day-type="rest" class="${planType==='rest'?'active':''}">${svgIcon('bed')} Rest Day</button></div></section>
+  <section class="day-plan-section"><div class="day-plan-section-head"><span>${svgIcon('calendar')}</span><div><h3>Routine & fixed events</h3><p>Recurring items for this date. Fixed events keep their real time.</p></div></div><div class="day-plan-list">${routine.length?routine.map(i=>planRowHTML(i,date)).join(''):'<div class="empty-state compact-empty">No recurring items.</div>'}</div></section>
+  <section class="day-plan-section"><div class="day-plan-section-head"><span class="purple">${svgIcon('check')}</span><div><h3>One-off tasks</h3><p>Specific to this day only.</p></div><button class="text-button" id="addPlanOneOff">+ Add</button></div><div class="day-plan-list">${oneoffs.length?oneoffs.map(i=>planRowHTML(i,date)).join(''):'<div class="empty-state compact-empty">No one-off tasks yet.</div>'}</div></section>
+  <section class="day-plan-summary"><h3>Day summary</h3><div><span>${svgIcon('calendar')}<b>${routine.filter(itemIsFixed).length}</b><small>Fixed events</small></span><span>${svgIcon('check')}<b>${oneoffs.length}</b><small>One-off tasks</small></span><span>${svgIcon('list')}<b>${items.filter(i=>getStatus(i,key)!=='cancelled').length}</b><small>Planned items</small></span><span class="${cancelled?'red':''}">${svgIcon('close')}<b>${cancelled}</b><small>Cancelled</small></span></div></section>
+  <section class="day-plan-advanced hidden" id="dayPlanAdvanced"><div class="day-plan-section-head"><span>${svgIcon('more')}</span><div><h3>More options</h3><p>Useful occasionally, kept out of the way.</p></div></div><label><span class="label">Copy this day’s one-off setup to</span><input class="input" id="copyDayTarget" type="date" min="${todayKey()}" value="${todayKey(addDays(date,1))}"></label><button class="secondary full" id="copyDaySetup" style="margin-top:8px">Copy one-off setup</button><button class="secondary full" id="manageRoutineFromPlan" style="margin-top:8px">Manage recurring routine</button></section>
+  <button class="primary full day-plan-rebuild" id="rebuildFutureDay">${svgIcon('refresh')}<span><b>Rebuild with my changes</b><small>Update this day’s plan</small></span></button><button class="secondary full reset-routine-btn" id="resetFutureDay">${svgIcon('refresh')}<span><b>Reset to routine</b><small>Revert this day to its default routine</small></span></button><p class="day-plan-footnote">${svgIcon('lightbulb')} This only changes ${escapeHTML(dayLong(date.getDay()))}, ${escapeHTML(formatDateShort(date))}. Your recurring routine stays the same.</p>`;
+  modal.showModal();let selectedType=planType;
+  $$('[data-day-type]',modalContent).forEach(b=>b.onclick=()=>{selectedType=b.dataset.dayType;$$('[data-day-type]',modalContent).forEach(x=>x.classList.toggle('active',x===b));});
+  $('#dayPlanMoreBtn').onclick=()=>$('#dayPlanAdvanced').classList.toggle('hidden');$('#addPlanOneOff').onclick=()=>{modal.close();openOneOffTaskModal(null,{date:key,start:'12:00'});};$('#manageRoutineFromPlan').onclick=()=>{modal.close();openScheduleManager(date.getDay());};
+  $('#copyDaySetup').onclick=()=>{const target=$('#copyDayTarget').value;if(!target)return toast('Choose a target date');const count=copyOneOffSetup(date,parseDateKey(target));toast(count?`${count} one-off task${count===1?'':'s'} copied`:'Nothing new to copy');};
+  $('#rebuildFutureDay').onclick=()=>{const wake=$('#futureWakeTime').value||currentWake,sleep=$('#futureSleepTime').value||currentSleep,before=daySnapshot(key);createSafetySnapshot(`Before rebuilding ${key}`);rec.dayNote=$('#dayNoteInput').value.trim();setDayWakeOverride(date,wake);setDaySleepOverride(date,sleep);rec.dayPlanType=selectedType;const plan=isToday?buildDaySchedulePlan(date,{kind:'today',preserveManual:true,wakeTime:wake,sleepTime:sleep}):buildDaySchedulePlan(date,{kind:'future',preserveManual:true,wakeTime:wake,sleepTime:sleep});if(isToday)applyAdaptiveRestart(plan);else applyFutureDayPlan(plan);rec.dayPlanType=selectedType;save();modal.close();render();toast('Day rebuilt','Undo',()=>restoreDaySnapshot(key,before));};
+  $('#resetFutureDay').onclick=()=>{if(!confirm('Reset this date to the recurring routine? One-off tasks and day-specific changes will be removed. Completed history and actual wake/sleep logs are kept.'))return;const before=daySnapshot(key),oneoffsBefore=deepClone(state.oneOffTasks.filter(x=>x.date===key));resetDateToRoutine(date);modal.close();render();toast('Day restored to routine','Undo',()=>{state.records[key]=before;state.oneOffTasks.push(...oneoffsBefore.filter(x=>!state.oneOffTasks.some(y=>y.id===x.id)));save();render();});};
+  $('#cancelModal').onclick=()=>modal.close();
+}
+
+function weekAttentionCard(date){const details=dayAttentionDetails(date);if(!details.length)return '';return `<section class="week-attention-card"><span>${svgIcon('warning')}</span><div><b>${details.length} ${details.length===1?'issue':'issues'} need attention</b>${details.map(x=>`<small>${escapeHTML(x.text)}</small>`).join('')}</div></section>`;}
+function renderWeek(){
+  let selected=parseDateKey(state.settings.selectedWeekDate||todayKey()),weekStart=startOfWeek(selected),days=Array.from({length:7},(_,i)=>addDays(weekStart,i)),weekEnd=days[6],selectedKey=todayKey(selected);if(!days.some(d=>todayKey(d)===selectedKey)){selected=weekStart;selectedKey=todayKey(selected);state.settings.selectedWeekDate=selectedKey;}
+  setHeader('Week',selected);const rec=ensureRecord(selectedKey),selectedAll=itemsForDate(selected),selectedItems=selectedAll.filter(i=>!['cancelled','missed'].includes(getStatus(i,selectedKey))&&!(rec.unscheduledItems||[]).includes(occurrenceKey(i))),expanded=!!state.settings.weekDayExpanded,shown=expanded?selectedItems:selectedItems.slice(0,4),otherDays=days.filter(d=>todayKey(d)!==selectedKey),otherExpanded=!!state.settings.weekOtherExpanded,otherShown=otherExpanded?otherDays:otherDays.slice(0,3);
+  const completeCount=days.filter(d=>todayKey(d)<=todayKey()&&dayCompletion(d)===100).length,attentionDays=days.filter(d=>dayAttentionIssues(d).length),attentionCount=attentionDays.length,plannedCount=days.filter(isDayPlanned).length,selectedStatus=dayPlanStatus(selected),cancelledCount=selectedAll.filter(i=>getStatus(i,selectedKey)==='cancelled').length;
+  main.innerHTML=`<p class="week-subtitle">Plan ahead, not just react.</p><section class="week-header-card week-v34" id="weekSwipeArea"><div class="week-nav clean"><button class="round-icon" id="prevWeekBtn" aria-label="Previous week">${svgIcon('chevronLeft')}</button><div><b>${formatDateShort(weekStart)} – ${formatDateShort(weekEnd)}</b><button class="today-link" id="todayWeekBtn">This Week</button></div><button class="round-icon" id="nextWeekBtn" aria-label="Next week">${svgIcon('chevronRight')}</button></div><div class="week-strip modern">${days.map(d=>{const k=todayKey(d),p=dayCompletion(d),status=dayPlanStatus(d);return `<button class="week-day ${k===selectedKey?'active':''} ${k===todayKey()?'today':''}" data-day-key="${k}"><small>${dayShort(d.getDay())}</small><strong>${d.getDate()}</strong><i style="--p:${p}%"></i>${status.tone==='attention'?'<span class="week-alert-dot"></span>':''}</button>`}).join('')}</div></section>
+  <section class="week-summary-v34 week-summary-v35"><button data-week-summary="complete"><span class="week-summary-icon complete">${svgIcon('check')}</span><b>${completeCount} / 7</b><small>Days complete</small><i>${svgIcon('chevronRight')}</i></button><button data-week-summary="attention" class="${attentionCount?'has-attention':''}"><span class="week-summary-icon attention">${svgIcon('warning')}</span><b>${attentionCount}</b><small>Days need attention</small><i>${svgIcon('chevronRight')}</i></button><button data-week-summary="planned"><span class="week-summary-icon planned">${svgIcon('calendar')}</span><b>${plannedCount}</b><small>Planned days</small><i>${svgIcon('chevronRight')}</i></button></section>
+  <section class="week-selected-card"><div class="week-selected-head"><div><small>${dayLong(selected.getDay()).toUpperCase()}</small><h2>${formatDateShort(selected)}</h2>${rec.dayNote?`<p class="week-day-note">${svgIcon('lightbulb')} ${escapeHTML(rec.dayNote)}</p>`:''}</div>${selectedKey>=todayKey()?`<button class="week-plan-button" id="planDayBtn">${svgIcon('calendar')} Plan Day</button>`:`<span class="week-status-pill ${selectedStatus.tone}">${selectedStatus.label}</span>`}</div>${weekAttentionCard(selected)}${cancelledCount?`<div class="week-cancelled-note"><span>${svgIcon('close')}</span><b>${cancelledCount} cancelled</b><small>Intentional cancellations do not count as attention.</small></div>`:''}<div class="week-preview-list">${shown.length?shown.map(i=>weekPreviewRow(i,selected)).join(''):'<div class="empty-state compact-empty">Nothing scheduled for this day.</div>'}</div>${selectedItems.length>4?`<button class="week-view-full" id="weekViewFull">${svgIcon('list')} <span>${expanded?'Show less':`View full day (${selectedItems.length} items)`}</span>${svgIcon('chevronRight')}</button>`:''}${expanded?`<div class="week-expanded-actions"><button class="secondary small-btn" id="addWeekTaskBtn">${svgIcon('plus')} Add task</button></div>`:''}</section>
+  <div class="week-other-title"><h2>Other Days This Week</h2>${otherDays.length>3?`<button id="weekSeeAll">${otherExpanded?'Show Less':'See All'}</button>`:''}</div><section class="week-other-list">${otherShown.map(weekOtherRow).join('')}</section>
+  <details class="routine-manager week-routine-v34"><summary><span>${svgIcon('refresh')}<span><b>Weekly routine</b><small>${state.schedule.filter(s=>s.active!==false).length} recurring items</small></span></span>${svgIcon('chevronRight')}</summary><div class="routine-actions"><button class="primary" id="addRoutineBtn">+ Recurring item</button><button class="secondary" id="manageRoutineBtn">Manage routine</button></div></details>`;
+  const shiftWeek=n=>{state.settings.selectedWeekDate=todayKey(addDays(selected,n*7));state.settings.weekDayExpanded=false;save();renderWeek();};$('#prevWeekBtn').onclick=()=>shiftWeek(-1);$('#nextWeekBtn').onclick=()=>shiftWeek(1);$('#todayWeekBtn').onclick=()=>{state.settings.selectedWeekDate=todayKey();state.settings.weekDayExpanded=false;save();renderWeek();};
+  $$('[data-day-key]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.dayKey;state.settings.weekDayExpanded=false;save();renderWeek();});$$('[data-week-other]').forEach(b=>b.onclick=()=>{state.settings.selectedWeekDate=b.dataset.weekOther;state.settings.weekDayExpanded=false;save();renderWeek();window.scrollTo({top:0,behavior:'smooth'});});
+  $$('[data-week-summary]').forEach(b=>b.onclick=()=>{const type=b.dataset.weekSummary;let candidates=type==='complete'?days.filter(d=>todayKey(d)<=todayKey()&&dayCompletion(d)===100):type==='attention'?attentionDays:days.filter(isDayPlanned);if(!candidates.length)return toast(type==='attention'?'No days need attention':type==='planned'?'No manually planned days this week':'No completed days yet');if(type==='complete')candidates=[...candidates].reverse();state.settings.selectedWeekDate=todayKey(candidates[0]);state.settings.weekDayExpanded=false;save();renderWeek();window.scrollTo({top:0,behavior:'smooth'});});
+  if($('#planDayBtn'))$('#planDayBtn').onclick=()=>openDayAnchorPlanner(selected);if($('#weekViewFull'))$('#weekViewFull').onclick=()=>{state.settings.weekDayExpanded=!expanded;save();renderWeek();};if($('#weekSeeAll'))$('#weekSeeAll').onclick=()=>{state.settings.weekOtherExpanded=!otherExpanded;save();renderWeek();};if($('#addWeekTaskBtn'))$('#addWeekTaskBtn').onclick=()=>openOneOffTaskModal(null,{date:selectedKey,start:'12:00'});$('#addRoutineBtn').onclick=()=>openScheduleItemModal(null,{days:[selected.getDay()]});$('#manageRoutineBtn').onclick=()=>openScheduleManager(selected.getDay());
+  let sx=0,sy=0;const swipe=$('#weekSwipeArea');swipe.addEventListener('touchstart',e=>{const t=e.touches[0];sx=t.clientX;sy=t.clientY;},{passive:true});swipe.addEventListener('touchend',e=>{const t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.4)shiftWeek(dx<0?1:-1);},{passive:true});
+}
+
+function routineItemCard(item,selectedDay){
+  const isAnchor=isDayAnchor(item),fixed=itemIsFixed(item),days=(item.days||[]).map(dayShort).join(', ');
+  return `<button class="routine-v35-item ${item.active===false?'paused':''}" data-routine-edit="${escapeAttr(item.id)}">${taskIconHTML(item)}<span class="routine-v35-copy"><b>${escapeHTML(item.title)}</b><small>${escapeHTML(timeWindow(item))} · ${escapeHTML(item.category||'Routine')}</small><em>${isAnchor?'Anchor':fixed?'Fixed':'Flexible'} · ${escapeHTML(days)}</em></span><span class="routine-v35-chevron">${svgIcon('chevronRight')}</span></button>`;
+}
+function openScheduleManager(initialDay=null){
+  let selectedDay=initialDay==null?parseDateKey(state.settings.selectedWeekDate||todayKey()).getDay():Number(initialDay);
+  const draw=()=>{
+    const active=state.schedule.filter(x=>x.active!==false&&Array.isArray(x.days)&&x.days.includes(selectedDay)).sort((a,b)=>itemSortMinutes(a)-itemSortMinutes(b)),anchors=active.filter(isDayAnchor),fixed=active.filter(i=>!isDayAnchor(i)&&itemIsFixed(i)),flex=active.filter(i=>!isDayAnchor(i)&&!itemIsFixed(i)),paused=state.schedule.filter(x=>x.active===false&&Array.isArray(x.days)&&x.days.includes(selectedDay));
+    const wake=anchors.find(i=>i.id==='wake'),sleep=anchors.find(i=>i.id==='sleep');
+    modalContent.innerHTML=`<div class="sheet-handle"></div><div class="routine-v35-head"><div><p class="eyebrow">WEEKLY ROUTINE</p><h2>Manage routine</h2><p>Your recurring default week. One-off planning stays in Week → Plan Day.</p></div><button class="round-icon" id="closeModal" aria-label="Close">${svgIcon('close')}</button></div><div class="routine-day-tabs">${DAY_SHORT.map((d,i)=>`<button data-routine-day="${i}" class="${i===selectedDay?'active':''}"><small>${d}</small><b>${state.schedule.filter(x=>x.active!==false&&x.days?.includes(i)).length}</b></button>`).join('')}</div>
+    <section class="routine-v35-summary"><div><span class="routine-anchor-icon wake">${svgIcon('sun')}</span><small>Wake</small><b>${formatClock(wake?.start||state.profile.wakeTarget)}</b><button data-routine-edit="wake">Edit</button></div><div><span class="routine-anchor-icon sleep">${svgIcon('moon')}</span><small>Sleep</small><b>${formatClock(sleep?.start||state.profile.sleepTarget)}</b><button data-routine-edit="sleep">Edit</button></div><div class="routine-counts"><span><b>${fixed.length}</b><small>Fixed</small></span><span><b>${flex.length}</b><small>Flexible</small></span></div></section>
+    <div class="routine-v35-section-head"><div><span class="routine-section-icon fixed">${svgIcon('calendar')}</span><span><b>Fixed events</b><small>Classes and appointments never move.</small></span></div></div><section class="routine-v35-list">${fixed.length?fixed.map(i=>routineItemCard(i,selectedDay)).join(''):'<div class="empty-state compact-empty">No fixed events on ${escapeHTML(dayLong(selectedDay))}.</div>'}</section>
+    <div class="routine-v35-section-head"><div><span class="routine-section-icon flexible">${svgIcon('spark')}</span><span><b>Flexible routine</b><small>Reset may move these when rebuilding a day.</small></span></div></div><section class="routine-v35-list">${flex.length?flex.map(i=>routineItemCard(i,selectedDay)).join(''):'<div class="empty-state compact-empty">No flexible routine items on ${escapeHTML(dayLong(selectedDay))}.</div>'}</section>
+    ${paused.length?`<details class="routine-paused"><summary>${paused.length} paused item${paused.length===1?'':'s'} on this day</summary><div>${paused.map(i=>routineItemCard(i,selectedDay)).join('')}</div></details>`:''}
+    <button class="primary full routine-add-v35" id="addRoutineInside">${svgIcon('plus')} Add recurring item</button>`;
+    if(!modal.open)modal.showModal();
+    $('#closeModal').onclick=()=>modal.close();$$('[data-routine-day]').forEach(b=>b.onclick=()=>{selectedDay=Number(b.dataset.routineDay);draw();});
+    $$('[data-routine-edit]').forEach(b=>b.onclick=()=>{routineManagerReturnDay=selectedDay;openScheduleItemModal(b.dataset.routineEdit);});
+    $('#addRoutineInside').onclick=()=>{routineManagerReturnDay=selectedDay;openScheduleItemModal(null,{days:[selectedDay]});};
+  };draw();
+}
+function renderAfterEditor(){
+  if(routineManagerReturnDay!==null){const d=routineManagerReturnDay;routineManagerReturnDay=null;openScheduleManager(d);return;}
+  if(state.settings.activeTab==='week'&&weekEditContext){const ctx=weekEditContext;weekEditContext=null;state.settings.selectedWeekDate=ctx.date;save();renderWeek();requestAnimationFrame(()=>window.scrollTo({top:ctx.scrollY,behavior:'auto'}));}else{weekEditContext=null;render();}
+}
+
+function openWorkoutPlanner(){
+  let focus='Full Body',temp={};workoutFocuses().forEach(name=>temp[name]=new Set(validPresetIds(name)));
+  const draw=()=>{
+    const selected=temp[focus],all=state.gym.exercises||[],count=selected.size;
+    modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">START WORKOUT</p><h2>Build today’s workout</h2><div class="focus-chip-wrap workout-four">${workoutFocuses().map(x=>`<button class="focus-chip ${x===focus?'active':''}" data-workout-focus="${escapeAttr(x)}">${escapeHTML(x)}</button>`).join('')}</div><div class="workout-builder-head"><div><small>${escapeHTML(focus.toUpperCase())}</small><b id="workoutSelectedCount">${count} exercise${count===1?'':'s'} selected</b></div><button class="text-button" id="resetWorkoutPreset">${focus==='Custom'?'Clear':'Reset default'}</button></div><div class="exercise-pick-grid" id="exercisePickGrid">${all.map(ex=>`<button type="button" class="exercise-pick ${selected.has(ex.id)?'selected':''}" data-workout-pick="${escapeAttr(ex.id)}" role="checkbox" aria-checked="${selected.has(ex.id)?'true':'false'}"><span class="exercise-pick-check">${selected.has(ex.id)?'✓':''}</span><span><b>${escapeHTML(ex.name)}</b><small>${escapeHTML(ex.group||'Other')}</small></span></button>`).join('')}</div><button class="primary full" id="startPlannedWorkout" ${count?'':'disabled'}>Start ${escapeHTML(focus)} workout</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+    if(!modal.open)modal.showModal();
+    $$('[data-workout-focus]',modalContent).forEach(b=>b.onclick=()=>{focus=b.dataset.workoutFocus;draw();});
+    const grid=$('#exercisePickGrid');grid.onclick=e=>{const btn=e.target.closest('[data-workout-pick]');if(!btn)return;const id=btn.dataset.workoutPick;if(selected.has(id))selected.delete(id);else selected.add(id);const on=selected.has(id);btn.classList.toggle('selected',on);btn.setAttribute('aria-checked',on?'true':'false');const check=btn.querySelector('.exercise-pick-check');if(check)check.textContent=on?'✓':'';const c=$('#workoutSelectedCount');if(c)c.textContent=`${selected.size} exercise${selected.size===1?'':'s'} selected`;const start=$('#startPlannedWorkout');if(start)start.disabled=!selected.size;};
+    $('#resetWorkoutPreset').onclick=()=>{temp[focus]=new Set(focus==='Custom'?[]:(defaultWorkoutPresets()[focus]||[]).filter(id=>state.gym.exercises.some(ex=>ex.id===id)));draw();};
+    $('#startPlannedWorkout').onclick=()=>{const ids=[...temp[focus]];if(!ids.length)return toast('Choose at least one exercise');if(!state.gym.workoutPresets)state.gym.workoutPresets=defaultWorkoutPresets();state.gym.workoutPresets[focus]=ids;state.gym.activeWorkout={id:uid('workout'),date:todayKey(),focus,exerciseIds:ids,completedExerciseIds:[],startedAt:new Date().toISOString()};save();modal.close();renderGym();toast(`${focus} workout started`);};$('#cancelModal').onclick=()=>modal.close();
+  };draw();
+}
+
+function inspectDataHealth({repair=false}={}){
+  const issues=[];let repaired=0;
+  const gymSeen=new Map();
+  for(const log of state.gym.logs||[]){
+    if(!log.id)issues.push('A gym log is missing an ID');
+    if(Number(log.sets)<1||Number(log.reps)<1){issues.push('A gym log has invalid sets or reps');if(repair){log.sets=clamp(Number(log.sets||1),1,20);log.reps=clamp(Number(log.reps||1),1,100);repaired++;}}
+    if(log.workoutId&&log.exerciseId){const k=`${log.workoutId}|${log.exerciseId}`,old=gymSeen.get(k);if(old){issues.push('Duplicate exercise logs exist inside one workout');if(repair){const oldIndex=state.gym.logs.indexOf(old),newIndex=state.gym.logs.indexOf(log);if(oldIndex>=0&&newIndex>=0){const keep=Number(log.createdAt||0)>=Number(old.createdAt||0)?log:old,drop=keep===log?old:log;state.gym.logs=state.gym.logs.filter(x=>x!==drop);gymSeen.set(k,keep);repaired++;}}}else gymSeen.set(k,log);}
+  }
+  for(const [key,rec] of Object.entries(state.records||{})){
+    const date=parseDateKey(key),valid=new Set(itemsForDate(date,{ignoreOverrides:true}).map(occurrenceKey));
+    for(const occ of Object.keys(rec.itemStatus||{})){if(!valid.has(occ)){issues.push(`${key} has an orphan task status`);if(repair){delete rec.itemStatus[occ];repaired++;}}}
+    for(const occ of Object.keys(rec.timeOverrides||{})){if(!valid.has(occ)){issues.push(`${key} has an orphan time override`);if(repair){delete rec.timeOverrides[occ];repaired++;}}}
+    const before=(rec.unscheduledItems||[]).length;const cleaned=(rec.unscheduledItems||[]).filter(x=>valid.has(x));if(cleaned.length!==before){issues.push(`${key} has stale attention references`);if(repair){rec.unscheduledItems=cleaned;repaired+=before-cleaned.length;}}
+    if(rec.actualWakeAt&&!validActualWakeForKey(rec.actualWakeAt,key))issues.push(`${key} has a wake log on the wrong date`);
+    if(rec.actualSleepAt){const a=String(rec.actualSleepAt).slice(0,10),next=todayKey(addDays(date,1));if(a!==key&&a!==next)issues.push(`${key} has a sleep log outside its night`);}
+    const w=rec.timeOverrides?.['s:wake'];if(w?.dayAnchor&&rec.actualWakeAt&&!rec.explicitAnchors?.wake&&w.start===String(rec.actualWakeAt).slice(11,16)){issues.push(`${key} has a legacy actual-wake/planned-wake mix-up`);if(repair){delete rec.timeOverrides['s:wake'];repaired++;}}
+    const sl=rec.timeOverrides?.['s:sleep'];if(sl?.dayAnchor&&rec.actualSleepAt&&!rec.explicitAnchors?.sleep&&sl.start===String(rec.actualSleepAt).slice(11,16)){issues.push(`${key} has a legacy actual-sleep/planned-sleep mix-up`);if(repair){delete rec.timeOverrides['s:sleep'];repaired++;}}
+  }
+  const txIds=new Set();for(const t of state.money.transactions||[]){if(txIds.has(t.id))issues.push('Duplicate money transaction IDs were found');else txIds.add(t.id);if(!Number.isFinite(Number(t.amount))||Number(t.amount)<0)issues.push('A money transaction has an invalid amount');}
+  return {issues:[...new Set(issues)],repaired};
+}
+function openDataHealthModal(){
+  const report=inspectDataHealth(),status=$('#dataHealthStatus');if(status)status.textContent=report.issues.length?`${report.issues.length} found`:'Healthy';settingsDialog?.close();
+  modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">DATA HEALTH</p><h2>${report.issues.length?'A few things need checking':'Everything looks healthy'}</h2><p class="muted">Reset checks schedule links, Wake/Sleep separation, gym logs and stored references without sending anything online.</p>${report.issues.length?`<div class="health-check-list">${report.issues.slice(0,10).map(x=>`<div>${svgIcon('warning')}<span>${escapeHTML(x)}</span></div>`).join('')}${report.issues.length>10?`<small>+ ${report.issues.length-10} more</small>`:''}</div><button class="primary full" id="repairDataHealth">Repair safe issues</button>`:`<div class="health-ok-card">${svgIcon('check')}<div><b>No structural problems found</b><small>Your local Reset data passed the consistency check.</small></div></div>`}<button class="secondary full" id="cancelModal" style="margin-top:8px">Close</button>`;
+  modal.showModal();
+  if($('#repairDataHealth'))$('#repairDataHealth').onclick=()=>{createSafetySnapshot('Before data health repair');const fixed=inspectDataHealth({repair:true});save();const status=$('#dataHealthStatus');if(status)status.textContent='Healthy';modal.close();render();toast(fixed.repaired?`${fixed.repaired} safe issue${fixed.repaired===1?'':'s'} repaired`:'No safe repairs were needed');};
+  $('#cancelModal').onclick=()=>modal.close();
+}
+
+// Prevent accidental double execution of the same action while still allowing rapid interaction across different controls.
+const __resetTapTimes=new WeakMap();
+document.addEventListener('click',e=>{const btn=e.target.closest?.('button');if(!btn||btn.matches('[data-odo-step],[data-quick-weight],[data-quick-sets],[data-quick-reps]'))return;const now=performance.now(),last=__resetTapTimes.get(btn)||0;if(now-last<260){e.preventDefault();e.stopImmediatePropagation();return;}__resetTapTimes.set(btn,now);},true);
+
+const __dataHealthBtn=$('#dataHealthBtn');if(__dataHealthBtn)__dataHealthBtn.onclick=openDataHealthModal;
+const __recoveryBtn=$('#recoverySnapshotBtn');if(__recoveryBtn)__recoveryBtn.onclick=openRecoverySnapshotModal;
+/* ===== end v3.5 layer ===== */
+
 /* ===== end v3.4 layer ===== */
 
 
 $$('.tab').forEach(btn=>btn.addEventListener('click',()=>{state.settings.activeTab=btn.dataset.tab;if(btn.dataset.tab==='more')state.settings.moreView='home';if(btn.dataset.tab==='money')state.settings.moneyView='home';save();render();window.scrollTo({top:0,behavior:'auto'});}));
 
 const settingsDialog=$('#settingsDialog');
-$('#settingsBtn').onclick=()=>{const v=$('#versionLabel');if(v)v.textContent='v'+APP_DISPLAY_VERSION;requestPersistentStorage().then(updateStorageProtectionLabel);updateBackupConfidenceLabel();checkForAppUpdate(true);settingsDialog.showModal();};
+$('#settingsBtn').onclick=()=>{const v=$('#versionLabel');if(v)v.textContent='v'+APP_DISPLAY_VERSION;requestPersistentStorage().then(updateStorageProtectionLabel);updateBackupConfidenceLabel();updateRecoverySnapshotRow();checkForAppUpdate(true);settingsDialog.showModal();};
 if($('#updateReadyBtn'))$('#updateReadyBtn').onclick=applyAppUpdate;
 $('#exportBtn').onclick=()=>{
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`reset-backup-${todayKey()}.json`;a.click();URL.revokeObjectURL(url);toast('Backup exported');
@@ -1951,7 +2289,7 @@ if('serviceWorker' in navigator){
         reloading=true;
         window.location.reload();
       });
-      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.4.0',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.5.0',{updateViaCache:'none'});
       if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});
       reg.addEventListener('updatefound',()=>{
         const worker=reg.installing;
