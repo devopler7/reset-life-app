@@ -1,5 +1,10 @@
-RESET v3.3.0 UPDATE
+RESET v3.4.0 UPDATE
 
-Export a backup first. Then replace the files in your existing GitHub repository with everything in this folder and commit to main. Do not create a new repository.
+1. Export a Reset JSON backup first.
+2. Upload every file/folder inside life-reset-app to the ROOT of the existing GitHub repository.
+3. Commit the upload.
+4. Wait for GitHub Pages deployment to finish with a green check.
+5. Fully close and reopen Reset on iPhone.
+6. Verify Settings -> App version = v3.4.0.
 
-After Pages deploys, fully close the iPhone Home Screen app and reopen it. Verify Settings says v3.3.0.
+Do not create a nested life-reset-app folder in the repository. The repository root should directly contain index.html, app.js, styles.css, service-worker.js and the icons folder.

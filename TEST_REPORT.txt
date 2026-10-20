@@ -1,80 +1,67 @@
-RESET v3.3.0 TEST REPORT
-========================
+RESET v3.4.0 TEST REPORT
 
 Scope
 -----
-This release was tested as a migration/update from Reset v3.2.0 and as a clean install state. Testing focused especially on the new gym system, wake/sleep anchors, future-day rebuilding, missed/cancelled items, the Sleep Life Tool, Progress, iPhone layouts, Arabic RTL, large histories and data preservation.
+This release was tested as an update from the previous local-state shape and as a clean state. Testing focused on the scheduler rewrite, Wake/Sleep separation, Week/Plan Day, cancellations/restores, meal ordering, manual moves, Gym polish, Money allocation states, Sleep duration handling, responsive layouts, migration and large local histories.
 
-Deterministic regression suite
-------------------------------
-107/107 checks passed.
+Final deterministic browser-simulation suite
+-------------------------------------------
+45 / 45 checks passed.
 
-Covered examples include:
-- v3.2 -> v3.3 state migration and preservation of existing gym logs
-- exact 10-exercise Full Body defaults
-- Upper Body / Lower Body defaults and Custom workout behavior
-- all four workout modes only
-- quick weight/set/rep logging
-- replacing the same exercise log inside one active workout instead of duplicating it
-- actual kg / sets / reps displayed in an active workout
-- Finish Workout and Cancel Workout confirmation flows
-- complete multi-exercise gym history
-- Upper Body / Lower Body / Core personal-best grouping
-- exercise metadata and muscle-group migration
-- one-day wake and sleep overrides without changing recurring defaults
-- sleep after midnight assigned to the previous night
-- late wake marking earlier flexible items missed
-- restoring flexible missed items
-- fixed/cancelled class handling
-- permanent Wake / Sleep anchors cannot be deleted
-- future-day rebuilding and sleep remaining the final anchor
-- Other task category
-- Sleep target/history calculations
-- Perfect Week achievement
-- Progress card/icon alignment
-- Arabic RTL smoke testing
-- widths 320, 390, 430 and 760 px with no tested horizontal overflow
-- repeated rendering of all major screens with no uncaught JavaScript errors
+The checks include:
+- v3.4.0/version wiring and English-only UI
+- reported 11:00 AM Wake rebuild scenario
+- Wake remains the first flexible-day boundary
+- 4:00 AM rebuild does not silently turn Wake into the current time
+- actual early Wake moves the remaining morning while planned Wake stays unchanged
+- unmarking Wake restores the planned Wake time
+- after-midnight Sleep remains attached to the intended night
+- actual Sleep does not overwrite planned Sleep
+- cancelled fixed events stay cancelled during rebuild and restore to their exact fixed time
+- Breakfast -> Lunch -> Dinner ordering and spacing
+- impossible-day behavior produces Needs attention instead of silently dropping tasks
+- repeated rebuild stability, including manual-move collision cases
+- Adelaide DST-boundary sleep-duration calculation
+- state migration and data preservation
+- Money allocation color thresholds
+- Gym workout-picker scroll retention and numeric Sets/Reps input
+- Week redesign and Plan Day structure
+- interactive Week summary cards
+- update-ready control/version display
+- no horizontal overflow at 320, 375, 390 and 430 px widths
+- no runtime JavaScript errors during the suite
 
-Additional edge-case verification
----------------------------------
-7/7 focused checks passed.
+Randomized scheduler stress
+---------------------------
+Four final randomized passes completed successfully:
+- 6,000 generated day scenarios
+- 12,000 consecutive rebuild operations
+- randomized Wake/Sleep overrides, cancellations and manual moves
+- 0 scheduler invariant failures
+- 0 rebuild-stability failures
+- 0 runtime JavaScript errors
 
-Included:
-- deleting an exercise and Undo restoring the exercise and its workout-preset membership
-- early one-day sleep time automatically moving a late flexible item before sleep so Sleep remains last
-- Forearm/Trap secondary muscle metadata on pulling and rear-delt work
-
-Randomized stress simulation
+Large-history synthetic load
 ----------------------------
-200 simulated user states completed successfully.
+The app was also rendered with synthetic long-term data including:
+- 6,000 Money transactions
+- 3,500 Gym logs
+- 700 body-weight logs
+- about 500 Sleep records
 
-Across those states the test generated randomized:
-- money transaction histories
-- gym histories across all exercises
-- repeated exercise logs
-- sleep histories including after-midnight sleep
-- one-day wake/sleep overrides
-- future-day rebuilds
-- late-wake missed-item scenarios
-- cancelled fixed classes
-- active-workout duplicate-log scenarios
+All major sections rendered without runtime JavaScript errors in the browser simulation.
 
-The stress pass executed:
-- 2,800 randomized major-screen renders
-- 13,800 state-changing / planning operations
-- 0 detected logical test failures
-- 0 uncaught browser JavaScript errors
+Migration and storage
+---------------------
+Migration checks preserved representative Money, Gym, Project and Wake data while upgrading to app state version 13. The removed language preference is discarded. Local-first storage and the IndexedDB backup path remain in place.
 
-Static / packaging checks
--------------------------
-- app.js JavaScript syntax: passed
-- service-worker.js JavaScript syntax: passed
-- manifest JSON: passed
-- local referenced asset existence: passed
-- no external user-data API or cloud dependency included
-- cache version updated to Reset v3.3.0
+Static checks
+-------------
+- app.js syntax validation passed
+- cache/app version wiring checked for v3.4.0
+- responsive mobile layouts checked in Chromium mobile-size simulation, including 52 cross-section/modal width checks
+- English-only release files; the removed language UI/settings are absent
 
-Known testing limitation
-------------------------
-The test environment can emulate iPhone-sized browser layouts but is not a physical iPhone running Safari as a Home Screen PWA. The final touch behavior, iOS keyboard behavior and Apple Home Screen cache behavior should therefore still be checked on the user's actual iPhone after deployment.
+Important limitation
+--------------------
+These are automated/browser-simulation tests, not physical iPhone Safari/Home Screen hardware tests. The real iPhone remains the final smoke test for iOS-specific touch, keyboard, Home Screen caching and standalone-PWA behavior.

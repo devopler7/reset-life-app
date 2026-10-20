@@ -1,7 +1,7 @@
-const CACHE = 'reset-life-v3.3.0';
+const CACHE = 'reset-life-v3.4.0';
 const ASSETS = [
-  './', './index.html', './styles.css?v=3.3.0', './app.js?v=3.3.0', './manifest.webmanifest',
-  './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'
+  './', './index.html', './styles.css?v=3.4.0', './app.js?v=3.4.0', './manifest.webmanifest',
+  './VERSION.txt', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'
 ];
 
 self.addEventListener('install', event => {

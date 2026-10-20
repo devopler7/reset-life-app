@@ -1,12 +1,15 @@
-RESET v3.3.0 — PERSONAL EDITION
+RESET v3.4.0 — PERSONAL EDITION
 
-Update your existing GitHub Pages app:
-1. Export one backup from Reset first.
-2. Upload everything inside this life-reset-app folder to the existing reset-life-app GitHub repository.
-3. Commit to main and wait for GitHub Pages to deploy.
-4. Fully close Reset on iPhone and reopen it.
-5. Settings should show v3.3.0.
+Before updating:
+1. Open Reset -> Settings -> Export backup.
 
-If the Home Screen app still shows an older version, open the GitHub Pages URL in Safari, refresh once, then fully close and reopen Reset.
+Update GitHub Pages:
+2. Open your reset-life-app GitHub repository.
+3. Upload ALL files/folders inside this life-reset-app folder to the repository root.
+4. Commit the upload and wait until the newest GitHub Pages deployment has a green check.
+5. Fully close the Reset Home Screen app and reopen it.
+6. Open Settings and confirm App version says v3.4.0.
 
-All data stays local on your device.
+If Safari/Home Screen still shows an older version, refresh the GitHub Pages website once in Safari, then fully close and reopen Reset.
+
+Your existing local Reset data is migrated automatically. Keep the exported JSON backup until you have checked the update.
