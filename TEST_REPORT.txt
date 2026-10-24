@@ -1,27 +1,46 @@
-RESET v3.6.2 VALIDATION REPORT
+RESET v3.6.3 VALIDATION REPORT
 
-Completed
-- app.js and service-worker.js syntax: PASS.
-- 65 local UI/state checks: PASS. Includes page/panel locking, return positions, open/close cycles, invalid-form cancellation, viewport state, 24 modal families and 12 page families.
-- 22 history/recurrence reliability groups: PASS. Includes exact requested corrections, snapshots, deletion choices, partial-day completion preservation, anonymous daily aggregates, archived history, moved tasks, Undo, recurring overview/search/edit/duplicate, past-day correction, tracking boundary, week navigation and JSON round trips.
-- 7 startup/storage/cancellation groups: PASS. Includes newer-copy recovery, retaining a newer primary copy, unreadable primary data, summary refresh after explicit corrections, ghost-attention cleanup and worker activation without forced navigation.
-- 48 early-completion combinations: PASS. Current time simulated at 15:00, four task durations, two sleep boundaries, active/completed/cancelled fixed events, manual moves and repeated rebuilds. Completed upcoming tasks remained completed and unchanged.
-- 36 swap cases: 19 accepted, 17 rejected for semantic ordering. No accepted-swap overlap or rebuild-idempotence failures.
-- Legacy migration and missing-snapshot recovery: PASS.
-- Input backup remains unchanged by migration: PASS.
-- Repeated migration and export/import are idempotent: PASS.
-- Private backup comparison: money, gym, health, car, courses, uni tasks, projects, weekly reviews, profile, existing one-off tasks and actual sleep/wake values remain unchanged.
-- The repaired fixture shows 100% on 17, 18 and 19 October. 20 October remains 100%.
-- Growth fixture: 1,000 additional day records, 200 additional recurring items and 2,000 spending entries. Migration + Week + Progress rendered in tens of milliseconds in the local VM. This is not a device-performance measurement.
-- Version/build wiring, JSON manifest and ZIP integrity: checked while packaging.
+PASS — JavaScript syntax for app.js and service-worker.js.
+PASS — 28 gym regression groups in the local DOM/state simulator.
+PASS — 11 page-render smoke checks: Today, Week, University, Money, More, Progress, Health, Sleep, Gym, Car and Projects.
+PASS — Scoped source comparison: existing function changes are limited to gym helpers/UI/metrics and the required gym migration/default fields. Service-worker/index/version references are updated for v3.6.3.
+PASS — Manifest JSON, asset references, unchanged icons, ZIP integrity and public-file allowlist checked during packaging.
+
+Gym coverage
+- Legacy schema-17 logs and unrelated domains retained on upgrade to schema 18.
+- Legacy aggregate weight/sets/reps interpreted without rewriting stored logs.
+- Start time persists immediately; second-start protection.
+- Previous working-set hint and copying into the current exercise.
+- Warm-up and working sets in one exercise entry; per-set weight and reps.
+- Timer changes only its label.
+- Open exercise editor retains values and focus through simulated midnight.
+- After-midnight saves use the original workout date.
+- Exercise upserts and duplicate-click protection.
+- Previous-performance hint excludes the active workout.
+- Inline invalid-input handling and cancellation/closure.
+- Partial invalid drafts, active workout and timestamps survive serialization/reload.
+- 23:00 to 00:20 produces an 80-minute workout on its start date.
+- Workout history displays duration, start/finish dates and warm-up details.
+- Multiple same-day workouts preserve individual timing and sum daily duration.
+- Old workout days have no fabricated duration.
+- Export/import round trips preserve completed sessions, sets and unrelated history.
+- Heavy warm-ups cannot inflate PRs, progress-chart points or strength achievements.
+- Warm-up-only entries remain history without counting as working progress.
+- Earlier warm-up logs can be manually reclassified while retaining IDs/dates.
+- Historical hints exclude future entries.
+- Copying working sets preserves current warm-ups.
+- Explicit workout cancellation clears only that workout's drafts and keeps saved logs.
+- Adelaide daylight-saving boundary uses true elapsed time.
+- Gym tabs, empty exercises and repeated editor open/close cycles.
+- One effective implementation per updated gym function; version/build wiring.
 
 Limits
-The local harness simulates DOM properties and events. It does not implement browser layout, scroll physics, native focus behaviour, keyboard animation or touch gestures. A browser preview was blocked by automatic approval. No live browser or physical iPhone test was completed. Passing these checks is not a guarantee that every device-specific edge case is resolved.
+The local simulator checks state, generated DOM and events. It does not implement browser layout, scroll physics, native number/date controls, keyboard animation or touch gestures. No live browser or physical iPhone test was completed. The previous release's full regression suite was not rerun in this workspace; its baseline code is retained outside this update's scoped changes.
 
-Suggested first device checks after updating
-- Confirm Settings shows v3.6.2 and 17-19 October show 100%.
-- Open a past date and inspect its task list. Check money/gym/sleep logs remain present.
-- Scroll Week down, open Manage routine, edit an item and Cancel. Confirm each view retains its own position and the background stays still.
-- Expand All recurring items, search, open an editor, and test with the keyboard visible.
-- Navigate weeks forward/back and check Monday/Sunday selection.
-- Verify a future task completed early remains complete after Rebuild.
+Suggested first iPhone checks
+1. Confirm Settings shows v3.6.3 and prior logs remain available.
+2. Start a test workout. Log a warm-up plus working sets with different reps. Reopen the exercise and check the saved rows.
+3. Close the app halfway through typing another exercise, then reopen and resume it.
+4. Finish the test workout and inspect Gym > History > Workout Days > Details for timing.
+5. During a real overnight workout, continue the same exercise after midnight and confirm it remains on the start date.
+6. Check set rows remain comfortable to scroll/edit with the keyboard visible.

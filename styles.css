@@ -1170,3 +1170,36 @@ html { scroll-padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
 .history-correction-list{display:grid;gap:12px;margin-bottom:16px}.history-correction-list label{border:1px solid var(--line);padding:12px;border-radius:12px}.history-correction-list b,.history-correction-list small{display:block}.history-correction-list small{margin:3px 0 9px;color:var(--muted);font-size:11px}
 .week-day.not-tracked{opacity:.4}.untracked{color:#98989f!important;border-color:#36363c!important;background:#18181d!important}
 #correctPastDay{margin-top:14px}.rebuild-results{margin-top:14px;font-size:11px;line-height:1.7}.rebuild-results summary{font-weight:700;cursor:pointer}.rebuild-results p{margin:7px 0}
+/* Gym v3.6.3: the sheet owns vertical scrolling; set rows never add a nested scroller. */
+.gym-previous-card{margin:14px 0;padding:14px;border:1px solid #24466c;border-radius:14px;background:#101d2c;}
+.gym-previous-card small,.gym-previous-card b{display:block;}
+.gym-previous-card small{font-size:11px;letter-spacing:.04em;color:#9ecaff;}
+.gym-previous-card b{font-size:16px;line-height:1.5;margin:5px 0 9px;overflow-wrap:anywhere;}
+.gym-set-help,.gym-session-date,.gym-draft-note,.gym-chart-note{font-size:12px;line-height:1.55;}
+.gym-set-list{display:grid;gap:9px;margin:12px 0;}
+.gym-set-row{display:grid;grid-template-columns:minmax(82px,1.15fr) minmax(62px,1fr) minmax(54px,.8fr) 40px;align-items:end;gap:8px;padding:10px;border:1px solid #303035;border-radius:12px;background:#16171b;}
+.gym-set-row.warmup{border-color:#72502a;background:#211c16;}
+.gym-set-row label{min-width:0;}
+.gym-set-row .label{font-size:11px;margin-bottom:5px;}
+.gym-set-row input,.gym-set-row select{width:100%;min-width:0;min-height:44px;font-size:16px;padding:9px 7px;}
+.gym-remove-set{width:40px;min-width:40px;min-height:44px;font-size:24px;border:1px solid #3b3436;border-radius:9px;color:#ff9a9f;background:#211b1e;}
+.gym-set-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+.gym-set-actions button{min-height:44px;font-size:13px;}
+.gym-warmup-button{color:#ffcb86!important;}
+.gym-warmup-copy{color:#d9b584!important;overflow-wrap:anywhere;}
+.gym-log-error,.workout-draft-warning{padding:11px;border:1px solid #a65a33;background:#2c1c17;color:#ffcfad;border-radius:10px;font-size:13px;line-height:1.5;}
+.gym-log-error[hidden]{display:none;}
+.workout-timer-line{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:10px;}
+.workout-timer-line b{font-size:20px;font-variant-numeric:tabular-nums;color:#71e89a;}
+.workout-timer-line small{font-size:11px;color:var(--muted);}
+.workout-overnight-note{font-size:12px;line-height:1.5;color:#a6dcb5;}
+.workout-duration-history{color:#8fc6ff!important;font-variant-numeric:tabular-nums;}
+.workout-total-duration{font-size:24px;font-weight:700;color:#8fc6ff;margin:12px 0;}
+.workout-time-card h3{margin:0 0 6px;}
+.workout-time-card>b{font-size:21px;color:#8fc6ff;}
+.workout-history-exercises article{padding:12px 0;border-bottom:1px solid var(--line);}
+.workout-history-exercises small,.workout-history-exercises b{display:block;overflow-wrap:anywhere;}
+.workout-history-exercises small{margin-top:4px;color:var(--muted);}
+.gym-log>div{min-width:0;}
+.gym-log small,.active-workout-row small{overflow-wrap:anywhere;line-height:1.5;}
+@media(max-width:360px){.gym-set-row{grid-template-columns:minmax(70px,1fr) minmax(54px,1fr) minmax(48px,.8fr) 36px;gap:5px;padding:8px;}.gym-remove-set{min-width:36px;width:36px;}.gym-set-row input,.gym-set-row select{padding-inline:4px;}}

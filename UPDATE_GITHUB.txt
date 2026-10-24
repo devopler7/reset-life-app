@@ -1,21 +1,28 @@
-RESET v3.6.2 - COMPLETE UPDATE
+RESET v3.6.3 — GYM UPDATE
 
-1. Export a fresh JSON backup from your current app.
+1. Export a fresh JSON backup from your current Reset app.
 2. Unzip this package and open life-reset-app.
 3. Upload EVERYTHING INSIDE life-reset-app to the ROOT of your existing GitHub Pages repository, including the icons folder.
-4. Commit the upload and wait for the newest Pages deployment to finish.
-5. Fully close and reopen Reset.
-6. Open Settings and confirm v3.6.2.
+4. Commit the upload and wait for the Pages deployment to finish.
+5. Close and reopen Reset. Apply Update ready if offered.
+6. Open Settings and confirm v3.6.3.
 
-Your existing on-device records are upgraded automatically. The requested 17-19 October corrections apply once to the matching existing setup. No JSON backup import is needed.
+Your existing on-device data upgrades automatically. No JSON import is needed. Keep the existing website address so Reset can keep using its stored data.
 
-New controls:
-- Week > Weekly routine > Manage routine > All recurring items (collapsed by default).
-- Select a tracked past date > Correct this past day.
-- Remove recurring item > Keep its history / Delete its task history too.
+NEW IN GYM
+- Start Workout stays active until you finish or cancel, including after midnight or reopening the app.
+- An overnight workout and its exercise logs belong to the date on which it started.
+- The active workout shows elapsed time. Finishing stores the actual start, finish and duration.
+- Gym > History > Workout Days shows duration per day. Details shows individual workout times and exercise sets. Multiple workouts on one date retain their separate times and a combined total.
+- Exercise logging shows LAST TIME with the previous working sets and a Use last workout button.
+- Each set has its own weight and reps. Add working sets or warm-ups independently. Copy first working set to all working sets speeds up identical sets.
+- Warm-ups remain in history but do not enter strength charts, PRs or strength-gain achievements.
+- Partial exercise entries are saved automatically on this device. Reopen that exercise to continue. Explicitly finishing/cancelling discards unfinished drafts after a warning.
 
-If an old version remains, refresh the Pages URL once in Safari, close it, then reopen Reset.
+Older aggregate logs are retained. You can edit a previously logged warm-up and change its set types to Warm-up. Reset does not guess which old sets were warm-ups.
 
-The package contains app code only. Your personal JSON backup is not included.
+Duration is measured from Start Workout to Finish workout, including rests and time with the app closed. Older workouts have no saved finish times and therefore show Duration not recorded.
 
-Local regression checks passed. Physical iPhone scrolling and browser layout were not verified here. See TEST_REPORT.txt.
+If you still see an older version, refresh the existing Pages URL in Safari once, then close and reopen Reset.
+
+The package contains app code only. It does not include your private JSON backup. Local regression checks passed. Physical iPhone layout and touch behaviour were not tested here. See TEST_REPORT.txt.
