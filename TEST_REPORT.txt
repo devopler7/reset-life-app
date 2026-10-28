@@ -1,42 +1,13 @@
-RESET v3.6.4 VALIDATION REPORT
+RESET v3.6.5 VALIDATION REPORT
 
-PASS: 36 Money/salary regression groups in simulated DOM/state tests.
-PASS: 28 existing gym regression groups, including midnight, drafts, warm-ups and workout timing. Schema/version expectations and preservation checks allow the explicitly added Money fields.
-PASS: 11 page-render smoke checks: Today, Week, University, Money, More, Progress, Health, Sleep, Gym, Car and Projects.
+PASS: 36 existing salary/Money regression groups in the local DOM/state simulator.
+PASS: Focused DOM checks: home contains no multi-period bar chart; current spending progress bar remains; Salary History contains Compare salary periods without the open attribute; chart is inside that collapsed disclosure; navigation preserves Money state.
 PASS: app.js and service-worker.js syntax.
-PASS: scoped source comparison. Existing function changes are Money UI/helpers and the required migration hook. Gym and scheduling functions are unchanged.
-PASS: manifest, asset references, unchanged icons and non-code configuration, archive allowlist, version/cache wiring and ZIP integrity during packaging.
-
-Money coverage
-- Migration retains existing transactions, calendar plan history, currentCash, income, targets and unrelated app domains.
-- Initial salary inference based on existing start date; September to October test fixture.
-- No reset on payday, delayed confirmation, month rollover or installation.
-- Cancel and invalid confirmation preserve all spending and balances.
-- Explicit receipt closes old period and starts new spending totals while retaining targets.
-- Income-based leftover calculation kept separate from allocated total/current salary.
-- Same-day spending preview and both assignment choices.
-- Duplicate/stale receipt protection and guarded Undo.
-- Category buttons preserve typed amounts and use explicit selection.
-- Currency cents, invalid amounts and duplicate expense-save protection.
-- Salary history, category filtering, multi-select deletion and older records.
-- Old expense corrections update the appropriate salary and recorded leftovers.
-- Closed allocation snapshots survive later renames/target edits.
-- Removed categories retain names and remain editable for existing entries.
-- Backdated expenses, explicit salary assignment and backdated receipt.
-- Early salary, custom next date, overdue salary and normal month-length changes.
-- February, leap-year and December/January date defaults.
-- Salary income, period month and expected-date validation.
-- Overspending retained as a negative balance rather than invented savings.
-- Export/import and repeated migration preserve salary history without duplicating totals.
-- Gym, routines, sleep, courses, money-independent history and other domains retained.
+PASS: Scoped source comparison. Only renderMoney and renderMoneyHistoryPage bodies changed, plus display-version/build references. Salary calculations, migration/schema, gym and schedule functions are unchanged from v3.6.4.
+PASS: Manifest JSON, asset references, version/cache wiring, unchanged icons/configuration, public-file allowlist and ZIP integrity checked during packaging.
 
 Limits
-Tests simulate data, generated DOM and events. No live browser or physical iPhone test was completed. Layout, touch scrolling, native month/date pickers, keyboard animation and Home Screen PWA behaviour remain device checks. No personal backup was used or included in this package.
+The simulator does not implement browser layout, touch, native controls or keyboard animation. No physical iPhone or live browser test was performed. The previous release's broader gym regression suite was not rerun for this display-only change.
 
-FIRST IPHONE CHECKS
-1. Confirm v3.6.4 and inspect existing spending and gym logs before salary confirmation.
-2. Open Money > Salary received, check September -> October, received date 28 October 2026, income and next payday. Cancel first to confirm nothing resets.
-3. Reopen and confirm after reviewing any payday-spending checkbox. Check fresh allocations, September history and recorded leftover.
-4. Log a small real expense using the category cards and check the correct salary total.
-5. Inspect an older entry and verify its salary and category remain correct.
-6. Check the Money editor and category grid scroll comfortably with the keyboard visible.
+First device check
+Open Money and check the summary card is compact with current salary spending only. Open Salary history and expand Compare salary periods when you want the comparison chart. Verify your existing salary and spending totals are present.

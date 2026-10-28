@@ -1225,3 +1225,9 @@ html { scroll-padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
 .salary-expense-note{font-size:12px;line-height:1.6;}.salary-receipt-preview+.form-error[hidden],#expenseError[hidden],#moneyPlanError[hidden]{display:none;}
 .transaction-amount .row{display:flex;}.transaction-amount .row button{min-height:36px;font-size:11px;}.transaction-copy{min-width:0;}.transaction-copy b,.transaction-copy small{overflow-wrap:anywhere;}
 @media(max-width:360px){.expense-category{gap:6px;padding:10px 21px 10px 9px;}.expense-category>b{font-size:12px;}.salary-reserve-card{align-items:flex-start;flex-direction:column;}.salary-history-numbers{grid-template-columns:1fr;gap:9px;}.salary-history-numbers>div{display:flex;justify-content:space-between;gap:10px;}.salary-history-numbers b{margin:0;}}
+
+/* Salary comparison is available on demand in History only. */
+.salary-comparison{padding:15px;margin:14px 0;border:1px solid var(--line);border-radius:14px;background:#111214;}
+.salary-comparison>summary{cursor:pointer;font-size:14px;font-weight:700;min-height:32px;align-content:center;}
+.salary-comparison>p{font-size:12px;line-height:1.5;margin:10px 0 14px;}
+.salary-comparison .money-bars{margin-top:12px;}

@@ -1,27 +1,13 @@
-RESET v3.6.4 — SALARY PERIODS & MONEY UPDATE
+RESET v3.6.5 — COMPACT MONEY SUMMARY
 
-INSTALL
-1. Export a fresh JSON backup from your current app.
-2. Unzip this package and open life-reset-app.
-3. Upload EVERYTHING INSIDE life-reset-app to the root of your existing GitHub Pages repository, including icons.
-4. Wait for deployment, reopen Reset, and apply Update ready if offered.
-5. Confirm Settings shows v3.6.4. Keep the same website address. No JSON import is needed.
+1. Export a fresh JSON backup.
+2. Unzip the package and upload everything INSIDE life-reset-app to the root of your existing GitHub Pages repository, including icons.
+3. Wait for deployment, reopen Reset and confirm Settings shows v3.6.5.
 
-FIRST SALARY CONFIRMATION
-Open Money > Salary received. Check that the previous salary month is September 2026 and the new salary month is October 2026. Set the received date to 28 October 2026, review the salary amount and next expected payday, then confirm.
+The main Money card now shows only your current salary's spending, income, dates and progress bar. The comparison chart is under Money > Salary history > Compare salary periods. It is collapsed until opened.
 
-Nothing automatically resets on installation, payday or a calendar-month change. The button stays available when the expected date is due until you confirm receipt. Early arrivals can be recorded under Salary settings & early arrival.
+Your existing salary periods and spending carry over automatically. No import or salary confirmation is required for this update.
 
-Confirming receipt keeps allocation targets, closes the previous salary, and starts a fresh spending balance for the new salary. Existing entries are kept. If you already logged spending dated on/after the received date, the confirmation lets you decide whether those entries belong to the new or previous salary.
+This is a display-only update. Data schema remains 19. Salary confirmation, allocations, leftover totals, history and gym features are retained.
 
-LEFTOVERS & HISTORY
-Salary history keeps each salary's income, plan, spending and remaining amount. Recorded net leftover is closed salary income minus its spending, summed across closed periods. Overspending reduces that total. It stays separate from the new salary's allocations and does not change the existing currentCash field. It reflects logged records rather than a bank balance.
-
-Older expenses can still be corrected. Corrections update their salary totals and recorded leftover without counting the same salary twice. Records before the initial inferred salary are retained under Earlier records and All salary periods & earlier records.
-
-SPENDING & ALLOCATIONS
-Log spending is near the top, directly above Allocations. Allocation selection now uses large emoji/name cards. The expense editor shows its salary period and automatically selects a period for a backdated date; you can override it around payday.
-
-Edit allocations changes only the current plan and future defaults. Closed salary plans retain their names and targets. Set the usual payday and next expected salary date here. Calendar month lengths, year boundaries and custom dates are supported.
-
-Your gym, routines, sleep and other app records are retained. The package contains code only, with no private backup or test fixtures. Local checks passed; physical iPhone layout and touch behaviour were not tested here. See TEST_REPORT.txt.
+Local checks passed. No physical iPhone layout/touch test was performed here. See TEST_REPORT.txt.
