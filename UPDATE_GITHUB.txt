@@ -1,28 +1,27 @@
-RESET v3.6.3 — GYM UPDATE
+RESET v3.6.4 — SALARY PERIODS & MONEY UPDATE
 
-1. Export a fresh JSON backup from your current Reset app.
+INSTALL
+1. Export a fresh JSON backup from your current app.
 2. Unzip this package and open life-reset-app.
-3. Upload EVERYTHING INSIDE life-reset-app to the ROOT of your existing GitHub Pages repository, including the icons folder.
-4. Commit the upload and wait for the Pages deployment to finish.
-5. Close and reopen Reset. Apply Update ready if offered.
-6. Open Settings and confirm v3.6.3.
+3. Upload EVERYTHING INSIDE life-reset-app to the root of your existing GitHub Pages repository, including icons.
+4. Wait for deployment, reopen Reset, and apply Update ready if offered.
+5. Confirm Settings shows v3.6.4. Keep the same website address. No JSON import is needed.
 
-Your existing on-device data upgrades automatically. No JSON import is needed. Keep the existing website address so Reset can keep using its stored data.
+FIRST SALARY CONFIRMATION
+Open Money > Salary received. Check that the previous salary month is September 2026 and the new salary month is October 2026. Set the received date to 28 October 2026, review the salary amount and next expected payday, then confirm.
 
-NEW IN GYM
-- Start Workout stays active until you finish or cancel, including after midnight or reopening the app.
-- An overnight workout and its exercise logs belong to the date on which it started.
-- The active workout shows elapsed time. Finishing stores the actual start, finish and duration.
-- Gym > History > Workout Days shows duration per day. Details shows individual workout times and exercise sets. Multiple workouts on one date retain their separate times and a combined total.
-- Exercise logging shows LAST TIME with the previous working sets and a Use last workout button.
-- Each set has its own weight and reps. Add working sets or warm-ups independently. Copy first working set to all working sets speeds up identical sets.
-- Warm-ups remain in history but do not enter strength charts, PRs or strength-gain achievements.
-- Partial exercise entries are saved automatically on this device. Reopen that exercise to continue. Explicitly finishing/cancelling discards unfinished drafts after a warning.
+Nothing automatically resets on installation, payday or a calendar-month change. The button stays available when the expected date is due until you confirm receipt. Early arrivals can be recorded under Salary settings & early arrival.
 
-Older aggregate logs are retained. You can edit a previously logged warm-up and change its set types to Warm-up. Reset does not guess which old sets were warm-ups.
+Confirming receipt keeps allocation targets, closes the previous salary, and starts a fresh spending balance for the new salary. Existing entries are kept. If you already logged spending dated on/after the received date, the confirmation lets you decide whether those entries belong to the new or previous salary.
 
-Duration is measured from Start Workout to Finish workout, including rests and time with the app closed. Older workouts have no saved finish times and therefore show Duration not recorded.
+LEFTOVERS & HISTORY
+Salary history keeps each salary's income, plan, spending and remaining amount. Recorded net leftover is closed salary income minus its spending, summed across closed periods. Overspending reduces that total. It stays separate from the new salary's allocations and does not change the existing currentCash field. It reflects logged records rather than a bank balance.
 
-If you still see an older version, refresh the existing Pages URL in Safari once, then close and reopen Reset.
+Older expenses can still be corrected. Corrections update their salary totals and recorded leftover without counting the same salary twice. Records before the initial inferred salary are retained under Earlier records and All salary periods & earlier records.
 
-The package contains app code only. It does not include your private JSON backup. Local regression checks passed. Physical iPhone layout and touch behaviour were not tested here. See TEST_REPORT.txt.
+SPENDING & ALLOCATIONS
+Log spending is near the top, directly above Allocations. Allocation selection now uses large emoji/name cards. The expense editor shows its salary period and automatically selects a period for a backdated date; you can override it around payday.
+
+Edit allocations changes only the current plan and future defaults. Closed salary plans retain their names and targets. Set the usual payday and next expected salary date here. Calendar month lengths, year boundaries and custom dates are supported.
+
+Your gym, routines, sleep and other app records are retained. The package contains code only, with no private backup or test fixtures. Local checks passed; physical iPhone layout and touch behaviour were not tested here. See TEST_REPORT.txt.

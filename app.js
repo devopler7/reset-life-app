@@ -1,6 +1,6 @@
 const APP_KEY = 'reset-life-dashboard-v1';
-const APP_VERSION = 18;
-const APP_DISPLAY_VERSION = '3.6.3';
+const APP_VERSION = 19;
+const APP_DISPLAY_VERSION = '3.6.4';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -1073,37 +1073,181 @@ function uniTaskHTML(t) {
   return `<div class="uni-task ${t.done?'muted':''}"><div class="uni-task-head"><input class="check" type="checkbox" data-uni-check="${t.id}" ${t.done?'checked':''}><div class="uni-task-copy"><b>${escapeHTML(t.title)}</b><small>${escapeHTML(t.course||'General')}${t.dueDate?` · Due ${escapeHTML(formatDateShort(parseDateKey(t.dueDate)))}`:''}${t.estimate?` · ${escapeHTML(t.estimate)}`:''}</small><div class="timeline-meta"><span class="badge ${badge}">${escapeHTML(t.priority||'Important')}</span></div></div></div>${!t.done?`<div class="uni-actions"><button class="soft-btn small-btn" data-uni-schedule="${t.id}">Schedule it</button><button class="secondary small-btn" data-uni-edit="${t.id}">Edit</button></div>`:''}</div>`;
 }
 
-function renderMoney() {
-  if((state.settings.moneyView||'home')==='history')return renderMoneyHistoryPage();
-  setHeader('Money');captureCurrentMoneyPlan();const mk=monthKey(),totalTarget=moneyPlanTotal(),tx=transactionsForMonth(mk),totalSpent=tx.reduce((a,t)=>a+Number(t.amount||0),0),remaining=totalTarget-totalSpent,spendPct=totalTarget>0?Math.round(totalSpent/totalTarget*100):0,daysPay=daysUntilPayday();
-  const recent=[...tx].sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.createdAt||0)-Number(a.createdAt||0)).slice(0,5);
-  main.innerHTML=`<section class="money-top-grid"><article class="money-summary-tile salary"><span class="money-tile-icon">${svgIcon('calendar')}</span><div><b>${daysPay===0?'Today':daysPay}</b><small>${daysPay===0?'salary day':'day'+(daysPay===1?'':'s')+' until salary'}</small></div></article><article class="money-summary-tile remaining ${remaining<0?'over':''}"><span class="money-tile-icon">${svgIcon('money')}</span><div><b>${fmtMoney(Math.abs(remaining))}</b><small>${remaining>=0?'left to spend':'over allocation'}</small></div></article></section>
-  <section class="monthly-spending-card"><div class="monthly-spending-title"><div><span>Monthly Spending</span><b>${fmtMoney(totalSpent)} <em>/ ${fmtMoney(totalTarget)}</em></b></div><strong>${spendPct}%</strong></div><div class="budget-track big"><div class="budget-fill ${spendPct>=100?'over':spendPct>=80?'warning':''}" style="width:${Math.min(100,Math.max(0,spendPct))}%"></div></div>${moneyBarsHTML()}</section>
-  <div class="section-title"><h2>Allocations</h2><button id="editMoneyBtn">Edit</button></div><section class="allocation-list">${state.money.buckets.map(b=>budgetRowHTML(b,mk)).join('')}</section>
-  <button class="primary full money-log-btn" id="addExpenseBtn">+ Log spending</button>
-  <div class="section-title"><h2>Recent Spending</h2><button id="seeAllSpendingBtn">See all</button></div><section class="recent-spending-list">${recent.length?recent.map(t=>transactionHTML(t)).join(''):'<div class="empty-state">No spending logged this month.</div>'}</section>`;
-  $('#editMoneyBtn').onclick=openMoneyModal;$('#addExpenseBtn').onclick=()=>openExpenseModal();$('#seeAllSpendingBtn').onclick=()=>{state.settings.moneyView='history';save();renderMoney();};$$('[data-edit-tx]').forEach(b=>b.onclick=()=>openExpenseModal(b.dataset.editTx));$$('[data-del-tx]').forEach(b=>b.onclick=()=>deleteMoneyTransactionWithUndo(b.dataset.delTx));localizeTree(main);
+
+
+function shortMoney(n){const x=Number(n||0);return x>=1000?`${(x/1000).toFixed(x>=10000?0:1)}K`:Math.round(x).toString();}
+
+
+/* Salary periods are advanced only by an explicit, confirmed salary receipt. */
+function salaryMoney(value){return `${Number(value||0).toLocaleString(currentLocale(),{maximumFractionDigits:2})} SAR`;}
+function moneyCents(value){return Math.round((Number(value)||0)*100);}
+function moneySum(list){return list.reduce((sum,t)=>sum+moneyCents(t.amount),0)/100;}
+function moneyMonthValid(value){return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value));}
+function salaryScheduledDate(month,day=state.profile.paydayDay){
+  const [y,m]=month.split('-').map(Number),last=new Date(y,m,0,12).getDate();
+  return `${month}-${String(Math.min(clamp(Math.round(Number(day)||28),1,31),last)).padStart(2,'0')}`;
+}
+function salaryMonthShift(month,delta){const [y,m]=month.split('-').map(Number);return monthKey(new Date(y,m-1+delta,1,12));}
+function salaryNextDefault(month,startDate,day=state.profile.paydayDay){
+  let next=salaryScheduledDate(salaryMonthShift(month,1),day);
+  for(let i=2;next<=startDate&&i<120;i++)next=salaryScheduledDate(salaryMonthShift(month,i),day);
+  return next;
+}
+function salaryBucketSnapshot(buckets){return buckets.map(b=>({id:b.id,name:b.name,target:Math.max(0,moneyCents(b.target)/100)}));}
+function ensureSalaryPeriods(data=state){
+  const money=data.money;
+  if(!Array.isArray(money.salaryPeriods))money.salaryPeriods=[];
+  if(money.salaryPeriods.length){if(!money.salaryPeriods.some(p=>p.id===money.activeSalaryPeriodId))money.activeSalaryPeriodId=money.salaryPeriods.find(p=>!p.closedAt)?.id||null;return;}
+  const created=String(data.meta?.createdAt||todayKey()).slice(0,10),anchor=validDateKey(created)&&created<=todayKey()?created:todayKey();
+  let month=anchor.slice(0,7),start=salaryScheduledDate(month,data.profile.paydayDay||28);
+  if(start>anchor){month=salaryMonthShift(month,-1);start=salaryScheduledDate(month,data.profile.paydayDay||28);}
+  const period={id:uid('salary'),salaryMonth:month,startDate:start,income:Math.max(0,moneyCents(money.income)/100),buckets:salaryBucketSnapshot(money.buckets||[]),inferred:true,openedAt:new Date().toISOString(),closedAt:null};
+  money.salaryPeriods.push(period);money.activeSalaryPeriodId=period.id;
+  money.nextSalaryDate=salaryNextDefault(month,start,data.profile.paydayDay||28);
+}
+function salaryActivePeriod(){ensureSalaryPeriods();return state.money.salaryPeriods.find(p=>p.id===state.money.activeSalaryPeriodId)||null;}
+function salaryPeriodForTransaction(t){
+  if(t.salaryPeriodId)return state.money.salaryPeriods.find(p=>p.id===t.salaryPeriodId)||null;
+  return [...(state.money.salaryPeriods||[])].reverse().find(p=>t.date>=p.startDate&&(!p.endDate||t.date<p.endDate))||null;
+}
+function salaryPeriodForDate(date){return [...(state.money.salaryPeriods||[])].reverse().find(p=>date>=p.startDate&&(!p.endDate||date<p.endDate))||null;}
+function salaryTransactions(id){return state.money.transactions.filter(t=>salaryPeriodForTransaction(t)?.id===id);}
+function salaryLabel(period){return `${moneyMonthLongLabel(period.salaryMonth)} salary`;}
+function salaryRange(period){return `${formatDateShort(parseDateKey(period.startDate))} → ${period.endDate?formatDateShort(parseDateKey(period.endDate)):'next salary'}`;}
+function salaryPeriodTotals(period){
+  const tx=salaryTransactions(period.id),spent=moneySum(tx),income=moneyCents(period.income)/100;
+  return {spent,income,balance:(moneyCents(income)-moneyCents(spent))/100,allocated:period.buckets.reduce((sum,b)=>sum+moneyCents(b.target),0)/100};
+}
+function salaryReserveTotal(){return state.money.salaryPeriods.filter(p=>p.closedAt).reduce((sum,p)=>sum+moneyCents(salaryPeriodTotals(p).balance),0)/100;}
+function salaryDisplayBuckets(p){return [...(p?.buckets||[]),...(p?.retiredBuckets||[]).filter(b=>!p.buckets.some(x=>x.id===b.id))];}
+function salaryBucketInfo(t){const p=salaryPeriodForTransaction(t);return salaryDisplayBuckets(p).find(b=>b.id===t.bucketId)||state.money.buckets.find(b=>b.id===t.bucketId)||{id:t.bucketId,name:'Other',target:0};}
+function salaryBucketEmoji(b){
+  const text=`${b.id} ${b.name}`.toLowerCase();
+  if(/rent|bill|housing/.test(text))return '🏠';if(/food|grocer|meal/.test(text))return '🍽️';if(/car|fuel|petrol/.test(text))return '🚗';if(/saving/.test(text))return '💰';if(/cloth|fun|entertain/.test(text))return '👕';if(/travel|flight/.test(text))return '✈️';if(/dental|invisalign|health/.test(text))return '🦷';if(/buffer|reserve|misc/.test(text))return '🧾';return '📦';
+}
+function daysUntilPayday(){
+  ensureSalaryPeriods();const due=state.money.nextSalaryDate;if(!validDateKey(due))return 0;
+  return Math.max(0,Math.round((Date.UTC(...due.split('-').map((n,i)=>Number(n)-(i===1?1:0)))-Date.UTC(...todayKey().split('-').map((n,i)=>Number(n)-(i===1?1:0))))/86400000));
+}
+function captureCurrentMoneyPlan(){
+  const p=salaryActivePeriod();if(!p)return;
+  const buckets=salaryBucketSnapshot(state.money.buckets),income=Math.max(0,moneyCents(state.money.income)/100);
+  if(JSON.stringify(p.buckets)!==JSON.stringify(buckets)||p.income!==income){const used=new Set(salaryTransactions(p.id).map(t=>t.bucketId));p.retiredBuckets=[...new Map([...(p.retiredBuckets||[]),...p.buckets.filter(b=>!buckets.some(x=>x.id===b.id)&&used.has(b.id))].map(b=>[b.id,b])).values()];p.buckets=buckets;p.income=income;save();}
+}
+function salaryConfirmReceipt({expectedId,date,month,income,nextDate,moveDatedSpending=true,previousMonth=null}){
+  const money=state.money,old=salaryActivePeriod();
+  if(!old||old.id!==expectedId)throw new Error('This salary has already changed. Reopen the confirmation.');
+  if(!validDateKey(date)||date>todayKey()||date<=old.startDate)throw new Error('Use the actual salary date, after the previous start and no later than today.');
+  if(!moneyMonthValid(month)||month<=(previousMonth||old.salaryMonth))throw new Error('Choose a salary month after the previous one.');
+  if(income==null||String(income).trim()===''||!Number.isFinite(Number(income))||Number(income)<0||Number(income)>1e9)throw new Error('Enter a valid salary amount.');
+  if(!validDateKey(nextDate)||nextDate<=date)throw new Error('The next expected salary date must be after this salary.');
+  if(money.salaryPeriods.some(p=>p.id!==old.id&&p.salaryMonth===month))throw new Error('That salary month is already recorded.');
+  if(previousMonth&&(!moneyMonthValid(previousMonth)||money.salaryPeriods.some(p=>p.id!==old.id&&p.salaryMonth===previousMonth)))throw new Error('Choose a different valid month for the previous salary.');
+  createSafetySnapshot('Before confirming a new salary');
+  const before={periods:deepClone(money.salaryPeriods),active:money.activeSalaryPeriodId,next:money.nextSalaryDate,income:money.income,assignments:money.transactions.map(t=>({id:t.id,had:Object.hasOwn(t,'salaryPeriodId'),value:t.salaryPeriodId}))};
+  const next={id:uid('salary'),salaryMonth:month,startDate:date,income:moneyCents(income)/100,buckets:salaryBucketSnapshot(money.buckets),openedAt:new Date().toISOString(),closedAt:null};
+  const oldTx=salaryTransactions(old.id);
+  if(previousMonth)old.salaryMonth=previousMonth;
+  old.endDate=date;old.closedAt=new Date().toISOString();old.inferred=false;
+  money.salaryPeriods.push(next);money.activeSalaryPeriodId=next.id;money.nextSalaryDate=nextDate;money.income=next.income;
+  for(const t of oldTx)t.salaryPeriodId=moveDatedSpending&&t.date>=date?next.id:old.id;
+  old.closeout={...salaryPeriodTotals(old),recordedAt:old.closedAt};
+  const after=salaryUndoSignature();save();flushStateSave();return {before,newId:next.id,after};
+}
+function salaryUndoSignature(){return JSON.stringify({periods:state.money.salaryPeriods,next:state.money.nextSalaryDate,income:state.money.income,buckets:state.money.buckets,payday:state.profile.paydayDay,assignments:state.money.transactions.map(t=>({id:t.id,value:t.salaryPeriodId}))});}
+function undoSalaryReceipt(change){
+  const money=state.money;
+  if(money.activeSalaryPeriodId!==change.newId||salaryUndoSignature()!==change.after){toast('Money data changed after confirmation. Use history to correct individual entries.');return;}
+  money.salaryPeriods=deepClone(change.before.periods);money.activeSalaryPeriodId=change.before.active;money.nextSalaryDate=change.before.next;money.income=change.before.income;
+  for(const a of change.before.assignments){const t=money.transactions.find(t=>t.id===a.id);if(t){if(a.had)t.salaryPeriodId=a.value;else delete t.salaryPeriodId;}}
+  save();flushStateSave();renderMoney();
+}
+function openSalaryReceiptModal(){
+  const old=salaryActivePeriod();if(!old)return;
+  let date=todayKey(),month=date.slice(0,7),nextDate=salaryNextDefault(month,date),move=true;
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SALARY RECEIVED</p><h2>Start a fresh salary period</h2><p class="muted">Review the previous salary, then confirm. Your allocation targets stay the same; spending starts fresh for the new salary.</p>${old.inferred?`<label><span class="label">Previous salary month — check this once</span><input class="input" type="month" id="salaryPreviousMonth" value="${escapeAttr(old.salaryMonth)}"></label>`:`<p><b>${escapeHTML(salaryLabel(old))}</b> will move to history.</p>`}<div class="form-grid"><label><span class="label">Salary received on</span><input class="input" type="date" id="salaryReceivedDate" max="${todayKey()}" value="${date}"></label><label><span class="label">New salary month</span><input class="input" type="month" id="salaryNewMonth" value="${month}"></label><label><span class="label">Salary amount (SAR)</span><input class="input" type="number" step="0.01" min="0" inputmode="decimal" id="salaryAmount" value="${Number(state.money.income||0)}"></label><label><span class="label">Next expected salary date</span><input class="input" type="date" id="salaryNextDate" value="${nextDate}"></label></div><div id="salaryReceiptPreview" class="salary-receipt-preview"></div><p id="salaryReceiptError" class="form-error" role="alert" hidden></p><button type="button" class="primary full" id="confirmSalaryReceipt">Confirm salary & reset spending</button><button type="button" class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  const preview=()=>{
+    const tx=salaryTransactions(old.id),dated=tx.filter(t=>t.date>=date),oldSpent=moneySum(move?tx.filter(t=>t.date<date):tx),balance=(moneyCents(old.income)-moneyCents(oldSpent))/100;
+    $('#salaryReceiptPreview').innerHTML=`<p><b>Previous salary:</b> ${salaryMoney(oldSpent)} spent · ${salaryMoney(Math.abs(balance))} ${balance>=0?'left over':'overspent'}</p><p><b>New salary:</b> ${salaryMoney(move?moneySum(dated):0)} already logged</p><small>Leftover amounts stay separately in salary history. They are not added to the new allocations.</small>${dated.length?`<label class="salary-payday-choice"><input type="checkbox" id="movePaydaySpending" ${move?'checked':''}><span>Put spending dated ${escapeHTML(validDateKey(date)?formatDateShort(parseDateKey(date)):date)} onward under the new salary (${salaryMoney(moneySum(dated))}). Uncheck to keep it with the previous salary.</span></label>`:''}`;
+    if($('#movePaydaySpending'))$('#movePaydaySpending').onchange=e=>{move=e.target.checked;preview();};
+  };
+  $('#salaryReceivedDate').oninput=e=>{date=e.target.value;if(validDateKey(date)){month=date.slice(0,7);$('#salaryNewMonth').value=month;nextDate=salaryNextDefault(month,date);$('#salaryNextDate').value=nextDate;}preview();};
+  $('#salaryNewMonth').oninput=e=>{month=e.target.value;if(moneyMonthValid(month)){nextDate=salaryNextDefault(month,date);$('#salaryNextDate').value=nextDate;}};
+  let confirmed=false;
+  $('#confirmSalaryReceipt').onclick=()=>{if(confirmed)return;try{const change=salaryConfirmReceipt({expectedId:old.id,date:$('#salaryReceivedDate').value,month:$('#salaryNewMonth').value,income:$('#salaryAmount').value,nextDate:$('#salaryNextDate').value,moveDatedSpending:move,previousMonth:$('#salaryPreviousMonth')?.value||null});confirmed=true;closeAppSheet(modal);state.settings.moneyView='home';renderMoney();toast('New salary started. Previous salary saved.','Undo',()=>undoSalaryReceipt(change));}catch(error){$('#salaryReceiptError').textContent=error.message;$('#salaryReceiptError').hidden=false;}};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);preview();openAppSheet(modal);
+}
+function budgetRowHTML(b,periodId=state.money.activeSalaryPeriodId){
+  const spent=moneySum(salaryTransactions(periodId).filter(t=>t.bucketId===b.id)),target=Number(b.target||0),left=(moneyCents(target)-moneyCents(spent))/100,pct=target?Math.round(spent/target*100):spent?100:0;
+  return `<div class="budget-row"><div class="budget-top"><div><b>${salaryBucketEmoji(b)} ${escapeHTML(b.name)}</b><small>${salaryMoney(spent)} spent · ${salaryMoney(Math.abs(left))} ${left<0?'over':'left'}</small></div><div class="budget-amount"><b>${salaryMoney(target)}</b><small>${pct}%</small></div></div><div class="budget-track"><div class="budget-fill ${left<0?'over':pct>=80?'warning':''}" style="width:${clamp(pct,0,100)}%"></div></div></div>`;
 }
 function moneyBarsHTML(){
-  const rows=recentMonthKeys(6).map(k=>({k,spent:transactionsForMonth(k).reduce((a,t)=>a+Number(t.amount||0),0)}));const max=Math.max(1,...rows.map(x=>x.spent));
-  return `<div class="money-bars">${rows.map((r,i)=>`<div class="money-bar-col"><b>${r.spent?shortMoney(r.spent):'—'}</b><i><span class="${i===rows.length-1?'current':''}" style="height:${Math.max(r.spent?10:2,Math.round(r.spent/max*100))}%"></span></i><small>${escapeHTML(moneyMonthLabel(r.k))}</small></div>`).join('')}</div>`;
+  const rows=state.money.salaryPeriods.slice(-6).map(p=>({p,spent:salaryPeriodTotals(p).spent})),max=Math.max(1,...rows.map(r=>r.spent));
+  return `<div class="money-bars" style="grid-template-columns:repeat(${rows.length},minmax(0,1fr))">${rows.map(r=>`<div class="money-bar-col"><b>${r.spent?shortMoney(r.spent):'—'}</b><i><span class="${r.p.id===state.money.activeSalaryPeriodId?'current':''}" style="height:${Math.max(r.spent?10:2,Math.round(r.spent/max*100))}%"></span></i><small>${escapeHTML(moneyMonthLabel(r.p.salaryMonth))} '${r.p.salaryMonth.slice(2,4)}</small></div>`).join('')}</div>`;
 }
-function shortMoney(n){const x=Number(n||0);return x>=1000?`${(x/1000).toFixed(x>=10000?0:1)}K`:Math.round(x).toString();}
+function renderMoney(){
+  ensureSalaryPeriods();if(state.settings.moneyView==='history')return renderMoneyHistoryPage();
+  setHeader('Money');const p=salaryActivePeriod(),totals=salaryPeriodTotals(p),due=state.money.nextSalaryDate<=todayKey(),days=daysUntilPayday(),pct=totals.income>0?Math.round(totals.spent/totals.income*100):0;
+  const recent=[...salaryTransactions(p.id)].sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.createdAt||0)-Number(a.createdAt||0)).slice(0,5),closed=state.money.salaryPeriods.filter(p=>p.closedAt),reserve=salaryReserveTotal();
+  main.innerHTML=`<section class="money-top-grid"><article class="money-summary-tile salary"><span class="money-tile-icon">${svgIcon('calendar')}</span><div><b>${due?(state.money.nextSalaryDate===todayKey()?'Today':'Due'):days}</b><small>${due?'salary awaiting confirmation':`days until salary · ${escapeHTML(formatDateShort(parseDateKey(state.money.nextSalaryDate)))}`}</small></div></article><article class="money-summary-tile remaining ${totals.balance<0?'over':''}"><span class="money-tile-icon">${svgIcon('money')}</span><div><b>${salaryMoney(Math.abs(totals.balance))}</b><small>${totals.balance<0?'over salary income':'salary remaining'}</small></div></article></section>${due?`<section class="salary-due-card"><div><b>Has your salary arrived?</b><p>Confirm it to close the previous salary and refresh your allocations.</p></div><button class="primary full" id="salaryReceivedBtn">Salary received · Start new period</button></section>`:''}<section class="monthly-spending-card"><div class="monthly-spending-title"><div><span>${escapeHTML(salaryLabel(p))}</span><b>${salaryMoney(totals.spent)} <em>/ ${salaryMoney(totals.income)}</em></b></div><strong>${pct}%</strong></div><p class="salary-period-range">${escapeHTML(salaryRange(p))}</p><div class="budget-track big"><div class="budget-fill ${pct>=100?'over':pct>=80?'warning':''}" style="width:${clamp(pct,0,100)}%"></div></div>${moneyBarsHTML()}</section><button class="primary full money-log-btn money-log-top" id="addExpenseBtn">+ Log spending</button><div class="section-title"><h2>Allocations</h2><button id="editMoneyBtn">Edit</button></div><p class="salary-allocation-total">${salaryMoney(totals.allocated)} allocated${totals.allocated!==totals.income?` · ${salaryMoney(Math.abs(totals.income-totals.allocated))} ${totals.allocated>totals.income?'above salary':'unallocated'}`:''}</p><section class="allocation-list">${p.buckets.map(b=>budgetRowHTML(b,p.id)).join('')}</section><section class="salary-reserve-card"><div><small>Recorded net leftover</small><b>${reserve<0?'−':''}${salaryMoney(Math.abs(reserve))}</b><p>From ${closed.length} closed ${closed.length===1?'salary':'salaries'}. Separate from this salary’s allocations.</p></div><button class="secondary small-btn" id="salaryHistoryBtn">Salary history</button></section><div class="section-title"><h2>Recent Spending</h2><button id="seeAllSpendingBtn">See all</button></div><section class="recent-spending-list">${recent.map(t=>transactionHTML(t)).join('')||'<div class="empty-state">No spending logged for this salary.</div>'}</section><details class="salary-extra-controls"><summary>Salary settings & early arrival</summary><button type="button" class="secondary full" id="recordEarlySalaryBtn">Record a salary received on a different date</button><p>Set the next expected salary date in Edit allocations. Nothing resets until you confirm receipt.</p></details>`;
+  $('#addExpenseBtn').onclick=()=>openExpenseModal();$('#editMoneyBtn').onclick=openMoneyModal;
+  for(const id of ['salaryReceivedBtn','recordEarlySalaryBtn'])if($('#'+id))$('#'+id).onclick=openSalaryReceiptModal;
+  for(const id of ['salaryHistoryBtn','seeAllSpendingBtn'])$('#'+id).onclick=()=>{state.settings.moneyView='history';state.settings.moneyHistoryPeriod=p.id;save();renderMoney();};
+  bindMoneyTransactionControls();
+}
+function bindMoneyTransactionControls(){
+  $$('[data-edit-tx]').forEach(b=>b.onclick=()=>openExpenseModal(b.dataset.editTx));$$('[data-del-tx]').forEach(b=>b.onclick=()=>deleteMoneyTransactionWithUndo(b.dataset.delTx));
+}
 function renderMoneyHistoryPage(){
-  setHeader('Spending History');captureCurrentMoneyPlan();const mk=monthKey(),historyMonth=state.settings.moneyHistoryMonth||mk;let historyBucket=state.settings.moneyHistoryBucket||'all';if(historyBucket!=='all'&&!state.money.buckets.some(b=>b.id===historyBucket)){historyBucket='all';state.settings.moneyHistoryBucket='all';}const filtered=moneyFilteredTransactions(historyMonth,historyBucket),months=moneyAvailableMonths(),filteredTotal=filtered.reduce((a,t)=>a+Number(t.amount||0),0);
-  main.innerHTML=`<button class="back-link" id="moneyBackBtn">${svgIcon('chevronLeft')}<span>Money</span></button><div class="history-chip-row"><button class="filter-chip ${historyBucket==='all'?'active':''}" data-money-bucket="all">All</button>${state.money.buckets.map(b=>`<button class="filter-chip ${historyBucket===b.id?'active':''}" data-money-bucket="${escapeAttr(b.id)}">${escapeHTML(b.name)}</button>`).join('')}</div><section class="history-month-card"><label><span class="label">Month</span><select id="moneyHistoryMonth"><option value="all" ${historyMonth==='all'?'selected':''}>All months</option>${months.map(x=>`<option value="${x}" ${historyMonth===x?'selected':''}>${escapeHTML(moneyMonthLongLabel(x))}</option>`).join('')}</select></label><div><b>${fmtMoney(filteredTotal)}</b><small>${filtered.length} entries</small></div></section>${historyMonth!=='all'?moneyMonthSummaryHTML(historyMonth):''}<div class="section-title"><h2>Transactions</h2><button class="secondary small-btn" id="selectTxBtn">${moneySelectMode?'Done':'Select'}</button></div>${moneySelectMode?`<section class="selection-toolbar"><span><b id="selectedTxCount">${moneySelectedIds.size}</b> selected</span><button class="danger-btn small-btn" id="deleteSelectedTx" ${moneySelectedIds.size?'':'disabled'}>Delete selected</button></section>`:''}<section class="spending-history-list">${filtered.length?moneyHistoryHTML(filtered):'<div class="empty-state">No spending matches these filters.</div>'}</section><div class="section-title"><h2>Trend</h2></div>${moneyTrendHTML(historyBucket)}`;
-  $('#moneyBackBtn').onclick=()=>{moneySelectMode=false;moneySelectedIds.clear();state.settings.moneyView='home';save();renderMoney();};$('#moneyHistoryMonth').onchange=e=>{state.settings.moneyHistoryMonth=e.target.value;moneySelectedIds.clear();save();renderMoney();};$$('[data-money-bucket]').forEach(b=>b.onclick=()=>{state.settings.moneyHistoryBucket=b.dataset.moneyBucket;moneySelectedIds.clear();save();renderMoney();});$('#selectTxBtn').onclick=()=>{moneySelectMode=!moneySelectMode;moneySelectedIds.clear();renderMoney();};$$('[data-edit-tx]').forEach(b=>b.onclick=()=>openExpenseModal(b.dataset.editTx));$$('[data-del-tx]').forEach(b=>b.onclick=()=>deleteMoneyTransactionWithUndo(b.dataset.delTx));$$('[data-select-tx]').forEach(cb=>cb.onchange=()=>{if(cb.checked)moneySelectedIds.add(cb.dataset.selectTx);else moneySelectedIds.delete(cb.dataset.selectTx);const c=$('#selectedTxCount');if(c)c.textContent=moneySelectedIds.size;const d=$('#deleteSelectedTx');if(d)d.disabled=!moneySelectedIds.size;});if($('#deleteSelectedTx'))$('#deleteSelectedTx').onclick=deleteSelectedMoneyTransactions;localizeTree(main);
+  ensureSalaryPeriods();setHeader('Salary History');const periods=state.money.salaryPeriods;
+  let id=state.settings.moneyHistoryPeriod||state.money.activeSalaryPeriodId;if(!['all','earlier'].includes(id)&&!periods.some(p=>p.id===id))id=state.money.activeSalaryPeriodId;
+  const p=periods.find(p=>p.id===id),pool=id==='all'?state.money.transactions:id==='earlier'?state.money.transactions.filter(t=>!salaryPeriodForTransaction(t)):salaryTransactions(id);
+  const bucket=state.settings.moneyHistoryBucket||'all',buckets=[...new Map([...periods.flatMap(salaryDisplayBuckets),...state.money.buckets].map(b=>[b.id,b])).values()],tx=pool.filter(t=>bucket==='all'||t.bucketId===bucket).sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.createdAt||0)-Number(a.createdAt||0)),totals=p?salaryPeriodTotals(p):null,reserve=salaryReserveTotal();
+  main.innerHTML=`<button class="back-link" id="moneyBackBtn">${svgIcon('chevronLeft')}<span>Money</span></button><section class="history-month-card"><label><span class="label">Salary period</span><select id="moneyHistoryPeriod"><option value="all" ${id==='all'?'selected':''}>All salary periods & earlier records</option>${[...periods].reverse().map(p=>`<option value="${escapeAttr(p.id)}" ${id===p.id?'selected':''}>${escapeHTML(salaryLabel(p))}${p.closedAt?'':' · Current'}</option>`).join('')}<option value="earlier" ${id==='earlier'?'selected':''}>Earlier records</option></select></label><div><b>${salaryMoney(moneySum(tx))}</b><small>${tx.length} entries${bucket!=='all'?' · filtered':''}</small></div></section><div class="history-chip-row"><button class="filter-chip ${bucket==='all'?'active':''}" data-money-bucket="all">All</button>${buckets.map(b=>`<button class="filter-chip ${bucket===b.id?'active':''}" data-money-bucket="${escapeAttr(b.id)}">${salaryBucketEmoji(b)} ${escapeHTML(b.name)}</button>`).join('')}</div>${p?`<section class="salary-history-summary"><h3>${escapeHTML(salaryLabel(p))}</h3><p>${escapeHTML(salaryRange(p))}${p.closedAt?' · Closed':' · Current'}</p><div class="salary-history-numbers"><div><small>Salary income</small><b>${salaryMoney(totals.income)}</b></div><div><small>Total spent</small><b>${salaryMoney(totals.spent)}</b></div><div><small>${p.closedAt?'Recorded leftover':'Remaining'}</small><b>${totals.balance<0?'−':''}${salaryMoney(Math.abs(totals.balance))}</b></div></div><details><summary>Allocation breakdown</summary>${salaryDisplayBuckets(p).map(b=>budgetRowHTML(b,p.id)).join('')}</details></section>`:''}<section class="salary-reserve-card"><div><small>All closed salaries · net leftover</small><b>${reserve<0?'−':''}${salaryMoney(Math.abs(reserve))}</b><p>Closed salary income minus its logged spending. Corrections to old expenses update this total.</p></div></section><div class="section-title"><h2>Transactions</h2><button class="secondary small-btn" id="selectTxBtn">${moneySelectMode?'Done':'Select'}</button></div>${moneySelectMode?`<section class="selection-toolbar"><span><b id="selectedTxCount">${moneySelectedIds.size}</b> selected</span><button class="danger-btn small-btn" id="deleteSelectedTx" ${moneySelectedIds.size?'':'disabled'}>Delete selected</button></section>`:''}<section class="spending-history-list">${tx.length?moneyHistoryHTML(tx):'<div class="empty-state">No spending matches this salary and allocation.</div>'}</section>`;
+  $('#moneyBackBtn').onclick=()=>{moneySelectMode=false;moneySelectedIds.clear();state.settings.moneyView='home';save();renderMoney();};$('#moneyHistoryPeriod').onchange=e=>{state.settings.moneyHistoryPeriod=e.target.value;moneySelectedIds.clear();save();renderMoney();};
+  $$('[data-money-bucket]').forEach(b=>b.onclick=()=>{state.settings.moneyHistoryBucket=b.dataset.moneyBucket;moneySelectedIds.clear();save();renderMoney();});$('#selectTxBtn').onclick=()=>{moneySelectMode=!moneySelectMode;moneySelectedIds.clear();renderMoney();};bindMoneyTransactionControls();
+  $$('[data-select-tx]').forEach(cb=>cb.onchange=()=>{if(cb.checked)moneySelectedIds.add(cb.dataset.selectTx);else moneySelectedIds.delete(cb.dataset.selectTx);$('#selectedTxCount').textContent=moneySelectedIds.size;$('#deleteSelectedTx').disabled=!moneySelectedIds.size;});if($('#deleteSelectedTx'))$('#deleteSelectedTx').onclick=deleteSelectedMoneyTransactions;
+}
+function openExpenseModal(id=null){
+  ensureSalaryPeriods();const existing=id?state.money.transactions.find(t=>t.id===id):null;if(id&&!existing)return toast('That spending entry no longer exists');
+  let date=existing?.date||todayKey(),periodId=salaryPeriodForTransaction(existing||{date})?.id||'earlier',bucketId=existing?.bucketId||'',saved=false;
+  const periods=state.money.salaryPeriods;
+  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SPENDING</p><h2>${existing?'Edit':'Log'} spending</h2><label><span class="label">Amount (SAR)</span><input class="input expense-amount-large" id="expenseAmount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="${existing?.amount??''}"></label><p class="label expense-category-label">Choose an allocation</p><div class="expense-category-grid" id="expenseCategoryGrid"></div><div class="stack"><label><span class="label">Date</span><input class="input" id="expenseDate" type="date" value="${escapeAttr(date)}"></label><label><span class="label">Note</span><input class="input" id="expenseNote" value="${escapeAttr(existing?.note||'')}" placeholder="e.g. groceries, fuel, haircut"></label><label><span class="label">Salary period</span><select id="expenseSalaryPeriod">${[...periods].reverse().map(p=>`<option value="${escapeAttr(p.id)}" ${periodId===p.id?'selected':''}>${escapeHTML(salaryLabel(p))}</option>`).join('')}<option value="earlier" ${periodId==='earlier'?'selected':''}>Earlier records</option></select></label><p class="muted salary-expense-note">A backdated entry follows its salary period. You can change the period for spending made around payday.</p></div><p id="expenseError" class="form-error" role="alert" hidden></p><button class="primary full" id="saveExpense">${existing?'Save changes':'Save spending'}</button>${existing?'<button class="danger-btn full" id="deleteExpense" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  const drawCategories=()=>{
+    const period=periods.find(p=>p.id===periodId),buckets=period?salaryDisplayBuckets(period):state.money.buckets;
+    if(!buckets.some(b=>b.id===bucketId))bucketId='';
+    $('#expenseCategoryGrid').innerHTML=buckets.map(b=>`<button type="button" class="expense-category ${bucketId===b.id?'selected':''}" data-expense-category="${escapeAttr(b.id)}" aria-pressed="${bucketId===b.id}"><span aria-hidden="true">${salaryBucketEmoji(b)}</span><b>${escapeHTML(b.name)}</b>${bucketId===b.id?'<i aria-hidden="true">✓</i>':''}</button>`).join('');
+    $$('[data-expense-category]',modalContent).forEach(b=>b.onclick=()=>{bucketId=b.dataset.expenseCategory;drawCategories();});
+  };
+  $('#expenseDate').oninput=e=>{date=e.target.value;periodId=salaryPeriodForDate(date)?.id||'earlier';$('#expenseSalaryPeriod').value=periodId;drawCategories();};
+  $('#expenseSalaryPeriod').onchange=e=>{periodId=e.target.value;drawCategories();};
+  const error=message=>{$('#expenseError').textContent=message;$('#expenseError').hidden=false;};
+  $('#saveExpense').onclick=()=>{
+    if(saved)return;const raw=$('#expenseAmount').value,amount=Number(raw),period=periods.find(p=>p.id===periodId);
+    if(!raw.trim()||!Number.isFinite(amount)||moneyCents(amount)<=0||amount>1e9)return error('Enter a valid amount greater than zero.');
+    if(!validDateKey(date))return error('Choose a valid date.');
+    if(!(period?salaryDisplayBuckets(period):state.money.buckets).some(b=>b.id===bucketId))return error('Choose an allocation.');
+    const data={amount:moneyCents(amount)/100,bucketId,date,note:$('#expenseNote').value.trim(),createdAt:existing?.createdAt||Date.now(),salaryPeriodId:period?.id||'earlier'};
+    saved=true;if(existing)Object.assign(existing,data);else state.money.transactions.push({id:uid('tx'),...data});save();flushStateSave();closeAppSheet(modal);renderMoney();toast(existing?'Spending updated':'Spending logged');
+  };
+  if(existing)$('#deleteExpense').onclick=()=>{closeAppSheet(modal);deleteMoneyTransactionWithUndo(existing.id);};
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);drawCategories();openAppSheet(modal);
+}
+function openMoneyModal(){
+  const p=salaryActivePeriod();prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SALARY PLAN</p><h2>Edit allocations</h2><p class="muted">Changes apply to the current salary and future defaults. Closed salary plans stay saved in history.</p><div class="form-grid"><label><span class="label">Salary income (SAR)</span><input class="input" id="incomeInput" type="number" min="0" step="0.01" value="${Number(state.money.income||0)}"></label><label><span class="label">Usual payday (day of month)</span><input class="input" id="paydayInput" type="number" min="1" max="31" value="${Number(state.profile.paydayDay||28)}"></label><label><span class="label">Next expected salary date</span><input class="input" id="moneyNextSalaryDate" type="date" value="${escapeAttr(state.money.nextSalaryDate)}"></label></div><div id="bucketEditor" class="stack">${state.money.buckets.map(bucketEditorRow).join('')}</div><button type="button" class="secondary full" id="addBucketBtn">+ Add allocation</button><p id="moneyPlanError" class="form-error" role="alert" hidden></p><button class="primary full" id="saveMoney" style="margin-top:12px">Save salary plan</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
+  $('#paydayInput').oninput=()=>{const day=Number($('#paydayInput').value);if(Number.isInteger(day)&&day>=1&&day<=31)$('#moneyNextSalaryDate').value=salaryNextDefault(p.salaryMonth,p.startDate,day);};
+  $('#addBucketBtn').onclick=()=>{const wrap=document.createElement('div');wrap.innerHTML=bucketEditorRow({id:uid('bucket'),name:'New allocation',target:0});$('#bucketEditor').appendChild(wrap.firstElementChild);bindBucketDeleteButtons();};bindBucketDeleteButtons();
+  $('#saveMoney').onclick=()=>{
+    const income=Number($('#incomeInput').value),day=Number($('#paydayInput').value),next=$('#moneyNextSalaryDate').value,rows=$$('.bucket-editor',modalContent),buckets=rows.map(row=>({id:row.dataset.bucketId||uid('bucket'),name:$('.bucket-name',row).value.trim(),target:Number($('.bucket-target',row).value)}));
+    if(!$('#incomeInput').value.trim()||!Number.isFinite(income)||income<0||income>1e9||!Number.isInteger(day)||day<1||day>31||!validDateKey(next)||next<=p.startDate||!buckets.length||buckets.some(b=>!b.name||!Number.isFinite(b.target)||b.target<0||b.target>1e9)){$('#moneyPlanError').textContent='Check the salary amount, payday, next salary date and allocation values.';$('#moneyPlanError').hidden=false;return;}
+    const before={income:state.money.income,buckets:deepClone(state.money.buckets),next:state.money.nextSalaryDate,payday:state.profile.paydayDay,period:deepClone(p)};
+    createSafetySnapshot('Before salary allocation change');state.money.income=moneyCents(income)/100;state.profile.paydayDay=day;state.money.nextSalaryDate=next;state.money.buckets=salaryBucketSnapshot(buckets);captureCurrentMoneyPlan();save();flushStateSave();const after=salaryUndoSignature();closeAppSheet(modal);renderMoney();toast('Salary plan updated','Undo',()=>{if(salaryUndoSignature()!==after)return toast('Money data changed after this edit. Review the current plan instead.');state.money.income=before.income;state.money.buckets=before.buckets;state.money.nextSalaryDate=before.next;state.profile.paydayDay=before.payday;Object.keys(p).forEach(k=>delete p[k]);Object.assign(p,before.period);save();flushStateSave();renderMoney();});
+  };
+  $('#cancelModal').onclick=()=>closeAppSheet(modal);openAppSheet(modal);
 }
 
 function moneyPlanTotal(){return state.money.buckets.reduce((a,b)=>a+Number(b.target||0),0);}
-function captureCurrentMoneyPlan(){
-  if(!state.money.planHistory || typeof state.money.planHistory!=='object') state.money.planHistory={};
-  if(!state.money.bucketPlanHistory || typeof state.money.bucketPlanHistory!=='object') state.money.bucketPlanHistory={};
-  const mk=monthKey(); const total=moneyPlanTotal();
-  const snap=state.money.buckets.map(b=>({id:b.id,name:b.name,target:Number(b.target||0)}));
-  const before=JSON.stringify(state.money.bucketPlanHistory[mk]||[]);
-  if(Number(state.money.planHistory[mk])!==total || before!==JSON.stringify(snap)){state.money.planHistory[mk]=total;state.money.bucketPlanHistory[mk]=snap;save();}
-}
+
 function recentMonthKeys(count=6){
   const out=[]; const now=new Date();
   for(let i=count-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1,12,0,0,0);out.push(monthKey(d));}
@@ -1132,13 +1276,10 @@ function moneyFilteredTransactions(month,bucket){
   return [...state.money.transactions].filter(t=>(month==='all'||String(t.date||'').startsWith(month))&&(bucket==='all'||t.bucketId===bucket)).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||Number(b.createdAt||0)-Number(a.createdAt||0));
 }
 function spentForBucket(bucketId,mk=monthKey()){return transactionsForMonth(mk).filter(t=>t.bucketId===bucketId).reduce((a,t)=>a+Number(t.amount||0),0);}
-function budgetRowHTML(b,mk) {
-  const spent=spentForBucket(b.id,mk); const target=Number(b.target||0); const pct=target?clamp(Math.round(spent/target*100),0,140):0; const over=pct>=100&&target>0; const warning=pct>=80&&pct<100;
-  return `<div class="budget-row"><div class="budget-top"><div><b>${escapeHTML(b.name)}</b><small>${fmtMoney(spent)} spent · ${fmtMoney(Math.max(0,target-spent))} left</small></div><div class="budget-amount"><b>${fmtMoney(target)}</b><small>${target?Math.round(spent/target*100):0}%</small></div></div><div class="budget-track"><div class="budget-fill ${over?'over':warning?'warning':''}" style="width:${Math.min(100,pct)}%"></div></div></div>`;
-}
+
 function transactionHTML(t,{selectable=false}={}) {
-  const b=state.money.buckets.find(x=>x.id===t.bucketId);
-  return `<div class="transaction ${selectable?'selectable-history':''}">${selectable?`<input class="check history-check" type="checkbox" data-select-tx="${escapeAttr(t.id)}" ${moneySelectedIds.has(t.id)?'checked':''} aria-label="Select spending entry">`:''}<span class="transaction-icon">${svgIcon(t.bucketId==='food'?'fork':t.bucketId==='car'?'car':'wallet')}</span><div class="transaction-copy"><b>${escapeHTML(t.note||b?.name||'Spending')}</b><small>${escapeHTML(b?.name||'Other')} · ${escapeHTML(formatDateShort(parseDateKey(t.date)))}</small></div><div class="transaction-amount"><b>−${fmtMoney(t.amount)}</b>${selectable?'':`<div class="row"><button class="text-button tiny" data-edit-tx="${t.id}">Edit</button><button class="text-button tiny danger-text" data-del-tx="${t.id}">Delete</button></div>`}</div></div>`;
+  const b=salaryBucketInfo(t);
+  return `<div class="transaction ${selectable?'selectable-history':''}">${selectable?`<input class="check history-check" type="checkbox" data-select-tx="${escapeAttr(t.id)}" ${moneySelectedIds.has(t.id)?'checked':''} aria-label="Select spending entry">`:''}<span class="transaction-icon">${svgIcon(t.bucketId==='food'?'fork':t.bucketId==='car'?'car':'wallet')}</span><div class="transaction-copy"><b>${escapeHTML(t.note||b?.name||'Spending')}</b><small>${escapeHTML(b?.name||'Other')} · ${escapeHTML(formatDateShort(parseDateKey(t.date)))}</small></div><div class="transaction-amount"><b>−${salaryMoney(t.amount)}</b>${selectable?'':`<div class="row"><button class="text-button tiny" data-edit-tx="${t.id}">Edit</button><button class="text-button tiny danger-text" data-del-tx="${t.id}">Delete</button></div>`}</div></div>`;
 }
 function moneyHistoryHTML(list){
   let last=''; let out='';
@@ -1156,15 +1297,7 @@ function deleteMoneyTransactionWithUndo(id){
 function deleteSelectedMoneyTransactions(){
   if(!moneySelectedIds.size)return; const removed=state.money.transactions.map((t,i)=>({t,i})).filter(x=>moneySelectedIds.has(x.t.id)); state.money.transactions=state.money.transactions.filter(t=>!moneySelectedIds.has(t.id));moneySelectedIds.clear();moneySelectMode=false;save();renderMoney();toast(`${removed.length} entries deleted`,'Undo',()=>{removed.sort((a,b)=>a.i-b.i).forEach(x=>state.money.transactions.splice(Math.min(x.i,state.money.transactions.length),0,x.t));save();renderMoney();});
 }
-function daysUntilPayday() {
-  const today=new Date(); today.setHours(12,0,0,0);
-  const day=clamp(Number(state.profile.paydayDay||29),1,31);
-  let y=today.getFullYear(),m=today.getMonth();
-  const lastThis=new Date(y,m+1,0).getDate();
-  let pay=new Date(y,m,Math.min(day,lastThis),12,0,0,0);
-  if(pay<today){m+=1;if(m>11){m=0;y+=1;}const last=new Date(y,m+1,0).getDate();pay=new Date(y,m,Math.min(day,last),12,0,0,0);}
-  return Math.round((pay-today)/86400000);
-}
+
 function appStartDateLegacy(){
   const raw=String(state.meta?.createdAt||todayKey()).slice(0,10);
   try{return parseDateKey(raw);}catch(e){return new Date();}
@@ -1548,26 +1681,11 @@ function openUniTaskModal(id=null) {
   $('#cancelModal').onclick=()=>closeAppSheet(modal);
 }
 
-function openMoneyModal() {
-  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">MONEY PLAN</p><h2>Edit monthly allocation</h2><div class="form-grid"><label><span class="label">Monthly income (SAR)</span><input class="input" id="incomeInput" type="number" min="0" value="${state.money.income}"></label><label><span class="label">Payday day of month</span><input class="input" id="paydayInput" type="number" min="1" max="31" value="${state.profile.paydayDay||29}"></label></div><hr><div id="bucketEditor" class="stack">${state.money.buckets.map(bucketEditorRow).join('')}</div><button class="secondary full" id="addBucketBtn" style="margin-top:10px">+ Add allocation bucket</button><button class="primary full" id="saveMoney" style="margin-top:14px">Save money plan</button><button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  openAppSheet(modal);
-  $('#addBucketBtn').onclick=()=>{const wrap=document.createElement('div');wrap.innerHTML=bucketEditorRow({id:uid('bucket'),name:'New bucket',target:0});$('#bucketEditor').appendChild(wrap.firstElementChild);bindBucketDeleteButtons();};
-  bindBucketDeleteButtons();
-  $('#saveMoney').onclick=()=>{const beforeMoney=deepClone(state.money),beforePayday=state.profile.paydayDay;createSafetySnapshot('Before money allocation change');state.money.income=Math.max(0,Number($('#incomeInput').value||0));state.profile.paydayDay=clamp(Number($('#paydayInput').value||29),1,31);state.money.buckets=$$('.bucket-editor').map(row=>({id:row.dataset.bucketId||uid('bucket'),name:$('.bucket-name',row).value.trim()||'Bucket',target:Math.max(0,Number($('.bucket-target',row).value||0))}));captureCurrentMoneyPlan();save();closeAppSheet(modal);renderMoney();toast('Money plan updated','Undo',()=>{state.money=beforeMoney;state.profile.paydayDay=beforePayday;save();renderMoney();});};
-  $('#cancelModal').onclick=()=>closeAppSheet(modal);
-}
-function bucketEditorRow(b){return `<div class="course bucket-editor" data-bucket-id="${escapeAttr(b.id)}"><div class="row"><label style="flex:1"><span class="label">Bucket</span><input class="input bucket-name" value="${escapeAttr(b.name)}"></label><label style="width:130px"><span class="label">Monthly SAR</span><input class="input bucket-target" type="number" min="0" value="${Number(b.target||0)}"></label></div><button class="text-button danger-text bucket-delete" type="button">Remove</button></div>`;}
+
+function bucketEditorRow(b){return `<div class="course bucket-editor" data-bucket-id="${escapeAttr(b.id)}"><div class="row"><label style="flex:1"><span class="label">Bucket</span><input class="input bucket-name" value="${escapeAttr(b.name)}"></label><label style="width:130px"><span class="label">SAR per salary</span><input class="input bucket-target" type="number" min="0" value="${Number(b.target||0)}"></label></div><button class="text-button danger-text bucket-delete" type="button">Remove</button></div>`;}
 function bindBucketDeleteButtons(){ $$('.bucket-delete').forEach(b=>b.onclick=()=>{if($$('.bucket-editor').length<=1)return toast('Keep at least one bucket');b.closest('.bucket-editor').remove();}); }
 
-function openExpenseModal(id=null) {
-  const existing=id?state.money.transactions.find(t=>t.id===id):null;
-  prepareModalView();modalContent.innerHTML=`<div class="sheet-handle"></div><p class="eyebrow">SPENDING</p><h2>${existing?'Edit':'Log'} an expense</h2><div class="stack"><label><span class="label">Amount (SAR)</span><input class="input" id="expenseAmount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0" value="${existing?.amount??''}"></label><label><span class="label">Allocation</span><select id="expenseBucket">${state.money.buckets.map(b=>`<option value="${b.id}" ${existing?.bucketId===b.id?'selected':''}>${escapeHTML(b.name)}</option>`).join('')}</select></label><label><span class="label">Date</span><input class="input" id="expenseDate" type="date" value="${existing?.date||todayKey()}"></label><label><span class="label">Note</span><input class="input" id="expenseNote" value="${escapeAttr(existing?.note||'')}" placeholder="e.g. takeaway, fuel, haircut"></label></div><button class="primary full" id="saveExpense" style="margin-top:14px">Save spending</button>${existing?'<button class="danger-btn full" id="deleteExpense" style="margin-top:8px">Delete entry</button>':''}<button class="secondary full" id="cancelModal" style="margin-top:8px">Cancel</button>`;
-  openAppSheet(modal);
-  $('#saveExpense').onclick=()=>{const amount=Number($('#expenseAmount').value||0);if(amount<=0)return toast('Enter an amount');const data={amount,bucketId:$('#expenseBucket').value,date:$('#expenseDate').value||todayKey(),note:$('#expenseNote').value.trim(),createdAt:existing?.createdAt||Date.now()};if(existing)Object.assign(existing,data);else state.money.transactions.push({id:uid('tx'),...data});save();closeAppSheet(modal);toast(existing?'Spending updated':'Spending logged');renderMoney();};
-  if(existing)$('#deleteExpense').onclick=()=>{const idx=state.money.transactions.findIndex(t=>t.id===existing.id);if(idx<0)return;const removed=state.money.transactions[idx];state.money.transactions.splice(idx,1);save();closeAppSheet(modal);renderMoney();toast('Spending entry deleted','Undo',()=>{state.money.transactions.splice(Math.min(idx,state.money.transactions.length),0,removed);save();renderMoney();});};
-  $('#cancelModal').onclick=()=>closeAppSheet(modal);
-  localizeTree(modalContent);
-}
+
 
 function weightChartHTML(logs){
   if(logs.length<2)return `<div class="chart-empty">Log your weight at least twice to see the trend.</div>`;
@@ -2651,7 +2769,7 @@ if('serviceWorker' in navigator){
         reloading=true;
         window.location.reload();
       });
-      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.6.3-final',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./service-worker.js?v=3.6.4-final',{updateViaCache:'none'});
       if(reg.waiting){const button=$('#updateReadyBtn');if(button)button.classList.remove('hidden');}
       reg.addEventListener('updatefound',()=>{
         const worker=reg.installing;
@@ -2957,7 +3075,7 @@ function migrateState(parsed){
   next.settings.trackingStartDate=trackingStartKey(next);
   if(Number(parsed.version||0)<17)requestedOctoberRepair(next);
   const deleted=new Set(next.deletedRecurringIds);next.schedule=next.schedule.filter(x=>!deleted.has(x.id));
-  ensureGymSessionState(next.gym);next.version=APP_VERSION;delete next.meta.historySealedThrough;sealPastDays(next);return next;
+  ensureGymSessionState(next.gym);ensureSalaryPeriods(next);next.version=APP_VERSION;delete next.meta.historySealedThrough;sealPastDays(next);return next;
 }
 function dayAttentionDetails(date){if(!isTrackedDate(date)||todayKey(date)<todayKey())return [];return dayAttentionDetailsLive(date);}
 function dayPlanStatus(date){if(!isTrackedDate(date))return {label:'Not tracked',tone:'untracked',icon:'calendar'};return dayPlanStatusLegacy(date);}

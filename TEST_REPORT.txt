@@ -1,46 +1,42 @@
-RESET v3.6.3 VALIDATION REPORT
+RESET v3.6.4 VALIDATION REPORT
 
-PASS — JavaScript syntax for app.js and service-worker.js.
-PASS — 28 gym regression groups in the local DOM/state simulator.
-PASS — 11 page-render smoke checks: Today, Week, University, Money, More, Progress, Health, Sleep, Gym, Car and Projects.
-PASS — Scoped source comparison: existing function changes are limited to gym helpers/UI/metrics and the required gym migration/default fields. Service-worker/index/version references are updated for v3.6.3.
-PASS — Manifest JSON, asset references, unchanged icons, ZIP integrity and public-file allowlist checked during packaging.
+PASS: 36 Money/salary regression groups in simulated DOM/state tests.
+PASS: 28 existing gym regression groups, including midnight, drafts, warm-ups and workout timing. Schema/version expectations and preservation checks allow the explicitly added Money fields.
+PASS: 11 page-render smoke checks: Today, Week, University, Money, More, Progress, Health, Sleep, Gym, Car and Projects.
+PASS: app.js and service-worker.js syntax.
+PASS: scoped source comparison. Existing function changes are Money UI/helpers and the required migration hook. Gym and scheduling functions are unchanged.
+PASS: manifest, asset references, unchanged icons and non-code configuration, archive allowlist, version/cache wiring and ZIP integrity during packaging.
 
-Gym coverage
-- Legacy schema-17 logs and unrelated domains retained on upgrade to schema 18.
-- Legacy aggregate weight/sets/reps interpreted without rewriting stored logs.
-- Start time persists immediately; second-start protection.
-- Previous working-set hint and copying into the current exercise.
-- Warm-up and working sets in one exercise entry; per-set weight and reps.
-- Timer changes only its label.
-- Open exercise editor retains values and focus through simulated midnight.
-- After-midnight saves use the original workout date.
-- Exercise upserts and duplicate-click protection.
-- Previous-performance hint excludes the active workout.
-- Inline invalid-input handling and cancellation/closure.
-- Partial invalid drafts, active workout and timestamps survive serialization/reload.
-- 23:00 to 00:20 produces an 80-minute workout on its start date.
-- Workout history displays duration, start/finish dates and warm-up details.
-- Multiple same-day workouts preserve individual timing and sum daily duration.
-- Old workout days have no fabricated duration.
-- Export/import round trips preserve completed sessions, sets and unrelated history.
-- Heavy warm-ups cannot inflate PRs, progress-chart points or strength achievements.
-- Warm-up-only entries remain history without counting as working progress.
-- Earlier warm-up logs can be manually reclassified while retaining IDs/dates.
-- Historical hints exclude future entries.
-- Copying working sets preserves current warm-ups.
-- Explicit workout cancellation clears only that workout's drafts and keeps saved logs.
-- Adelaide daylight-saving boundary uses true elapsed time.
-- Gym tabs, empty exercises and repeated editor open/close cycles.
-- One effective implementation per updated gym function; version/build wiring.
+Money coverage
+- Migration retains existing transactions, calendar plan history, currentCash, income, targets and unrelated app domains.
+- Initial salary inference based on existing start date; September to October test fixture.
+- No reset on payday, delayed confirmation, month rollover or installation.
+- Cancel and invalid confirmation preserve all spending and balances.
+- Explicit receipt closes old period and starts new spending totals while retaining targets.
+- Income-based leftover calculation kept separate from allocated total/current salary.
+- Same-day spending preview and both assignment choices.
+- Duplicate/stale receipt protection and guarded Undo.
+- Category buttons preserve typed amounts and use explicit selection.
+- Currency cents, invalid amounts and duplicate expense-save protection.
+- Salary history, category filtering, multi-select deletion and older records.
+- Old expense corrections update the appropriate salary and recorded leftovers.
+- Closed allocation snapshots survive later renames/target edits.
+- Removed categories retain names and remain editable for existing entries.
+- Backdated expenses, explicit salary assignment and backdated receipt.
+- Early salary, custom next date, overdue salary and normal month-length changes.
+- February, leap-year and December/January date defaults.
+- Salary income, period month and expected-date validation.
+- Overspending retained as a negative balance rather than invented savings.
+- Export/import and repeated migration preserve salary history without duplicating totals.
+- Gym, routines, sleep, courses, money-independent history and other domains retained.
 
 Limits
-The local simulator checks state, generated DOM and events. It does not implement browser layout, scroll physics, native number/date controls, keyboard animation or touch gestures. No live browser or physical iPhone test was completed. The previous release's full regression suite was not rerun in this workspace; its baseline code is retained outside this update's scoped changes.
+Tests simulate data, generated DOM and events. No live browser or physical iPhone test was completed. Layout, touch scrolling, native month/date pickers, keyboard animation and Home Screen PWA behaviour remain device checks. No personal backup was used or included in this package.
 
-Suggested first iPhone checks
-1. Confirm Settings shows v3.6.3 and prior logs remain available.
-2. Start a test workout. Log a warm-up plus working sets with different reps. Reopen the exercise and check the saved rows.
-3. Close the app halfway through typing another exercise, then reopen and resume it.
-4. Finish the test workout and inspect Gym > History > Workout Days > Details for timing.
-5. During a real overnight workout, continue the same exercise after midnight and confirm it remains on the start date.
-6. Check set rows remain comfortable to scroll/edit with the keyboard visible.
+FIRST IPHONE CHECKS
+1. Confirm v3.6.4 and inspect existing spending and gym logs before salary confirmation.
+2. Open Money > Salary received, check September -> October, received date 28 October 2026, income and next payday. Cancel first to confirm nothing resets.
+3. Reopen and confirm after reviewing any payday-spending checkbox. Check fresh allocations, September history and recorded leftover.
+4. Log a small real expense using the category cards and check the correct salary total.
+5. Inspect an older entry and verify its salary and category remain correct.
+6. Check the Money editor and category grid scroll comfortably with the keyboard visible.

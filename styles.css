@@ -1203,3 +1203,25 @@ html { scroll-padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
 .gym-log>div{min-width:0;}
 .gym-log small,.active-workout-row small{overflow-wrap:anywhere;line-height:1.5;}
 @media(max-width:360px){.gym-set-row{grid-template-columns:minmax(70px,1fr) minmax(54px,1fr) minmax(48px,.8fr) 36px;gap:5px;padding:8px;}.gym-remove-set{min-width:36px;width:36px;}.gym-set-row input,.gym-set-row select{padding-inline:4px;}}
+.salary-due-card,.salary-reserve-card,.salary-history-summary{margin:12px 0;padding:15px;background:#101a28;border:1px solid #26486f;border-radius:15px;}
+.salary-due-card>b,.salary-due-card>div>b{font-size:16px;}
+.salary-due-card p,.salary-reserve-card p,.salary-extra-controls p{font-size:12px;line-height:1.6;color:var(--muted);margin:6px 0 12px;}
+.salary-due-card button{min-height:48px;}
+.salary-period-range,.salary-allocation-total{font-size:12px;color:var(--muted);line-height:1.5;}
+.salary-period-range{margin:8px 0 12px;}.salary-allocation-total{margin:-4px 0 10px;}
+.money-log-top{min-height:50px;margin:14px 0 8px;font-size:15px;}
+.salary-reserve-card{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#101b17;border-color:#294e3a;}
+.salary-reserve-card small{display:block;color:#96d5b4;font-size:11px;}.salary-reserve-card b{display:block;font-size:23px;margin:5px 0;font-variant-numeric:tabular-nums;}
+.salary-reserve-card p{margin:6px 0 0;}.salary-reserve-card button{flex-shrink:0;min-height:44px;}
+.salary-extra-controls{margin:16px 0;border:1px solid var(--line);padding:13px;border-radius:12px;}.salary-extra-controls summary{font-size:13px;cursor:pointer;}.salary-extra-controls button{margin-top:12px;}
+.salary-history-summary h3{margin:0;}.salary-history-summary>p{font-size:12px;color:var(--muted);line-height:1.6;}.salary-history-summary details{margin-top:12px;}.salary-history-summary summary{font-size:13px;cursor:pointer;padding:7px 0;}
+.salary-history-numbers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px;}.salary-history-numbers small{display:block;font-size:11px;color:var(--muted);}.salary-history-numbers b{display:block;font-size:15px;margin-top:5px;overflow-wrap:anywhere;}
+.salary-receipt-preview{padding:13px;background:#112333;border:1px solid #254e70;border-radius:13px;margin:14px 0;}.salary-receipt-preview p{font-size:13px;line-height:1.6;margin:4px 0 9px;}.salary-receipt-preview small{display:block;font-size:12px;line-height:1.6;color:#a6c2d9;}
+.salary-payday-choice{display:flex;align-items:flex-start;gap:10px;font-size:12px;line-height:1.6;margin-top:12px;padding-top:12px;border-top:1px solid #2c4558;}.salary-payday-choice input{flex:0 0 22px;width:22px;height:22px;margin-top:2px;}
+.expense-amount-large{font-size:26px!important;min-height:60px;font-variant-numeric:tabular-nums;}.expense-category-label{margin:16px 0 10px;}
+.expense-category-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:16px;}
+.expense-category{position:relative;display:flex;align-items:center;gap:10px;text-align:left;min-height:66px;min-width:0;padding:12px 25px 12px 12px;border:1px solid #333940;background:#171b21;border-radius:13px;color:var(--text);}
+.expense-category>span{font-size:24px;flex:0 0 29px;}.expense-category>b{font-size:13px;line-height:1.4;overflow-wrap:anywhere;}.expense-category.selected{border-color:#0a84ff;background:#112c47;box-shadow:inset 0 0 0 1px #0a84ff;}.expense-category i{position:absolute;right:9px;top:8px;color:#7dc0ff;font-style:normal;}
+.salary-expense-note{font-size:12px;line-height:1.6;}.salary-receipt-preview+.form-error[hidden],#expenseError[hidden],#moneyPlanError[hidden]{display:none;}
+.transaction-amount .row{display:flex;}.transaction-amount .row button{min-height:36px;font-size:11px;}.transaction-copy{min-width:0;}.transaction-copy b,.transaction-copy small{overflow-wrap:anywhere;}
+@media(max-width:360px){.expense-category{gap:6px;padding:10px 21px 10px 9px;}.expense-category>b{font-size:12px;}.salary-reserve-card{align-items:flex-start;flex-direction:column;}.salary-history-numbers{grid-template-columns:1fr;gap:9px;}.salary-history-numbers>div{display:flex;justify-content:space-between;gap:10px;}.salary-history-numbers b{margin:0;}}

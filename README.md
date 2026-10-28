@@ -1,35 +1,39 @@
-# Reset v3.6.3 — Personal Edition
+# Reset v3.6.4 — Salary periods
 
-This release updates the gym section. Existing scheduling, recurring routines, history protections and other app sections are retained from v3.6.2.
+This update changes Money from calendar-month budgeting to explicitly confirmed salary-to-salary periods. It retains the v3.6.3 gym update and other existing app sections.
 
-## Install
+## Installation
 
-Export a fresh JSON backup first. Upload the contents of `life-reset-app`, including `icons`, to the root of the existing GitHub Pages repository. Wait for deployment, reopen Reset and confirm Settings shows v3.6.3. Existing device data is upgraded automatically to schema 18. No backup import is required.
+Export a fresh backup. Upload the contents of `life-reset-app` to the root of the existing GitHub Pages repository. Keep the same address, wait for deployment and confirm Settings shows v3.6.4. Existing device data upgrades to schema 19 without a JSON import.
 
-## Workouts across midnight
+## Confirming salary receipt
 
-An active workout remains active until explicitly finished or cancelled. Exercise logs follow its start date, including when saved after midnight. Closing or refreshing the app retains its ID, selected exercises, saved sets and original start timestamp. A second workout cannot overwrite an unfinished one.
+Money shows a Salary received button when the stored next salary date is due. It remains available if confirmation is delayed. No installation, payday or month boundary automatically closes a period or resets allocations.
 
-The active card displays elapsed time without re-rendering exercise inputs. Finishing stores actual start and finish timestamps and duration. History shows daily duration totals and Details for individual workouts. Timing includes rest and time spent with the app closed. Earlier workouts with no recorded finish time show Duration not recorded rather than an estimate.
+Confirmation shows the previous period, new salary amount, actual received date, salary month and next expected payday. It preserves the allocation targets, closes the prior salary and begins spending totals for the new salary. Payday entries already logged can be assigned to the new period or kept in the previous period using the confirmation checkbox. The summary previews both outcomes. Duplicate or stale confirmations are rejected.
 
-## Sets, warm-ups and previous performance
+For the existing setup begun in October before payday, the initial open salary period is inferred from the app's start date and usual payday. The first confirmation lets you check the previous salary month. For the requested transition, choose September as the previous salary, October as the new salary and 28 October as the received date. Entries older than the initial period are retained as Earlier records.
 
-Each exercise contains individually editable working and warm-up sets. Weight and reps may vary between sets. The Add warm-up button inserts warm-up rows before working sets. Copy first working set to all working sets speeds up repeated sets.
+Early/late salary dates and backdated confirmation are supported. The next expected date is editable, so periods are never assumed to last 30 days. Monthly defaults clamp dates such as the 31st to the last valid day of a short month and resume the usual day in following months.
 
-LAST TIME displays the most recent previous working-set entry, excluding the active workout, warm-up-only logs and entries after the selected date. Use last workout copies its working sets while keeping any warm-ups already entered.
+## History and leftovers
 
-Warm-ups stay visible in history. Strength charts show the best working-set weight for each exercise entry. PRs and strength-gain achievements use working sets only. Old aggregate logs remain intact and are interpreted as working sets unless explicitly marked as warm-ups. Existing warm-up logs can be reclassified manually through Edit.
+Every closed period keeps its salary month, start/close dates, salary income and allocation snapshot. Transactions retain their original IDs, dates, amounts and notes, with salary assignment metadata added on confirmation. History can show each salary, every period together, or earlier records, with allocation filters and existing edit/delete controls.
 
-Partial entries are stored as device-local drafts on input, including temporarily invalid/blank fields. Reopen the exercise to resume. Saved exercise entries replace their own workout entry, avoiding duplicate logs. Closing an editor retains its draft. Explicitly finishing/cancelling the workout warns about and discards any remaining drafts for that workout.
+Recorded net leftover sums income minus logged spending across closed periods, including negative balances from overspending. It is separate from current allocations and does not move funds, add an expense, change currentCash or double-count prior income. Existing calendar plan-history fields remain stored. Correcting an old expense updates its period and the recorded leftover total. The close-time summary is also retained for reference.
 
-## Compatibility and validation
+## Expense entry
 
-The existing storage key remains unchanged. Migration adds gym workout history and draft containers without rewriting legacy exercise logs or unrelated domains. The previous release's schedule and historical corrections are retained. The previously discussed wake/rebuild display issue is outside this gym update.
+Log spending is directly above Allocations near the top. Large emoji/name cards replace the allocation dropdown. The amount and note stay in place while selecting a card. Backdated expenses follow the corresponding salary, with an explicit salary selector for payday ambiguity. Currency totals use integer cents internally and show fractional SAR when needed.
 
-28 gym regression groups and 11 page-render smoke checks passed in a local DOM/state simulator, along with JavaScript syntax and release-package checks. Tests include midnight while an editor is open, original-date attribution, exact duration, DST, partial draft recovery, warm-up exclusion, mixed working sets, previous hints, multiple workouts, duplicate saves, empty exercises, migration and export/import preservation.
+Editing the current allocation plan leaves closed snapshots intact. Removed allocations that still have expenses retain their old names for history and corrections. Receipt/plan changes create safety snapshots; Undo is guarded against overwriting later Money changes.
 
-These are simulated checks. No live browser layout, touch scrolling or physical iPhone test was completed. See TEST_REPORT.txt for the scope and first-device checklist.
+## Validation
+
+36 salary/Money regression groups, 28 gym regression groups and 11 page-render smoke checks passed in a simulated DOM/state environment. JavaScript syntax, scoped source changes, version/cache wiring, manifest and archive integrity were checked. Existing gym and scheduling function bodies are unchanged.
+
+There was no live browser or physical iPhone test. The simulator does not validate layout, native controls, keyboard animations, touch scrolling or Home Screen behaviour. See TEST_REPORT.txt and perform the first-device checks after installation.
 
 ## Privacy
 
-Reset remains local-first without accounts, analytics or a cloud database. Upload app code only. Keep JSON backups private.
+Reset remains local-first. This release contains app code only, without private backups, screenshots or test fixtures.
